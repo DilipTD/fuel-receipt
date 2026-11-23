@@ -31,7 +31,7 @@
   .c{text-align:center}
   .name{font-size:18px;font-weight:bold}
   .ln{white-space:pre}
-  .kv{display:flex;white-space:nowrap}.kv span:first-child{min-width:17ch;flex:none}
+  .kv{display:flex}.kv span:first-child{min-width:16ch;box-sizing:border-box;flex:none;white-space:nowrap;padding-right:1ch}.kv span:last-child{flex:1;min-width:0;white-space:normal;word-break:break-all}
   .dash{border-top:1px dashed var(--ink,#1a2a9c);margin:6px 0}
   @media print{
     body{background:#fff}.panel{display:none}.wrap{display:block;margin:0}
@@ -148,10 +148,14 @@ You can now call us on 303600 (toll free) for queries/complaints</textarea>
     <div><label>Gap image-text on same line (px)</label><input id="sGap" type="number" min="0" max="60" value="6"></div>
     <div><label>Gap to receipt text (px)</label><input id="sBody" type="number" min="0" max="60" value="6"></div>
   </div>
-  <label>Image &amp; text alignment across strip</label>
+  <label>LEFT strip - image &amp; text alignment across strip</label>
   <select id="sHal"><option value="center">Center</option><option value="start">Left</option><option value="end">Right</option></select>
-  <label>Side print alignment along roll</label>
+  <label>RIGHT strip - image &amp; text alignment across strip</label>
+  <select id="sHalR"><option value="center">Center</option><option value="start">Left</option><option value="end">Right</option></select>
+  <label>LEFT strip - alignment along roll</label>
   <select id="sPos"><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option></select>
+  <label>RIGHT strip - alignment along roll</label>
+  <select id="sPosR"><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option></select>
   <label>Side text - left (optional)</label><input id="sideL" placeholder="e.g. {date} - use {date} {time} {rid}">
   <label>Side text - right (optional)</label><input id="sideR" placeholder="e.g. {date} {time}">
   <div class="row">
@@ -193,7 +197,7 @@ function setNow(){
   const d=new Date();
   $('dt').value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   $('tm').value=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  $('rid').value=''+d.getTime();
+  $('rid').value=String(d.getFullYear()).slice(2)+pad(d.getMonth()+1)+pad(d.getDate())+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
   $('trx').value=String(d.getTime()).slice(-6);
 }
 function rates(){
@@ -267,11 +271,11 @@ function render(){
     if(!img&&!t0)return {html:'',used:0};
     const iw=imgW*imgS/100;
     const W=Math.max(img?iw:0,t0?TW:0);
-    const jh={start:'flex-start',center:'center',end:'flex-end'}[$('sHal').value]||'center';
+    const jh={start:'flex-start',center:'center',end:'flex-end'}[$(c==='l'?'sHal':'sHalR').value]||'center';
     const unit=(img?`<div class="cell" style="justify-content:${jh}"><img src="${img}" style="width:${iw}px;display:block;flex:none"></div>`:'')+
       (t0?`<div class="cell" style="justify-content:${jh}"><span class="stxt ${$('sideS').value==='box'?'box':''}">${esc(t0)}</span></div>`:'');
     const rep=$('sideRep').value==='1';
-    const vp=$('sPos').value,left=c==='l';
+    const vp=$(c==='l'?'sPos':'sPosR').value,left=c==='l';
     const jc=vp==='center'?'center':((vp==='top')===!left?'flex-start':'flex-end');
     const body=rep?Array(30).fill(unit).join(''):unit;
     const html=`<div class="side ${c} comb" style="${pos}:${E}px;width:${W}px;gap:${G1}px;flex-direction:${c==='l'?'column-reverse':'column'};justify-content:${jc};align-items:stretch">${body}</div>`;
@@ -391,7 +395,7 @@ function tx(store,mode,fn){
     t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);
   }));
 }
-const PF=['st','ad','tin','sPos','sHal','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','rate','tbl','apiUrl','apiKey','iw','isz','imgRot','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','vat','pump','noz','mop','prod','cust','mob','veh','vtype'];
+const PF=['st','ad','tin','sPos','sHal','sPosR','sHalR','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','rate','tbl','apiUrl','apiKey','iw','isz','imgRot','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','vat','pump','noz','mop','prod','cust','mob','veh','vtype'];
 function saveProfile(){
   const p={logoData,imgLraw,imgRraw};PF.forEach(k=>p[k]=$(k).value);
   tx('kv','readwrite',s=>s.put(p,'profile')).catch(()=>{});
@@ -402,7 +406,7 @@ async function loadProfile(){
     if(p){PF.forEach(k=>{if(p[k]!==undefined)$(k).value=p[k]});logoData=p.logoData||'';imgLraw=p.imgLraw||'';imgRraw=p.imgRraw||'';await refreshImgs()}
   }catch(e){}
 }
-const ALL=['st','ad','tin','sPos','sHal','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','payref','vat','dt','tm','rid','trx','pump','noz','mop','prod','rate','by','amt','qty','cust','mob','veh','vtype'];
+const ALL=['st','ad','tin','sPos','sHal','sPosR','sHalR','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','payref','vat','dt','tm','rid','trx','pump','noz','mop','prod','rate','by','amt','qty','cust','mob','veh','vtype'];
 async function saveReceipt(){
   render();
   const rec={saved:Date.now()};ALL.forEach(k=>rec[k]=$(k).value);
@@ -455,7 +459,7 @@ async function clearAll(){
 }
 PF.forEach(k=>$(k).addEventListener('input',saveProfile));
 ['dt','tm','rid','trx'].forEach(k=>$(k).addEventListener('input',render));
-['copy','ink','dfmt','sPos','sHal','sEdge','sGap','sBody','width','oper','payref','vat','cst','lst','vatn','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep'].forEach(k=>$(k).addEventListener('input',render));
+['copy','ink','dfmt','sPos','sHal','sPosR','sHalR','sPosR','sHalR','sEdge','sGap','sBody','width','oper','payref','vat','cst','lst','vatn','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep'].forEach(k=>$(k).addEventListener('input',render));
 (async()=>{try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}setNow();await loadProfile();calc('amt');loadHist()})();
 ['tbl','apiUrl','apiKey'].forEach(id=>{
   try{const t=localStorage.getItem(id);if(t)$(id).value=t}catch(e){}
