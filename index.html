@@ -19,7 +19,12 @@
   .tabs{display:flex;gap:6px;margin-bottom:8px}.tab{margin-top:0;background:#ccd;color:#222}.tab.on{background:#0b5394;color:#fff}
   .side{position:absolute;top:0;bottom:0;width:22px;writing-mode:vertical-rl;text-align:center;font-weight:bold;font-size:12px;letter-spacing:2px;overflow:hidden;white-space:nowrap;display:flex;align-items:center;justify-content:center}
   .side.imgside{transform:none!important;writing-mode:horizontal-tb;display:block}
-  .side.l{left:2px;transform:rotate(180deg)}.side.r{right:2px}
+  .side.l{transform:rotate(180deg)}
+  .side.comb{display:flex;align-items:center;writing-mode:horizontal-tb;transform:none!important}
+  .cell{display:flex;width:100%;flex:none}
+  .side.comb .stxt{line-height:1;writing-mode:vertical-rl;white-space:nowrap;font-weight:bold;letter-spacing:2px;padding:4px 0;flex:none}
+  .side.l.comb .stxt{transform:rotate(180deg)}
+  .stxt.box{background:var(--ink,#555);color:#fff}
   .side.box{background:var(--ink,#555);color:#fff;top:12px;bottom:12px}
   .receipt{position:relative;text-transform:uppercase;background:#fff;width:80mm;max-width:100%;margin:0 auto;padding:12px;
     font-family:"Courier New",monospace;font-size:13px;color:var(--ink,#1a2a9c);align-self:start;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -117,6 +122,7 @@ You can now call us on 303600 (toll free) for queries/complaints</textarea>
 
   <b style="display:block;margin-top:14px">Print style</b>
   <div class="row">
+    <div><label>Date format</label><select id="dfmt"><option value="dmy">DD/MM/YYYY</option><option value="dmy2">DD-MM-YYYY</option><option value="dmon">DD MON YYYY</option><option value="ymd">YYYY-MM-DD</option><option value="mdy">MM/DD/YYYY</option></select></div>
     <div><label>Print colour</label><select id="ink"><option value="blue">Blue ink</option><option value="bw">Black &amp; white</option></select></div>
     <div><label>Paper width</label><select id="width"><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></div>
   </div>
@@ -137,8 +143,17 @@ You can now call us on 303600 (toll free) for queries/complaints</textarea>
     <div><label>Side image width (px)</label><input id="iw" type="number" min="10" max="120" value="30"></div>
     <div><label>Image scale (%)</label><input id="isz" type="number" min="10" max="300" value="100"></div>
   </div>
-  <label>Side text - left (optional)</label><input id="sideL" placeholder="text printed vertically on left edge">
-  <label>Side text - right (optional)</label><input id="sideR" placeholder="text printed vertically on right edge">
+  <div class="row">
+    <div><label>Distance from paper edge (px)</label><input id="sEdge" type="number" min="0" max="60" value="2"></div>
+    <div><label>Gap image-text on same line (px)</label><input id="sGap" type="number" min="0" max="60" value="6"></div>
+    <div><label>Gap to receipt text (px)</label><input id="sBody" type="number" min="0" max="60" value="6"></div>
+  </div>
+  <label>Image &amp; text alignment across strip</label>
+  <select id="sHal"><option value="center">Center</option><option value="start">Left</option><option value="end">Right</option></select>
+  <label>Side print alignment along roll</label>
+  <select id="sPos"><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option></select>
+  <label>Side text - left (optional)</label><input id="sideL" placeholder="e.g. {date} - use {date} {time} {rid}">
+  <label>Side text - right (optional)</label><input id="sideR" placeholder="e.g. {date} {time}">
   <div class="row">
     <div><label>Side text style</label><select id="sideS"><option value="box">Dark box</option><option value="plain">Plain</option></select></div>
     <div><label>Repeat down the roll</label><select id="sideRep"><option value="0">No</option><option value="1">Yes</option></select></div>
@@ -237,19 +252,34 @@ function render(){
   if($('by').value==='amt'){qty=rate?amt/rate:0}else{amt=qty*rate}
   const [y,mo,d]=($('dt').value||'').split('-');
   const rows=[
-    ['RCPT ID',$('rid').value],['DATE',`${d}/${mo}/${y}`],['TIME',$('tm').value],
+    ['RCPT ID',$('rid').value],['DATE',fmtDate()],['TIME',$('tm').value],
     ['TRX. ID',$('trx').value],['MOP NAME',$('mop').value],['PUMP',$('pump').value],
     ['NOZZLE',$('noz').value],...($('oper').value?[['OPERATOR',$('oper').value]]:[]),...($('payref').value?[['PAY REF',$('payref').value]]:[]),['PRODUCT',$('prod').value],
     ['VOLUME ('+(/CNG/.test($('prod').value)?'KG':'L')+')',qty.toFixed(3)],['RATE (RS/'+(/CNG/.test($('prod').value)?'KG':'L')+')',rate.toFixed(2)],['AMOUNT (RS)',amt.toFixed(2)]];
   const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const imgW=parseFloat($('iw').value)||30;const imgS=parseFloat($('isz').value)||100;
-  const sideHtml=(t,c,img)=>{
-    if(img)return `<div class="side ${c} imgside" style="width:${imgW}px;background:url(${img}) ${$('sideRep').value==='1'?'repeat-y':'no-repeat'} center/${imgS}% auto"></div>`;
-    if(!t.trim())return'';
-    const txt=$('sideRep').value==='1'?Array(12).fill(t.trim()).join('  \u2022  '):t.trim();
-    return `<div class="side ${c} ${$('sideS').value==='box'?'box':''}">${esc(txt)}</div>`;
+  const num=(id,d)=>{const v=parseFloat($(id).value);return isNaN(v)?d:v};
+  const E=num('sEdge',2),G1=num('sGap',6),G2=num('sBody',6),TW=(parseFloat($('sfs').value)||12)+10;
+  /* each edge = ONE strip; image then text follow each other along the same line */
+  const strips=(t,c,img)=>{
+    const pos=c==='l'?'left':'right';
+    const t0=t.trim()?sub(t.trim()):'';
+    if(!img&&!t0)return {html:'',used:0};
+    const iw=imgW*imgS/100;
+    const W=Math.max(img?iw:0,t0?TW:0);
+    const jh={start:'flex-start',center:'center',end:'flex-end'}[$('sHal').value]||'center';
+    const unit=(img?`<div class="cell" style="justify-content:${jh}"><img src="${img}" style="width:${iw}px;display:block;flex:none"></div>`:'')+
+      (t0?`<div class="cell" style="justify-content:${jh}"><span class="stxt ${$('sideS').value==='box'?'box':''}">${esc(t0)}</span></div>`:'');
+    const rep=$('sideRep').value==='1';
+    const vp=$('sPos').value,left=c==='l';
+    const jc=vp==='center'?'center':((vp==='top')===!left?'flex-start':'flex-end');
+    const body=rep?Array(30).fill(unit).join(''):unit;
+    const html=`<div class="side ${c} comb" style="${pos}:${E}px;width:${W}px;gap:${G1}px;flex-direction:${c==='l'?'column-reverse':'column'};justify-content:${jc};align-items:stretch">${body}</div>`;
+    return {html,used:E+W};
   };
-  const sides=sideHtml($('sideL').value,'l',imgL)+sideHtml($('sideR').value,'r',imgR);
+  const SL=strips($('sideL').value,'l',imgL),SR=strips($('sideR').value,'r',imgR);
+  const sides=SL.html+SR.html;
+  const padL=SL.used?Math.round(SL.used+G2):12,padR=SR.used?Math.round(SR.used+G2):12;
   const vatp=parseFloat($('vat').value)||0;
   let extra='';
   if(vatp>0){const tax=amt-amt/(1+vatp/100);extra+=`<div class="kv"><span>TAX INCL @${vatp}% (RS)</span><span>: ${tax.toFixed(2)}</span></div>`}
@@ -268,15 +298,15 @@ function render(){
     <div class="kv"><span>VEHICLE NO</span><span>: ${esc($('veh').value||'-')}</span></div>
     <div class="kv"><span>VEHICLE TYPE</span><span>: ${esc($('vtype').value||'-')}</span></div>
     <div class="dash"></div>`;
-  $('ft').value.split('\n').forEach(l=>h+=`<div class="c">${esc(l)}</div>`);
+  $('ft').value.split('\n').forEach(l=>h+=`<div class="c">${esc(sub(l))}</div>`);
   $('r').innerHTML=sides+h;
   const bw=$('ink').value==='bw';
   $('r').style.setProperty('--ink',bw?'#000':'#1a2a9c');
   $('r').querySelectorAll('img,.imgside').forEach(e=>e.style.filter=bw?'grayscale(1) contrast(1.4)':'');$('r').style.width=$('width').value;
-  $('r').style.padding=sides?`12px ${Math.round(((imgL||imgR)?imgW:(parseFloat($('sfs').value)||12)+10)+8)}px`:'12px';
+  $('r').style.padding=`12px ${padR}px 12px ${padL}px`;
   $('r').style.fontSize=(parseFloat($('fs').value)||13)+'px';
   const nm=$('r').querySelector('.name');if(nm)nm.style.fontSize=(parseFloat($('nfs').value)||18)+'px';
-  $('r').querySelectorAll('.side:not(.imgside)').forEach(e=>{e.style.fontSize=(parseFloat($('sfs').value)||12)+'px';e.style.width=((parseFloat($('sfs').value)||12)+10)+'px'});
+  $('r').querySelectorAll('.stxt').forEach(e=>{e.style.fontSize=(parseFloat($('sfs').value)||12)+'px';e.style.width=TW+'px';e.style.textAlign='center'});
 }
 let logoData='',imgLraw='',imgRraw='',imgL='',imgR='';
 function rot(d,deg){
@@ -303,6 +333,23 @@ function inWords(n){
   const c=Math.floor(n/1e7);n%=1e7;const l=Math.floor(n/1e5);n%=1e5;const t=Math.floor(n/1e3);n%=1e3;const h=Math.floor(n/100);n%=100;
   if(c)o+=_2(c)+" Crore ";if(l)o+=_2(l)+" Lakh ";if(t)o+=_2(t)+" Thousand ";if(h)o+=_o[h]+" Hundred ";if(n)o+=_2(n);
   return o.trim();
+}
+function fmtDate(){
+  const [y,m,d]=($('dt').value||'').split('-');if(!y)return '';
+  const mon=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][+m-1];
+  switch($('dfmt').value){
+    case 'dmy2':return `${d}-${m}-${y}`;
+    case 'dmon':return `${d} ${mon} ${y}`;
+    case 'ymd':return `${y}-${m}-${d}`;
+    case 'mdy':return `${m}/${d}/${y}`;
+    default:return `${d}/${m}/${y}`;
+  }
+}
+/* {date} {time} {datetime} {rid} {trx} inside side text / footer */
+function sub(t){
+  return t.replace(/\{date\}/gi,fmtDate()).replace(/\{time\}/gi,$('tm').value||'')
+    .replace(/\{datetime\}/gi,(fmtDate()+' '+($('tm').value||'')).trim())
+    .replace(/\{rid\}/gi,$('rid').value||'').replace(/\{trx\}/gi,$('trx').value||'');
 }
 function newReceipt(){
   let n=1;try{n=(parseInt(localStorage.getItem('seq'))||0)+1;localStorage.setItem('seq',n)}catch(e){}
@@ -344,7 +391,7 @@ function tx(store,mode,fn){
     t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);
   }));
 }
-const PF=['st','ad','tin','ink','cst','lst','vatn','ft','rate','tbl','apiUrl','apiKey','iw','isz','imgRot','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','vat','pump','noz','mop','prod','cust','mob','veh','vtype'];
+const PF=['st','ad','tin','sPos','sHal','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','rate','tbl','apiUrl','apiKey','iw','isz','imgRot','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','vat','pump','noz','mop','prod','cust','mob','veh','vtype'];
 function saveProfile(){
   const p={logoData,imgLraw,imgRraw};PF.forEach(k=>p[k]=$(k).value);
   tx('kv','readwrite',s=>s.put(p,'profile')).catch(()=>{});
@@ -355,7 +402,7 @@ async function loadProfile(){
     if(p){PF.forEach(k=>{if(p[k]!==undefined)$(k).value=p[k]});logoData=p.logoData||'';imgLraw=p.imgLraw||'';imgRraw=p.imgRraw||'';await refreshImgs()}
   }catch(e){}
 }
-const ALL=['st','ad','tin','ink','cst','lst','vatn','ft','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','payref','vat','dt','tm','rid','trx','pump','noz','mop','prod','rate','by','amt','qty','cust','mob','veh','vtype'];
+const ALL=['st','ad','tin','sPos','sHal','sEdge','sGap','sBody','dfmt','ink','cst','lst','vatn','ft','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep','copy','width','oper','payref','vat','dt','tm','rid','trx','pump','noz','mop','prod','rate','by','amt','qty','cust','mob','veh','vtype'];
 async function saveReceipt(){
   render();
   const rec={saved:Date.now()};ALL.forEach(k=>rec[k]=$(k).value);
@@ -407,7 +454,8 @@ async function clearAll(){
   logoData='';loadHist();render();
 }
 PF.forEach(k=>$(k).addEventListener('input',saveProfile));
-['copy','ink','width','oper','payref','vat','cst','lst','vatn','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep'].forEach(k=>$(k).addEventListener('input',render));
+['dt','tm','rid','trx'].forEach(k=>$(k).addEventListener('input',render));
+['copy','ink','dfmt','sPos','sHal','sEdge','sGap','sBody','width','oper','payref','vat','cst','lst','vatn','iw','isz','fs','nfs','sfs','sideL','sideR','sideS','sideRep'].forEach(k=>$(k).addEventListener('input',render));
 (async()=>{try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}setNow();await loadProfile();calc('amt');loadHist()})();
 ['tbl','apiUrl','apiKey'].forEach(id=>{
   try{const t=localStorage.getItem(id);if(t)$(id).value=t}catch(e){}
