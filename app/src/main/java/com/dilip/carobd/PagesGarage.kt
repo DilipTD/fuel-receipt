@@ -100,16 +100,9 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Parking", Ui.ORANGE) { openParking() },
             Triple("Connect", Ui.GOOD) { a.show("Connect") },
             Triple("Settings", Color.parseColor("#90A4AE")) { a.show("Settings") },
+            Triple("Permissions", Ui.ORANGE) { a.show("Perms") },
             Triple("Privacy & legal", Ui.GOOD) { a.show("Legal") },
             Triple("About", Ui.VIOLET) { a.show("About") }
-        )
-        menu("Nearby", Ic.PIN,
-            Triple("Petrol pump", Ui.ORANGE) { openNearby("petrol pump") },
-            Triple("Service centre", Ui.ACC) { openNearby("car service center") },
-            Triple("Find parking", Ui.CYAN) { openNearby("parking") },
-            Triple("EV charging", Ui.GOOD) { openNearby("EV charging station") },
-            Triple("Tyre shop", Ui.VIOLET) { openNearby("tyre shop") },
-            Triple("Car wash", Ui.PINK) { openNearby("car wash") }
         )
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply {
             gravity = android.view.Gravity.CENTER
@@ -121,7 +114,7 @@ class MorePage(a: MainActivity) : Page(a) {
         l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
-        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Documents") -> Ic.DOC
+        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Permissions") -> Ic.SLIDERS; l.startsWith("Documents") -> Ic.DOC
         l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
         l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
         else -> Ic.GRID

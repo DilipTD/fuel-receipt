@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
     )
     private lateinit var content: FrameLayout
     private lateinit var nav: FrameLayout
@@ -173,6 +173,7 @@ class MainActivity : Activity() {
         pages["Battery"] = BatteryPage(this)
         pages["About"] = AboutPage(this)
         pages["Legal"] = LegalPage(this)
+        pages["Perms"] = PermissionsPage(this)
         pages["Docs"] = DocsPage(this)
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
@@ -283,6 +284,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
+        (pages["Perms"] as? PermissionsPage)?.onShow()
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
     }
 

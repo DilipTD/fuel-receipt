@@ -56,8 +56,12 @@ object Legal {
 
 class LegalPage(a: MainActivity) : Page(a) {
     override val parent = "More"
-    override fun build(): View {
-        val c = ui.col()
+    private lateinit var box: android.widget.LinearLayout
+    override fun build(): View { box = ui.col(); return ui.scroll(box) }
+    override fun onShow() = render()
+
+    private fun render() {
+        val c = box; c.removeAllViews()
         c.addView(ui.tv("Your privacy", 22f, Ui.WHITE, true), ui.lp(4))
         c.addView(ui.tv("Everything stays on your phone. No ads, no accounts, no analytics.  ·  Updated ${LegalText.UPDATED}", 12f, Ui.DIM), ui.lp(2))
         c.addView(ui.section("Policies", Ic.SHIELD))
@@ -68,18 +72,19 @@ class LegalPage(a: MainActivity) : Page(a) {
         c.addView(ui.iconCard(Ic.INFO, Ui.CYAN, "Open data & credits", "OpenStreetMap, Open-Meteo, trademarks", Ui.CARD) { Legal.show(a, "Credits", LegalText.credits) }, ui.lp(6))
         c.addView(ui.section("Your data", Ic.DATABASE))
         c.addView(ui.iconCard(Ic.UPLOAD, Ui.VIOLET, "Export / backup my data", "Save everything to a file or your own cloud", Ui.CARD) { a.show("Backup") }, ui.lp(6))
-        c.addView(ui.iconCard(Ic.PIN, Ui.GOOD, "Stop location use", "Turn off the road assistant and background watch", Ui.CARD) {
-            Prefs.roadAssist = false; Prefs.backgroundWatch = false
-            try { Gps.stop() } catch (_: Exception) {}
-            try { a.stopService(Intent(a, ObdService::class.java)) } catch (_: Exception) {}
-            ui.toast("Background location and watching switched off")
+        val on = Prefs.roadAssist || Prefs.backgroundWatch
+        if (on) c.addView(ui.iconCard(Ic.PIN, Ui.GOOD, "Stop location use", "Switches off the road assistant and background watching. Turn it back on here or in More → Permissions.", Ui.CARD) {
+            Perms.setBackground(a, false); ui.toast("Background location and watching switched off"); render()
         }, ui.lp(6))
+        else c.addView(ui.iconCard(Ic.PIN, Ui.ORANGE, "Location use is OFF – tap to turn on", "Road assistant, speed-limit announcements and background trip watching will start again.", Ui.CARD) {
+            Perms.setBackground(a, true); ui.toast("Road assistant and background watching are on"); render()
+        }, ui.lp(6))
+        c.addView(ui.iconCard(Ic.SLIDERS, Ui.ORANGE, "Permissions & features", "See and change every permission and feature switch", Ui.CARD) { a.show("Perms") }, ui.lp(6))
         c.addView(ui.iconCard(Ic.TRASH, Ui.BAD, "Delete all my data", "Erase everything stored by the app and close it", Ui.CARD) { Legal.deleteAll(a) }, ui.lp(6))
         c.addView(ui.btn("Share privacy policy text", Ui.CARD) {
             val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Car OBD Pro – Privacy Policy\n\n" + Legal.render(LegalText.privacy)) }
             a.startActivity(Intent.createChooser(i, "Share"))
         }, ui.lp(12))
         c.addView(ui.tv(Legal.contact() + "\n© 2026 ${AppInfo.DEVELOPER}", 11f, Ui.DIM).apply { gravity = android.view.Gravity.CENTER }, ui.lp(12))
-        return ui.scroll(c)
     }
 }

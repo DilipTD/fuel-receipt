@@ -84,7 +84,7 @@ object PerfMeter {
                 if (dt in 0.0..2.0) {
                     val prevDist = dist
                     dist += (lastV + v) / 2 / 3.6 * dt
-                    for (target in listOf(60.0, 100.0)) {
+                    for (target in listOf(30.0, 50.0, 60.0, 100.0)) {
                         val key = "0-%.0f km/h".format(target)
                         if (lastV < target && v >= target && key !in splits) splits[key] = (cross(target, v, t) - t0) / 1000.0
                     }
@@ -161,10 +161,33 @@ class PerformancePage(a: MainActivity) : Page(a) {
     private lateinit var statusTv: TextView
     private lateinit var splitsTv: TextView
     private lateinit var histBox: LinearLayout
+    private lateinit var sumBox: LinearLayout
+    private lateinit var lSpd: TextView
+    private lateinit var lRpm: TextView
+    private lateinit var lThr: TextView
+    private lateinit var lLoad: TextView
+    private lateinit var lG: TextView
+    private lateinit var lPeak: TextView
+    private lateinit var lCool: TextView
+    private lateinit var lIat: TextView
+    private lateinit var lBoost: TextView
+    private lateinit var kgCard: LinearLayout
+    private var peakG = 0.0
+    private var peakSpd = 0.0
+
+    private fun hp(trapKmh: Double): Double { val lb = Prefs.perfKg * 2.20462; val mph = trapKmh / 1.60934; return lb * Math.pow(mph / 234.0, 3.0) }
+
+    private fun editWeight() {
+        val et = ui.edit("kg", Prefs.perfKg.toString(), true)
+        val box = ui.vbox().apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0); addView(ui.labeled("Car + driver weight (kg)", et)) }
+        AlertDialog.Builder(a).setTitle("Weight for power estimate").setView(box)
+            .setPositiveButton("Save") { _, _ -> et.text.toString().trim().toIntOrNull()?.let { if (it in 400..4000) Prefs.perfKg = it }; onShow() }
+            .setNegativeButton("Cancel", null).show()
+    }
 
     override fun build(): View {
         val c = ui.col()
-        c.addView(ui.section("⏱ Performance meter"))
+        c.addView(ui.section("Performance meter", Ic.TIMER))
         timer = ui.tv("0.00 s", 54f, Color.parseColor("#00E5FF"), true).apply {
             gravity = Gravity.CENTER; typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         }
@@ -184,7 +207,23 @@ class PerformancePage(a: MainActivity) : Page(a) {
         c.addView(ui.btn("Cancel", Ui.CARD) { PerfMeter.cancel() }, ui.lp(6))
         splitsTv = ui.mono("")
         c.addView(splitsTv, ui.lp(10))
-        c.addView(ui.section("Results history"))
+        c.addView(ui.section("Live readings", Ic.PULSE))
+        val (a1, b1) = ui.stat(Ic.GAUGE, "Speed", Ui.ACC); lSpd = b1
+        val (a2, b2) = ui.stat(Ic.ENGINE, "RPM", Ui.ORANGE); lRpm = b2
+        val (a3, b3) = ui.stat(Ic.BOLT, "Throttle", Ui.CYAN); lThr = b3
+        val (a4, b4) = ui.stat(Ic.GRID, "Engine load", Ui.PINK); lLoad = b4
+        val (a5, b5) = ui.stat(Ic.PULSE, "G-force now", Ui.GOOD); lG = b5
+        val (a6, b6) = ui.stat(Ic.FLAG, "Peak G / speed", Ui.WARN); lPeak = b6
+        val (a7, b7) = ui.stat(Ic.THERM, "Coolant", Ui.ORANGE); lCool = b7
+        val (a8, b8) = ui.stat(Ic.WIND, "Intake air", Ui.CYAN); lIat = b8
+        val (a9, b9) = ui.stat(Ic.GAUGE, "Boost", Ui.VIOLET); lBoost = b9
+        c.addView(ui.row(a1, a2, a3), ui.lp(2)); c.addView(ui.row(a4, a5, a6), ui.lp(8)); c.addView(ui.row(a7, a8, a9), ui.lp(8))
+        kgCard = ui.vbox()
+        c.addView(kgCard, ui.lp(8))
+        c.addView(ui.section("Summary", Ic.CHART))
+        sumBox = ui.vbox()
+        c.addView(sumBox, ui.lp(2))
+        c.addView(ui.section("Results history", Ic.DOC))
         histBox = ui.vbox()
         c.addView(histBox)
         c.addView(ui.btn("Clear history", Ui.BAD) {
@@ -198,14 +237,36 @@ class PerformancePage(a: MainActivity) : Page(a) {
     }
 
     override fun onShow() {
-        histBox.removeAllViews()
+        histBox.removeAllViews(); sumBox.removeAllViews()
+        kgCard.removeAllViews()
+        kgCard.addView(ui.iconCard(Ic.CAR, Ui.VIOLET, "Weight for power estimate", "${Prefs.perfKg} kg car + driver – tap to edit", Ui.CARD) { editWeight() })
         val vid = ObdManager.vehicle.id
         val runs = try {
             val a = JSONArray(Prefs.perfRuns)
             (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optLong("vid") == vid }.reversed()
         } catch (_: Exception) { emptyList() }
         if (runs.isEmpty()) {
+            sumBox.addView(ui.tv("Do a launch or braking run to see your bests, estimated power and braking G here.", 12f, Ui.DIM))
             histBox.addView(ui.tv("No runs yet for ${ObdManager.vehicle.name}.", 13f, Ui.DIM)); return
+        }
+        run {
+            fun bestOf(k: String, low: Boolean = true): Double? = runs.mapNotNull { it.optJSONObject("splits")?.optDouble(k, Double.NaN)?.takeIf { d -> !d.isNaN() } }.let { if (it.isEmpty()) null else if (low) it.min() else it.max() }
+            val trapBest = runs.map { it.optDouble("trap", 0.0) }.filter { it > 0 }.maxOrNull()
+            val e100 = bestOf("0-100 km/h"); val e60 = bestOf("0-60 km/h"); val q = bestOf("1/4 mile"); val br = bestOf("100-0 km/h"); val bd = bestOf("Braking distance m")
+            val (s1, t1) = ui.stat(Ic.TIMER, "Best 0-100", Ui.ACC); t1.text = e100?.let { "%.2f s".format(it) } ?: "--"
+            val (s2, t2) = ui.stat(Ic.TIMER, "Best 0-60", Ui.CYAN); t2.text = e60?.let { "%.2f s".format(it) } ?: "--"
+            val (s3, t3) = ui.stat(Ic.FLAG, "Best ¼ mile", Ui.ORANGE); t3.text = q?.let { "%.2f s".format(it) } ?: "--"
+            val (s4, t4) = ui.stat(Ic.GAUGE, "Top trap speed", Ui.GOOD); t4.text = trapBest?.let { "%.0f km/h".format(it) } ?: "--"
+            val (s5, t5) = ui.stat(Ic.BOLT, "Est. power", Ui.VIOLET); t5.text = trapBest?.let { "%.0f hp".format(hp(it)) } ?: "--"
+            val (s6, t6) = ui.stat(Ic.STOP, "Best 100-0", Ui.BAD); t6.text = if (br != null && bd != null) "%.1f s · %.0f m".format(br, bd) else "--"
+            sumBox.addView(ui.row(s1, s2, s3)); sumBox.addView(ui.row(s4, s5, s6), ui.lp(8))
+            val tips = ArrayList<String>()
+            val first = runs.last().optJSONObject("splits")?.optDouble("0-100 km/h", Double.NaN)
+            if (e100 != null && first != null && !first.isNaN() && runs.size > 1 && first - e100 > 0.2) tips += "Your best 0-100 is %.2f s faster than your first run.".format(first - e100)
+            if (bd != null) tips += "Best braking: %.2f g average deceleration.".format(Math.pow(100 / 3.6, 2.0) / (2 * bd) / 9.81)
+            if (trapBest != null) tips += "Power is estimated from trap speed and %d kg; real output can differ by 15 % or more.".format(Prefs.perfKg)
+            tips += "Results vary with temperature, tyres, gradient and fuel; run both directions for the fairest figure."
+            sumBox.addView(ui.tv(tips.joinToString("\n"), 11f, Ui.DIM), ui.lp(6))
         }
         val best = HashMap<String, Double>()
         for (r in runs) {
@@ -227,8 +288,10 @@ class PerformancePage(a: MainActivity) : Page(a) {
                 parts += if (k.contains("distance")) "stop %.1f m".format(v) else "$k %.2f s".format(v)
             }
             val trap = r.optDouble("trap", 0.0)
+            val bdm = sp.optDouble("Braking distance m", 0.0)
             histBox.addView(ui.card("${ui.date(r.optLong("t"))} · ${r.optString("type")}\n" + parts.joinToString(" · ") +
-                    (if (trap > 0) " · trap %.0f km/h".format(trap) else ""), 12f), ui.lp(4))
+                    (if (trap > 0) " · trap %.0f km/h · ~%.0f hp".format(trap, hp(trap)) else "") +
+                    (if (bdm > 0) " · %.2f g".format(Math.pow(100 / 3.6, 2.0) / (2 * bdm) / 9.81) else ""), 12f), ui.lp(4))
         }
     }
 
@@ -244,6 +307,13 @@ class PerformancePage(a: MainActivity) : Page(a) {
             else -> Color.parseColor("#00E5FF")
         })
         speed.text = "${ui.f(ObdManager.values[0x0D], 0, " km/h")} · ${ui.f(pm.liveDist, 0, " m")}"
+        val v = ObdManager.values; val g = ObdManager.engine.liveAccelG
+        val sp = v[0x0D] ?: 0.0
+        if (g > peakG) peakG = g; if (sp > peakSpd) peakSpd = sp
+        lSpd.text = ui.f(v[0x0D], 0, " km/h"); lRpm.text = ui.f(v[0x0C], 0); lThr.text = ui.f(v[0x11] ?: v[0x45], 0, "%")
+        lLoad.text = ui.f(v[0x04], 0, "%"); lG.text = "%.2f g".format(g); lPeak.text = "%.2f g · %.0f".format(peakG, peakSpd)
+        lCool.text = ui.f(v[0x05], 0, "°C"); lIat.text = ui.f(v[0x0F], 0, "°C")
+        val map = v[0x0B]; lBoost.text = if (map != null) ui.f((map - (v[0x33] ?: 100.0)) / 100.0, 2, " bar") else "--"
         statusTv.text = if (ObdManager.state != ObdManager.State.CONNECTED) "Connect to the car first." else pm.status
         splitsTv.text = if (pm.splits.isEmpty()) "Splits appear here: 0-60, 0-100, 60-100, ¼ mile, 100-0." else
             pm.splits.entries.joinToString("\n") {
@@ -262,14 +332,17 @@ class BatteryPage(a: MainActivity) : Page(a) {
     private lateinit var ring: RingGauge
     private lateinit var stateTv: TextView
     private lateinit var chart: LineChart
-    private lateinit var crankTv: TextView
+    private lateinit var box: LinearLayout
+    private lateinit var live: LinearLayout
+    private var lastSig = ""
 
     override fun build(): View {
         val c = ui.col()
-        c.addView(ui.section("🔋 Battery & charging"))
+        c.addView(ui.section("Battery & charging", Ic.BATTERY))
         ring = RingGauge(a, "Battery", "volts", 10f, 16f, 2) { v ->
             if (v < 11.8f || v > Prefs.chargeMaxV) 2 else if (v < 12.3f) 1 else 0
         }
+        ring.icon = Ic.BATTERY
         stateTv = ui.tv("", 15f, Ui.WHITE, true)
         val top = LinearLayout(a).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -279,14 +352,35 @@ class BatteryPage(a: MainActivity) : Page(a) {
         c.addView(top, ui.lp())
         chart = LineChart(a, 170)
         c.addView(chart, ui.lp(10))
-        crankTv = ui.mono("")
-        c.addView(crankTv, ui.lp(10))
-        c.addView(ui.tv("How cranking is measured: while the ignition is off or the engine is not yet running, the app samples the " +
-                "adapter voltage several times per second and records the lowest value when the engine starts. Lead-acid: " +
-                "healthy ≥ 9.6–10 V. LFP starter batteries normally stay above 11.5 V. Rest voltage for LFP is ≈13.2–13.4 V, " +
-                "so set the parked-low and charging thresholds for your battery type in Settings.", 12f, Ui.DIM), ui.lp())
+        box = ui.vbox()
+        c.addView(box, ui.lp(8))
         return ui.scroll(c)
     }
+
+    private fun details() {
+        val form = ui.vbox().apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) }
+        val sp = android.widget.Spinner(a).apply {
+            adapter = android.widget.ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, BattAi.types)
+            setSelection(BattAi.types.indexOf(Prefs.battType).coerceAtLeast(0))
+        }
+        val cca = ui.edit("e.g. 400 (printed on the label)", if (Prefs.battCca > 0) Prefs.battCca.toString() else "", true)
+        val ah = ui.edit("e.g. 45", if (Prefs.battAh > 0) Prefs.battAh.toString() else "", true)
+        val since = ui.edit("DD-MM-YYYY", Docs.date(Prefs.battSince))
+        form.addView(ui.labeled("Battery type", sp), ui.lp(6))
+        form.addView(ui.labeled("Rated CCA (A)", cca), ui.lp(6))
+        form.addView(ui.labeled("Capacity (Ah)", ah), ui.lp(6))
+        form.addView(ui.labeled("Fitted on", since), ui.lp(6))
+        AlertDialog.Builder(a).setTitle("Battery details").setView(ui.scroll(form))
+            .setPositiveButton("Save") { _, _ ->
+                Prefs.battType = BattAi.types[sp.selectedItemPosition.coerceAtLeast(0)]
+                Prefs.battCca = cca.text.toString().trim().toIntOrNull() ?: 0
+                Prefs.battAh = ah.text.toString().trim().toIntOrNull() ?: 0
+                val d = Docs.parse(since.text.toString()); if (d >= 0) Prefs.battSince = d else ui.toast("Date not saved – use DD-MM-YYYY")
+                onShow()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun lvl(l: Int) = when (l) { 2 -> Ui.BAD; 1 -> Ui.WARN; else -> Ui.GOOD }
 
     private fun describe(v: Double): String {
         val m = ObdManager
@@ -307,24 +401,47 @@ class BatteryPage(a: MainActivity) : Page(a) {
     }
 
     override fun onShow() {
+        box.removeAllViews()
+        val r = BattAi.analyze()
+        box.addView(ui.section("AI battery analysis", Ic.SHIELD))
+        val cap = if (Prefs.battAh > 0) " · ${Prefs.battAh} Ah" else ""
+        val rated = if (r.ratedCca > 0) " · ${r.ratedCca} CCA" else ""
+        box.addView(ui.iconCard(Ic.BATTERY, Ui.VIOLET, "Battery details", "${Prefs.battType}$cap$rated  – tap to edit", Ui.CARD) { details() }, ui.lp(6))
+        val (t1, v1) = ui.stat(Ic.BOLT, "Est. CCA", Ui.ORANGE); v1.text = r.estCca?.let { "$it A" } ?: "--"
+        val (t2, v2) = ui.stat(Ic.CHECK, "Health (SoH)", Ui.GOOD); v2.text = r.sohPct?.let { "$it %" } ?: "--"
+        val (t3, v3) = ui.stat(Ic.BATTERY, "Charge (SoC)", Ui.CYAN); v3.text = r.socPct?.let { "$it %" } ?: "--"
+        val (t4, v4) = ui.stat(Ic.GAUGE, "Resistance", Ui.VIOLET); v4.text = r.resMohm?.let { "%.1f mΩ".format(it) } ?: "--"
+        val (t5, v5) = ui.stat(Ic.PULSE, "Cranking min", Ui.PINK); v5.text = r.avgMin?.let { "%.2f V".format(it) } ?: "--"
+        val (t6, v6) = ui.stat(Ic.BOLT, "Charging avg", Ui.GOOD); v6.text = r.runAvg?.let { "%.2f V".format(it) } ?: "--"
+        box.addView(ui.row(t1, t2, t3), ui.lp(8))
+        box.addView(ui.row(t4, t5, t6), ui.lp(8))
+        val (t7, v7) = ui.stat(Ic.THERM, "Rest voltage", Ui.ACC); v7.text = r.avgRest?.let { "%.2f V".format(it) } ?: "--"
+        val (t8, v8) = ui.stat(Ic.CHART, "Session range", Ui.ORANGE); v8.text = if (r.vMin != null && r.vMax != null) "%.1f–%.1f V".format(r.vMin, r.vMax) else "--"
+        val (t9, v9) = ui.stat(Ic.CALENDAR, "Age", Ui.DIM); v9.text = r.ageMonths?.let { "${it / 12}y ${it % 12}m" } ?: "--"
+        box.addView(ui.row(t7, t8, t9), ui.lp(8))
+        val sc = r.score
+        box.addView(ui.iconCard(if (sc >= 75) Ic.CHECK else Ic.WARN, if (sc >= 75) Ui.GOOD else if (sc >= 50) Ui.WARN else Ui.BAD,
+            "Battery score $sc / 100", if (r.crankN == 0) "Needs a few engine starts to learn your battery." else "Based on ${r.crankN} recorded starts, charging and age.", Ui.CARD), ui.lp(8))
+        for (f in r.findings) box.addView(ui.iconCard(f.ic, lvl(f.level), f.title, f.text, Ui.CARD), ui.lp(6))
+        if (r.socPct == null || r.socNote.isNotBlank()) box.addView(ui.tv(r.socNote, 11f, Ui.DIM), ui.lp(2))
+
+        box.addView(ui.section("Cranking history", Ic.PULSE))
         val sb = StringBuilder()
         ObdManager.lastCrank?.let { (mn, rest) -> sb.append("Last start: %.2f V (rested %.2f V, dip %.2f V)\n\n".format(mn, rest, rest - mn)) }
         try {
-            val a = JSONArray(Prefs.crankHistory)
+            val arr = JSONArray(Prefs.crankHistory)
             val vid = ObdManager.vehicle.id
-            val list = (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optLong("vid", vid) == vid }.reversed()
+            val list = (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optLong("vid", vid) == vid }.reversed()
             if (list.isEmpty()) sb.append("No cranking measurements yet.\nConnect with the ignition OFF, then start the engine.")
-            else {
-                sb.append("Cranking history (lowest voltage while starting):\n")
-                for (o in list.take(15)) {
-                    val mn = o.getDouble("min")
-                    val flag = if (mn < Prefs.crankLowV) "  ⚠ weak" else ""
-                    sb.append("%s   %.2f V  (rest %.2f)%s\n".format(ui.date(o.getLong("t"), "dd MMM HH:mm"), mn, o.getDouble("rest"), flag))
-                }
+            else for (o in list.take(15)) {
+                val mn = o.getDouble("min")
+                sb.append("%s   %.2f V  (rest %.2f)%s\n".format(ui.date(o.getLong("t"), "dd MMM HH:mm"), mn, o.getDouble("rest"), if (mn < Prefs.crankLowV) "  ⚠ weak" else ""))
             }
-        } catch (_: Exception) {
-        }
-        crankTv.text = sb.toString().trimEnd()
+        } catch (_: Exception) {}
+        box.addView(ui.mono(sb.toString().trimEnd(), 12f), ui.lp(4))
+        box.addView(ui.tv("How the AI works: while the engine is not running the app samples the adapter voltage several times a second and records the lowest value when the engine starts. " +
+                "Internal resistance = voltage dip ÷ an assumed starter current for your engine size; estimated CCA = reference voltage window ÷ resistance. " +
+                "It is an estimate (±25 %) – confirm with a proper battery load tester before replacing. Lead-acid healthy cranking ≥ 9.6–10 V; LFP stays above 11.5 V; LFP rest voltage ≈ 13.2–13.4 V.", 11f, Ui.DIM), ui.lp(8))
     }
 
     override fun refresh() {
@@ -332,6 +449,8 @@ class BatteryPage(a: MainActivity) : Page(a) {
         ring.value = v?.toFloat()
         stateTv.text = v?.let { describe(it) } ?: "No reading – connect the adapter."
         chart.set(ObdManager.battHist.values(), "Battery voltage", " V", Color.parseColor("#FFD54F"))
+        val sig = "${ObdManager.lastCrank?.first}|${Prefs.crankHistory.length}"
+        if (sig != lastSig) { lastSig = sig; onShow() }
     }
 }
 

@@ -120,7 +120,7 @@ class CarHealthView(ctx: Context) : View(ctx) {
 
     override fun onMeasure(w: Int, h: Int) {
         val wd = MeasureSpec.getSize(w)
-        setMeasuredDimension(wd, (wd * 1.18f).toInt())
+        setMeasuredDimension(wd, (wd * 1.3f).toInt())
     }
 
     private fun col(s: Int) = when (s) {
@@ -135,53 +135,115 @@ class CarHealthView(ctx: Context) : View(ctx) {
         rect.set(0f, 0f, w, h); c.drawRoundRect(rect, context.px(20f), context.px(20f), body); body.shader = null
 
         val cx = w / 2f
-        val cw = w * 0.30f           // half-width of car
-        val top = h * 0.07f; val bot = h * 0.93f
-        // wheels
-        body.color = Color.parseColor("#0A0F14")
-        val wy1 = top + (bot - top) * 0.20f; val wy2 = top + (bot - top) * 0.78f
-        for (wy in listOf(wy1, wy2)) for (side in listOf(-1, 1)) {
-            val wx = cx + side * cw
-            rect.set(wx - context.px(9f), wy - context.px(24f), wx + context.px(9f), wy + context.px(24f))
-            c.drawRoundRect(rect, context.px(6f), context.px(6f), body)
+        val cw = w * 0.31f           // half-width of the SUV body
+        val top = h * 0.06f; val bot = h * 0.94f
+        val H = bot - top
+        fun y(f: Float) = top + H * f
+        fun px(v: Float) = context.px(v)
+        // ground shadow
+        body.color = Color.argb(70, 0, 0, 0)
+        rect.set(cx - cw * 1.25f, y(0.02f), cx + cw * 1.25f, y(1.0f) + px(6f)); c.drawRoundRect(rect, px(30f), px(30f), body)
+        // tyres (big SUV tyres with tread lines) – drawn first so the body overlaps the inner half
+        for (wy in listOf(y(0.17f), y(0.80f))) for (side in listOf(-1, 1)) {
+            val wx = cx + side * (cw + px(1f))
+            body.color = Color.parseColor("#06090C")
+            rect.set(wx - px(10f), wy - px(30f), wx + px(10f), wy + px(30f)); c.drawRoundRect(rect, px(7f), px(7f), body)
+            line.color = Color.parseColor("#2A3541"); line.strokeWidth = px(1f)
+            var ty = wy - px(26f)
+            while (ty < wy + px(27f)) { c.drawLine(wx - px(8f), ty, wx + px(8f), ty + px(3f), line); ty += px(6f) }
         }
-        // body shell
+        // body shell – boxy SUV: short overhangs, flat sides, upright tail
         val p = Path()
-        p.moveTo(cx - cw * 0.62f, top + context.px(6f))
-        p.quadTo(cx, top - context.px(8f), cx + cw * 0.62f, top + context.px(6f))
-        p.cubicTo(cx + cw * 1.05f, top + (bot - top) * 0.12f, cx + cw * 1.02f, top + (bot - top) * 0.30f, cx + cw, top + (bot - top) * 0.42f)
-        p.lineTo(cx + cw, top + (bot - top) * 0.80f)
-        p.quadTo(cx + cw * 0.9f, bot - context.px(4f), cx + cw * 0.6f, bot)
-        p.lineTo(cx - cw * 0.6f, bot)
-        p.quadTo(cx - cw * 0.9f, bot - context.px(4f), cx - cw, top + (bot - top) * 0.80f)
-        p.lineTo(cx - cw, top + (bot - top) * 0.42f)
-        p.cubicTo(cx - cw * 1.02f, top + (bot - top) * 0.30f, cx - cw * 1.05f, top + (bot - top) * 0.12f, cx - cw * 0.62f, top + context.px(6f))
+        p.moveTo(cx - cw * 0.78f, y(0.015f))
+        p.quadTo(cx, y(-0.008f), cx + cw * 0.78f, y(0.015f))
+        p.cubicTo(cx + cw * 0.98f, y(0.03f), cx + cw * 1.0f, y(0.07f), cx + cw, y(0.13f))
+        p.lineTo(cx + cw, y(0.90f))
+        p.cubicTo(cx + cw, y(0.96f), cx + cw * 0.95f, y(0.985f), cx + cw * 0.80f, y(0.99f))
+        p.lineTo(cx - cw * 0.80f, y(0.99f))
+        p.cubicTo(cx - cw * 0.95f, y(0.985f), cx - cw, y(0.96f), cx - cw, y(0.90f))
+        p.lineTo(cx - cw, y(0.13f))
+        p.cubicTo(cx - cw * 1.0f, y(0.07f), cx - cw * 0.98f, y(0.03f), cx - cw * 0.78f, y(0.015f))
         p.close()
         body.shader = LinearGradient(cx - cw, 0f, cx + cw, 0f,
-            intArrayOf(Color.parseColor("#26384A"), Color.parseColor("#3A5470"), Color.parseColor("#26384A")), null, Shader.TileMode.CLAMP)
+            intArrayOf(Color.parseColor("#22344A"), Color.parseColor("#3F5B79"), Color.parseColor("#22344A")), null, Shader.TileMode.CLAMP)
         c.drawPath(p, body); body.shader = null
-        line.color = Color.parseColor("#5B7B99"); line.strokeWidth = context.px(1.6f); c.drawPath(p, line)
-
-        // windscreen, roof, rear glass
-        body.color = Color.parseColor("#0F1A24")
+        line.color = Color.parseColor("#6B8CAB"); line.strokeWidth = px(1.8f); c.drawPath(p, line)
+        // wheel-arch cut-outs
+        body.color = Color.parseColor("#0C131A")
+        for (wy in listOf(y(0.17f), y(0.80f))) for (side in listOf(-1, 1)) {
+            val ax = cx + side * cw
+            rect.set(ax - px(if (side < 0) -1f else 14f), wy - px(28f), ax + px(if (side < 0) -14f else 1f), wy + px(28f))
+            c.drawRoundRect(rect, px(9f), px(9f), body)
+        }
+        // bonnet: centre crease + power bulge + grille slot
+        body.color = Color.parseColor("#2E4660")
+        rect.set(cx - cw * 0.80f, y(0.045f), cx + cw * 0.80f, y(0.28f)); c.drawRoundRect(rect, px(12f), px(12f), body)
+        line.color = Color.parseColor("#5B7B99"); line.strokeWidth = px(1f)
+        c.drawRoundRect(rect, px(12f), px(12f), line)
+        c.drawLine(cx - cw * 0.22f, y(0.06f), cx - cw * 0.30f, y(0.27f), line)
+        c.drawLine(cx + cw * 0.22f, y(0.06f), cx + cw * 0.30f, y(0.27f), line)
+        body.color = Color.parseColor("#0B1117")
+        rect.set(cx - cw * 0.40f, y(0.012f), cx + cw * 0.40f, y(0.03f)); c.drawRoundRect(rect, px(4f), px(4f), body)
+        // head-lights (LED strips) and tail-lights
+        body.color = Color.parseColor("#E8F6FF")
+        for (side in listOf(-1, 1)) {
+            val hx = cx + side * cw * 0.66f
+            rect.set(hx - cw * 0.20f, y(0.018f), hx + cw * 0.20f, y(0.040f)); c.drawRoundRect(rect, px(4f), px(4f), body)
+        }
+        body.color = Color.parseColor("#E5354A")
+        for (side in listOf(-1, 1)) {
+            val tx = cx + side * cw * 0.72f
+            rect.set(tx - cw * 0.17f, y(0.955f), tx + cw * 0.17f, y(0.985f)); c.drawRoundRect(rect, px(4f), px(4f), body)
+        }
+        // windscreen
+        body.color = Color.parseColor("#0D1722")
         val ws = Path().apply {
-            moveTo(cx - cw * 0.78f, top + (bot - top) * 0.27f); lineTo(cx - cw * 0.62f, top + (bot - top) * 0.17f)
-            lineTo(cx + cw * 0.62f, top + (bot - top) * 0.17f); lineTo(cx + cw * 0.78f, top + (bot - top) * 0.27f); close()
+            moveTo(cx - cw * 0.82f, y(0.40f)); lineTo(cx - cw * 0.68f, y(0.285f))
+            lineTo(cx + cw * 0.68f, y(0.285f)); lineTo(cx + cw * 0.82f, y(0.40f)); close()
         }
         c.drawPath(ws, body)
+        body.color = Color.argb(40, 120, 200, 255)
+        c.drawLine(cx - cw * 0.40f, y(0.30f), cx - cw * 0.55f, y(0.385f), line.apply { color = Color.argb(60, 160, 220, 255) })
+        // roof (long, flat) with roof rails and sunroof
+        rect.set(cx - cw * 0.84f, y(0.40f), cx + cw * 0.84f, y(0.74f))
+        body.color = Color.parseColor("#34506C"); c.drawRoundRect(rect, px(10f), px(10f), body)
+        line.color = Color.parseColor("#7FA3C4"); line.strokeWidth = px(1f); c.drawRoundRect(rect, px(10f), px(10f), line)
+        // roof rails (silver) + cross bars
+        line.color = Color.parseColor("#B8C7D6"); line.strokeWidth = px(3f)
+        c.drawLine(cx - cw * 0.76f, y(0.43f), cx - cw * 0.76f, y(0.71f), line)
+        c.drawLine(cx + cw * 0.76f, y(0.43f), cx + cw * 0.76f, y(0.71f), line)
+        line.strokeWidth = px(1.6f)
+        c.drawLine(cx - cw * 0.76f, y(0.47f), cx + cw * 0.76f, y(0.47f), line)
+        c.drawLine(cx - cw * 0.76f, y(0.67f), cx + cw * 0.76f, y(0.67f), line)
+        // rear glass + tailgate
+        body.color = Color.parseColor("#0D1722")
         val rg = Path().apply {
-            moveTo(cx - cw * 0.76f, top + (bot - top) * 0.74f); lineTo(cx + cw * 0.76f, top + (bot - top) * 0.74f)
-            lineTo(cx + cw * 0.6f, top + (bot - top) * 0.84f); lineTo(cx - cw * 0.6f, top + (bot - top) * 0.84f); close()
+            moveTo(cx - cw * 0.82f, y(0.74f)); lineTo(cx + cw * 0.82f, y(0.74f))
+            lineTo(cx + cw * 0.70f, y(0.83f)); lineTo(cx - cw * 0.70f, y(0.83f)); close()
         }
         c.drawPath(rg, body)
-        rect.set(cx - cw * 0.76f, top + (bot - top) * 0.30f, cx + cw * 0.76f, top + (bot - top) * 0.72f)
-        body.color = Color.parseColor("#2C4560"); c.drawRoundRect(rect, context.px(10f), context.px(10f), body)
-        line.strokeWidth = context.px(1f); c.drawRoundRect(rect, context.px(10f), context.px(10f), line)
+        body.color = Color.parseColor("#2B4259")
+        rect.set(cx - cw * 0.80f, y(0.845f), cx + cw * 0.80f, y(0.945f)); c.drawRoundRect(rect, px(8f), px(8f), body)
+        line.color = Color.parseColor("#5B7B99"); line.strokeWidth = px(1f); c.drawRoundRect(rect, px(8f), px(8f), line)
+        // door lines
+        line.color = Color.argb(110, 12, 19, 26); line.strokeWidth = px(1f)
+        c.drawLine(cx - cw, y(0.40f), cx - cw * 0.84f, y(0.40f), line); c.drawLine(cx + cw * 0.84f, y(0.40f), cx + cw, y(0.40f), line)
+        c.drawLine(cx - cw, y(0.58f), cx - cw * 0.84f, y(0.58f), line); c.drawLine(cx + cw * 0.84f, y(0.58f), cx + cw, y(0.58f), line)
+        c.drawLine(cx - cw, y(0.74f), cx - cw * 0.84f, y(0.74f), line); c.drawLine(cx + cw * 0.84f, y(0.74f), cx + cw, y(0.74f), line)
+        // side mirrors
+        body.color = Color.parseColor("#2E4660")
+        for (side in listOf(-1, 1)) {
+            val mx = cx + side * (cw + px(7f))
+            rect.set(mx - px(8f), y(0.335f), mx + px(8f), y(0.375f)); c.drawRoundRect(rect, px(5f), px(5f), body)
+            line.color = Color.parseColor("#6B8CAB"); c.drawRoundRect(rect, px(5f), px(5f), line)
+        }
+        // roof area used for the health ring
+        rect.set(cx - cw * 0.66f, y(0.49f), cx + cw * 0.66f, y(0.65f))
 
         // overall score in the roof
         val sc = if (items.any { it.status >= 0 }) score else -1
         val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = context.px(7f); strokeCap = Paint.Cap.ROUND }
-        val rr = cw * 0.40f; val ry = (rect.top + rect.bottom) / 2f
+        val rr = cw * 0.36f; val ry = (rect.top + rect.bottom) / 2f
         ring.color = Color.parseColor("#1B2B3B"); c.drawCircle(cx, ry, rr, ring)
         if (sc >= 0) {
             ring.color = if (sc >= 80) col(0) else if (sc >= 55) col(1) else col(2)
