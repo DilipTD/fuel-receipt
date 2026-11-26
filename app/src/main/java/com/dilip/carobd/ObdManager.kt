@@ -218,6 +218,7 @@ object ObdManager {
             busy = false
             engineOn = false
             state = State.DISCONNECTED
+            CarWidget.update(app)
         }
     }
 
@@ -252,6 +253,7 @@ object ObdManager {
         }
         ecuReady = true
         engineOn = true
+        CarWidget.update(app)
         if (Prefs.autoDtc) autoDtcScan(elm)
         return true
     }
@@ -375,6 +377,7 @@ object ObdManager {
                     continue
                 }
 
+                CarWidget.maybeUpdate(app)
                 val rpm = values[0x0C]
                 val spd = values[0x0D]
                 val running = if (vehicle.isEv) (spd ?: 0.0) > 0.5 else (rpm ?: 0.0) > 400

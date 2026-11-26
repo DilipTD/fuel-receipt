@@ -143,7 +143,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         headTv.text = if (r.heading != null) "${RoadAssist.compass(r.heading)} · ${r.heading!!.toInt()}°" else "—"
         roadTv.text = when {
             !Prefs.roadAssist -> "Road assistant is off"
-            i == null -> r.status
+            i == null -> if (r.lastFix == 0L) Gps.statusText(a) else r.status
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
         subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else "limit ${Units.sStr(i.limit!!.toDouble())}"

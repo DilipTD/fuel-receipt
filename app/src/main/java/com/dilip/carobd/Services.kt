@@ -136,12 +136,33 @@ object Gps : LocationListener {
         lm = m
         main.post {
             try {
-                m.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this, Looper.getMainLooper())
+                if (m.allProviders.contains(LocationManager.GPS_PROVIDER))
+                    m.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this, Looper.getMainLooper())
+                // network location gives a first position within seconds, before satellites lock
+                if (m.allProviders.contains(LocationManager.NETWORK_PROVIDER))
+                    m.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000L, 0f, this, Looper.getMainLooper())
                 running = true
+                // seed with a recent known position so Road AI can start straight away
+                val seed = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+                    .mapNotNull { try { m.getLastKnownLocation(it) } catch (_: Exception) { null } }
+                    .filter { System.currentTimeMillis() - it.time < 10 * 60_000L }.maxByOrNull { it.time }
+                if (seed != null && last == null) { last = seed; try { RoadAssist.onLocation(seed) } catch (_: Exception) {} }
             } catch (_: SecurityException) {
             } catch (_: Exception) {
             }
         }
+    }
+
+    /** Human reason why there is no position yet. */
+    fun statusText(ctx: Context): String {
+        if (!Prefs.gpsEnabled) return "GPS is switched off in Settings"
+        if (!hasPermission(ctx)) return "Location permission needed – tap to allow"
+        val m = ctx.getSystemService(LocationManager::class.java)
+        if (m != null && !m.isProviderEnabled(LocationManager.GPS_PROVIDER)) return "Phone location is OFF – turn it on"
+        if (!running) { start(ctx); return "Starting GPS…" }
+        val l = last
+        return if (l == null) "Searching for satellites – go outdoors / wait 1 min" else
+            if (RoadAssist.info == null) "GPS ok · loading road data (needs internet)" else "GPS ok"
     }
 
     fun stop() {

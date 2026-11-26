@@ -232,6 +232,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (Prefs.roadAssist) try { Gps.start(this) } catch (_: Exception) {}
         handler.post(tick)
     }
 
@@ -295,6 +296,7 @@ class MainActivity : Activity() {
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
         (pages["Perms"] as? PermissionsPage)?.onShow()
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
+        if (Prefs.roadAssist) try { Gps.start(this) } catch (_: Exception) {}
     }
 
     fun hasBtPerms(): Boolean =

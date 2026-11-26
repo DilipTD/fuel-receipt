@@ -31,6 +31,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val m = ObdManager
         val ri = RoadAssist.info
         signView?.let { it.limit = ri?.limit; it.estimated = ri?.estimated == true; it.over = ri?.limit != null && RoadAssist.speedKmh > ri.limit + Prefs.speedMargin }
+        if (ri == null && Prefs.roadAssist) roadTv?.text = "Road AI · " + Gps.statusText(a)
         roadSub?.text = if (ri == null) "" else "${RoadAssist.compass(RoadAssist.heading)} · " + Units.sStr(RoadAssist.speedKmh) + (ri.limit?.let { " · limit " + Units.sStr(it.toDouble()) } ?: "")
         carView?.let { it.engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED; it.speedKmh = m.values[0x0D] ?: 0.0 }
         statusTv?.text = when (m.state) {
@@ -111,7 +112,7 @@ class HomePage(a: MainActivity) : Page(a) {
         run {
             val ri = RoadAssist.info
             val sg = RoadSignView(a).apply { limit = ri?.limit; estimated = ri?.estimated == true; scaleX = 0.6f; scaleY = 0.6f }
-            roadTv = ui.tv(if (!Prefs.roadAssist) "Road assistant is off" else ri?.let { listOf(it.ref, it.road).filter { s -> s.isNotEmpty() }.joinToString(" · ").ifEmpty { "Current road" } } ?: "Road AI · waiting for GPS", 14f, Ui.WHITE, true)
+            roadTv = ui.tv(if (!Prefs.roadAssist) "Road assistant is off" else ri?.let { listOf(it.ref, it.road).filter { s -> s.isNotEmpty() }.joinToString(" · ").ifEmpty { "Current road" } } ?: "Road AI · " + Gps.statusText(a), 14f, Ui.WHITE, true)
             roadSub = ui.tv("", 12f, Ui.DIM)
             box.addView(LinearLayout(a).apply {
                 gravity = Gravity.CENTER_VERTICAL

@@ -41,6 +41,11 @@ class CarHeroView(ctx: Context, private val compact: Boolean = false) : View(ctx
     private val rect = RectF()
     private val badgeIcon = HashMap<Ic, IconDrawable>()
 
+    private fun blend(a: Int, b: Int, t: Float): Int = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt())
+
     override fun onMeasure(w: Int, h: Int) {
         setMeasuredDimension(MeasureSpec.getSize(w), ((if (compact) 150 else 215) * d).toInt())
     }
@@ -110,54 +115,105 @@ class CarHeroView(ctx: Context, private val compact: Boolean = false) : View(ctx
             c.drawPath(path, fill)
             fill.shader = null
         }
-        // shadow
-        fill.color = Color.argb(110, 0, 0, 0)
-        rect.set(4f, 33f, 96f, 38f); c.drawOval(rect, fill)
+        // ground shadow
+        fill.shader = RadialGradient(50f, 35.5f, 50f, Color.argb(150, 0, 0, 0), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        c.save(); c.scale(1f, 0.12f, 50f, 35.5f); c.drawCircle(50f, 35.5f, 50f, fill); c.restore()
+        fill.shader = null
 
-        // body
         val (c1, c2) = bodyColors()
-        body.shader = LinearGradient(0f, 6f, 0f, 32f, c1, c2, Shader.TileMode.CLAMP)
-        path.reset()
-        path.moveTo(3f, 30f); path.lineTo(3f, 23f)
-        path.quadTo(3f, 19.5f, 9f, 18.5f); path.lineTo(23f, 16.5f)
-        path.cubicTo(28f, 11f, 31f, 7f, 36f, 6.2f); path.lineTo(61f, 6.2f)
-        path.cubicTo(67f, 6.5f, 72f, 12f, 77f, 16.5f); path.lineTo(91f, 19f)
-        path.quadTo(97f, 20f, 97f, 25f); path.lineTo(97f, 30f); path.close()
-        c.drawPath(path, body)
-        // glass
-        glass.shader = LinearGradient(0f, 8f, 0f, 17f, Color.parseColor("#CFEFFF"), Color.parseColor("#4B7BA6"), Shader.TileMode.CLAMP)
-        glass.alpha = if (state == 0) 110 else 220
-        path.reset()
-        path.moveTo(31f, 16f); path.cubicTo(34f, 11.5f, 36f, 8.8f, 39f, 8.4f); path.lineTo(48f, 8.4f); path.lineTo(48f, 16f); path.close()
-        c.drawPath(path, glass)
-        path.reset()
-        path.moveTo(51f, 8.4f); path.lineTo(61f, 8.4f); path.cubicTo(65f, 8.8f, 68.5f, 12.5f, 72f, 16f); path.lineTo(51f, 16f); path.close()
-        c.drawPath(path, glass)
-        // door line, handle
-        line.color = Color.argb(120, 0, 0, 0); line.strokeWidth = 0.7f
-        c.drawLine(49.5f, 8.4f, 49.5f, 29f, line)
-        line.color = Color.argb(180, 255, 255, 255)
-        c.drawLine(53f, 19.5f, 58f, 19.5f, line)
-        // lamps
-        fill.color = if (state == 2) Color.parseColor("#FFF59D") else Color.parseColor("#B0BEC5")
-        rect.set(92f, 19.8f, 97f, 23.2f); c.drawRoundRect(rect, 1.2f, 1.2f, fill)
-        fill.color = if (state == 2) Color.parseColor("#FF3D3D") else Color.parseColor("#6D4C4C")
-        rect.set(3f, 21f, 6f, 24f); c.drawRoundRect(rect, 1f, 1f, fill)
-        // bumper line
-        line.color = Color.argb(90, 0, 0, 0); line.strokeWidth = 0.8f
-        c.drawLine(4f, 28f, 96f, 28f, line)
+        val mid = blend(c1, c2, 0.45f)
+        val dark = Color.argb(255, 12, 15, 19)
 
-        // wheels
+        // body silhouette
+        path.reset()
+        path.moveTo(3f, 31f); path.lineTo(3f, 23.5f)
+        path.cubicTo(3f, 20f, 5f, 18.2f, 9f, 17.6f); path.lineTo(22f, 16f)
+        path.cubicTo(27f, 10.5f, 31f, 7.2f, 37f, 6.5f); path.lineTo(60f, 6.5f)
+        path.cubicTo(66f, 6.9f, 71f, 12f, 76f, 16.2f); path.lineTo(90f, 18.6f)
+        path.cubicTo(95f, 19.6f, 97.6f, 21.3f, 97.6f, 25f); path.lineTo(97.6f, 31f); path.close()
+        body.shader = LinearGradient(0f, 6f, 0f, 31f, intArrayOf(blend(c1, Color.WHITE, 0.25f), c1, mid, c2),
+            floatArrayOf(0f, 0.25f, 0.62f, 1f), Shader.TileMode.CLAMP)
+        c.drawPath(path, body)
+        body.shader = null
+        c.save(); c.clipPath(path)
+        // glossy reflection band along the shoulder
+        fill.shader = LinearGradient(0f, 17f, 0f, 21.5f, Color.argb(0, 255, 255, 255), Color.argb(if (state == 0) 40 else 90, 255, 255, 255), Shader.TileMode.CLAMP)
+        c.drawRect(3f, 17f, 98f, 21.5f, fill)
+        fill.shader = LinearGradient(0f, 21.5f, 0f, 24f, Color.argb(if (state == 0) 40 else 90, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP)
+        c.drawRect(3f, 21.5f, 98f, 24f, fill)
+        fill.shader = null
+        // black lower cladding
+        fill.shader = LinearGradient(0f, 27.2f, 0f, 31f, Color.parseColor("#2A3037"), dark, Shader.TileMode.CLAMP)
+        path.reset(); path.moveTo(3f, 27.6f); path.lineTo(97.6f, 27.2f); path.lineTo(97.6f, 31f); path.lineTo(3f, 31f); path.close()
+        c.drawPath(path, fill); fill.shader = null
+        c.restore()
+
+        // glasshouse: tinted windows + pillars
+        glass.shader = LinearGradient(0f, 7.8f, 0f, 16f, Color.parseColor("#E3F6FF"), Color.parseColor("#2F5D86"), Shader.TileMode.CLAMP)
+        glass.alpha = if (state == 0) 120 else 235
+        path.reset()
+        path.moveTo(25f, 15.6f); path.cubicTo(29f, 11f, 32f, 8.6f, 37.4f, 7.9f); path.lineTo(47.4f, 7.9f); path.lineTo(47.4f, 15.6f); path.close()
+        c.drawPath(path, glass)
+        path.reset()
+        path.moveTo(50.4f, 7.9f); path.lineTo(60f, 7.9f); path.cubicTo(65f, 8.3f, 68.6f, 12.3f, 72.2f, 15.6f); path.lineTo(50.4f, 15.6f); path.close()
+        c.drawPath(path, glass)
+        glass.shader = null
+        // sky reflection streak on glass
+        line.color = Color.argb(70, 255, 255, 255); line.strokeWidth = 0.9f
+        c.drawLine(52f, 14.5f, 59f, 8.8f, line); c.drawLine(31f, 14.5f, 36f, 9.2f, line)
+        // B pillar, roof rail, beltline chrome
+        fill.color = dark; rect.set(47.4f, 7.2f, 50.4f, 16f); c.drawRect(rect, fill)
+        line.color = Color.argb(200, 190, 200, 210); line.strokeWidth = 0.7f
+        c.drawLine(36f, 6.6f, 60f, 6.6f, line)
+        line.color = Color.argb(170, 215, 225, 235); line.strokeWidth = 0.55f
+        c.drawLine(24f, 16.2f, 74f, 16.5f, line)
+        // door cuts, handles, mirror, fuel flap
+        line.color = Color.argb(150, 0, 0, 0); line.strokeWidth = 0.45f
+        c.drawLine(28f, 16.4f, 29f, 27.4f, line); c.drawLine(49f, 16f, 49f, 27.5f, line); c.drawLine(73f, 16.8f, 72f, 27.4f, line)
+        line.color = Color.argb(230, 235, 240, 245); line.strokeWidth = 0.9f
+        c.drawLine(41f, 19.3f, 45f, 19.3f, line); c.drawLine(62f, 19.4f, 66f, 19.5f, line)
+        fill.color = blend(c1, dark, 0.3f); path.reset()
+        path.moveTo(70.5f, 15.2f); path.lineTo(75.5f, 15.8f); path.lineTo(75f, 17.6f); path.lineTo(70.8f, 17.2f); path.close(); c.drawPath(path, fill)
+        // side character crease
+        line.color = Color.argb(90, 255, 255, 255); line.strokeWidth = 0.5f
+        c.drawLine(8f, 22.8f, 92f, 22.2f, line)
+        line.color = Color.argb(110, 0, 0, 0); line.strokeWidth = 0.5f
+        c.drawLine(8f, 24.4f, 92f, 24f, line)
+
+        // headlight cluster with DRL, fog lamp, grille hint
+        val on = state == 2
+        path.reset(); path.moveTo(88.5f, 19.4f); path.lineTo(96.6f, 21.4f); path.lineTo(96.8f, 24.2f); path.lineTo(89f, 22.6f); path.close()
+        fill.color = if (on) Color.parseColor("#FFF9C4") else Color.parseColor("#B8C4CC"); c.drawPath(path, fill)
+        line.color = if (on) Color.WHITE else Color.parseColor("#7C8B96"); line.strokeWidth = 0.6f
+        c.drawLine(89.5f, 23.4f, 96.7f, 25f, line)
+        fill.color = Color.parseColor("#11161B"); rect.set(94f, 26.3f, 97.4f, 28f); c.drawRoundRect(rect, 0.8f, 0.8f, fill)
+        fill.color = if (on) Color.parseColor("#FFE082") else Color.parseColor("#55616B"); c.drawCircle(95.6f, 27.2f, 0.7f, fill)
+        // tail lamp LED bar
+        path.reset(); path.moveTo(3f, 19.8f); path.lineTo(7.2f, 19.1f); path.lineTo(7.4f, 22.8f); path.lineTo(3f, 23.6f); path.close()
+        fill.color = if (on) Color.parseColor("#FF3030") else Color.parseColor("#7A3C3C"); c.drawPath(path, fill)
+        // rear bumper reflector + exhaust-less lower trim
+        fill.color = Color.parseColor("#8E2B2B"); rect.set(3.4f, 28.4f, 7.5f, 29.4f); c.drawRect(rect, fill)
+
+        // wheels with arches, tyres, dual-spoke alloys, brake discs
         val ang = if (state == 2) ((t * speed * 9.0) % 360.0).toFloat() else 0f
         for (wx in listOf(22f, 77f)) {
-            fill.color = Color.parseColor("#0A0C0E"); c.drawCircle(wx, 29f, 7.6f, fill)
-            fill.color = Color.parseColor("#9AA7B4"); c.drawCircle(wx, 29f, 4.6f, fill)
-            line.color = Color.parseColor("#37424D"); line.strokeWidth = 0.9f
+            fill.color = Color.parseColor("#06080A"); c.drawCircle(wx, 29f, 9.4f, fill)            // arch
+            fill.color = Color.parseColor("#14181C"); c.drawCircle(wx, 29f, 8.0f, fill)            // tyre
+            line.color = Color.parseColor("#2A3037"); line.strokeWidth = 0.7f
+            line.style = Paint.Style.STROKE; c.drawCircle(wx, 29f, 7.2f, line)                      // sidewall ring
+            val rim = LinearGradient(wx - 5f, 24f, wx + 5f, 34f, Color.parseColor("#E8EEF3"), Color.parseColor("#6D7A86"), Shader.TileMode.CLAMP)
+            fill.shader = rim; c.drawCircle(wx, 29f, 5.4f, fill); fill.shader = null
+            fill.color = Color.parseColor("#2B333A"); c.drawCircle(wx, 29f, 4.2f, fill)            // dark pockets
+            fill.color = Color.parseColor("#B73A3A"); c.drawCircle(wx, 29f, 3.2f, fill)            // caliper hint
+            fill.color = Color.parseColor("#59646E"); c.drawCircle(wx, 29f, 2.9f, fill)            // disc
+            line.color = Color.parseColor("#E1E8EE"); line.strokeWidth = 1.05f
             for (k in 0 until 5) {
-                val a = Math.toRadians((ang + k * 72).toDouble())
-                c.drawLine(wx, 29f, wx + 4.3f * cos(a).toFloat(), 29f + 4.3f * sin(a).toFloat(), line)
+                val a1 = Math.toRadians((ang + k * 72 - 7).toDouble()); val a2 = Math.toRadians((ang + k * 72 + 7).toDouble())
+                c.drawLine(wx, 29f, wx + 5.2f * cos(a1).toFloat(), 29f + 5.2f * sin(a1).toFloat(), line)
+                c.drawLine(wx, 29f, wx + 5.2f * cos(a2).toFloat(), 29f + 5.2f * sin(a2).toFloat(), line)
             }
-            fill.color = Color.parseColor("#1B2128"); c.drawCircle(wx, 29f, 1.2f, fill)
+            fill.color = Color.parseColor("#C5CED6"); c.drawCircle(wx, 29f, 1.1f, fill)
+            line.strokeWidth = 0.9f
         }
 
         // radio waves from the OBD port (under the dash)
