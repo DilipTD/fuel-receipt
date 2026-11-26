@@ -325,6 +325,7 @@ object ObdManager {
                             slow.clear()
                             slow.addAll(supported.filter { !Pids.isBitmap(it) && it !in FAST })
                             if (0x01 !in slow) slow.add(0, 0x01)
+                            if (Prefs.voltMethod == "ECU" && 0x42 in supported && 0x42 !in slow) slow.add(0x42)
                         }
                     }
                     if (!engineOn) continue
@@ -383,7 +384,7 @@ object ObdManager {
                 }
                 if (spd != null && spd < 1 && running) {
                     synchronized(idleRpm) {
-                        idleRpm.addLast(rpm!!)
+                        rpm?.let { idleRpm.addLast(it) }
                         while (idleRpm.size > 120) idleRpm.removeFirst()
                     }
                 }
@@ -480,8 +481,10 @@ object ObdManager {
         return ltKmpl
     }
 
+    @Volatile private var ecuVoltAt = 0L
     private fun recordVolt(v: Double, fromEcu: Boolean = false) {
-        if (!fromEcu && Prefs.voltMethod == "ECU" && (values[0x42] != null)) return
+        if (fromEcu) ecuVoltAt = System.currentTimeMillis()
+        else if (Prefs.voltMethod == "ECU" && System.currentTimeMillis() - ecuVoltAt < 15_000) return
         batteryV = v
         battHist.add(v.toFloat())
         val now = System.currentTimeMillis()

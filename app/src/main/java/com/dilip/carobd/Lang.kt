@@ -90,7 +90,7 @@ object Theme {
     /** Maps and photos must not be inverted: apply the same (self-inverse) filter to cancel the root filter. */
     fun counter(act: Activity, v: View) {
         if (!isLight(act)) return
-        if (v is TileMapView || v is LogoView || (v is ImageView && v.drawable is BitmapDrawable)) {
+        if ((v is TileMapView || v is LogoView || (v is ImageView && v.drawable is BitmapDrawable)) && v.layerType != View.LAYER_TYPE_HARDWARE) {
             v.setLayerType(View.LAYER_TYPE_HARDWARE, paint())
         }
         if (v is ViewGroup) for (i in 0 until v.childCount) counter(act, v.getChildAt(i))

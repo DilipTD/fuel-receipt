@@ -34,3 +34,29 @@ jobs:
           TAG="car-obd-build-${{ github.run_number }}"
           gh release create "$TAG" CarOBD-Pro-v4.10.0.apk --target "${{ github.sha }}" \
             --title "Dr. Vittu OBDII Pro v4.10.0 (build ${{ github.run_number }})" --notes "Dr. Vittu OBDII Pro v4.10.0 – developed by Dilip Kumar TD." --prerelease
+
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Simulate the whole app (Robolectric + emulated ELM327 car)
+        continue-on-error: true
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace --continue
+      - name: Publish simulation report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          cp app/build/sim-report.md out/sim-report.md 2>/dev/null || echo "no report produced" > out/sim-report.md
+          (cd app/build/test-results && zip -qr ../../../out/test-results.zip .) 2>/dev/null || true
+          (cd app/build/reports/tests && zip -qr ../../../../out/test-html.zip .) 2>/dev/null || true
+          TAG="car-obd-sim-${{ github.run_number }}"
+          gh release create "$TAG" out/* --target "${{ github.sha }}" --title "Simulation report (build ${{ github.run_number }})" --notes "Automated simulation" --prerelease

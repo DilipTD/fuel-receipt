@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     )
     private lateinit var content: FrameLayout
     private lateinit var rootRef: View
+    private var inFull = false
     private lateinit var nav: FrameLayout
     private lateinit var navRow: LinearLayout
     private lateinit var navWrap: FrameLayout
@@ -334,7 +335,7 @@ class MainActivity : Activity() {
             }
         }
         titleTv.text = Lang.t(titles[name] ?: name)
-        Theme.counter(this, content)
+        Theme.counter(this, rootRef)
         val hasBack = pages[name]?.parent != null
         backBtn.visibility = if (hasBack) View.VISIBLE else View.GONE
         logo.visibility = if (hasBack) View.GONE else View.VISIBLE
@@ -342,7 +343,7 @@ class MainActivity : Activity() {
         requestedOrientation = if (name == "Car") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (name != "Perf" && PerfMeter.mode != PerfMeter.Mode.IDLE) PerfMeter.cancel()
-        goFullScreen(full)
+        if (full != inFull) { inFull = full; goFullScreen(full) }
         navWrap.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()

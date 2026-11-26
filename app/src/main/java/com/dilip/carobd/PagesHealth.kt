@@ -358,7 +358,11 @@ class HealthPage(a: MainActivity) : Page(a) {
         box.addView(ui.tv(AppInfo.credit, 11f, Ui.DIM).apply { gravity = android.view.Gravity.CENTER }, ui.lp(16))
     }
 
-    override fun refresh() { if (ObdManager.state == ObdManager.State.CONNECTED) onShow() }
+    private var lastBuild = 0L
+    override fun refresh() {
+        val now = System.currentTimeMillis()
+        if (ObdManager.state == ObdManager.State.CONNECTED && now - lastBuild > 3000) { lastBuild = now; onShow() }
+    }
 }
 
 /* ======================= Driving coach ======================= */
