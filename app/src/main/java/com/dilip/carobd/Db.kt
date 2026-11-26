@@ -176,6 +176,8 @@ object Db {
 
     fun file(ctx: Context): File = ctx.getDatabasePath(NAME)
 
+    fun count(table: String): Int = try { db.rawQuery("SELECT COUNT(*) FROM $table", null).use { if (it.moveToFirst()) it.getInt(0) else 0 } } catch (_: Exception) { 0 }
+
     @Synchronized
     fun reopen(ctx: Context) {
         try { helper.close() } catch (_: Exception) {}

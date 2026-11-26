@@ -182,9 +182,9 @@ object ObdManager {
             }
         } finally {
             stopTrip()
-            Gps.stop()
-            if (!Prefs.backgroundWatch || userDisconnected) try { app.stopService(Intent(app, ObdService::class.java)) } catch (_: Exception) {}
-            else ObdService.update(app, AppInfo.NAME, "Waiting for the car – will connect automatically")
+            if (!Prefs.roadAssist) Gps.stop()
+            if (!Prefs.roadAssist && (!Prefs.backgroundWatch || userDisconnected)) try { app.stopService(Intent(app, ObdService::class.java)) } catch (_: Exception) {}
+            else if (!Prefs.roadAssist) ObdService.update(app, AppInfo.NAME, "Waiting for the car – will connect automatically")
             if (!status.startsWith("Error")) status = "Disconnected"
             busy = false
             engineOn = false

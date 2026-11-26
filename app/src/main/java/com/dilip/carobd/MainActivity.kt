@@ -35,7 +35,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
@@ -153,6 +153,8 @@ class MainActivity : Activity() {
         pages["Connect"] = ConnectPage(this)
         pages["Home"] = HomePage(this)
         pages["Nav"] = NavPage(this)
+        pages["Road"] = RoadPage(this)
+        pages["Backup"] = BackupPage(this)
         pages["TripReplay"] = TripReplayPage(this)
         pages["Dash"] = DashPage(this)
         pages["Live"] = LivePage(this)
@@ -182,7 +184,9 @@ class MainActivity : Activity() {
         intent?.getStringExtra("open")?.let { show(it) }
         requestPerms()
         Maint.schedule(this)
-        if (Prefs.backgroundWatch) ObdService.start(this)
+        if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
+        if (Prefs.roadAssist) Gps.start(this)
+        Thread { try { Backup.auto(applicationContext) } catch (_: Exception) {} }.start()
         if (Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED) {
             handler.postDelayed({ (pages["Connect"] as ConnectPage).autoConnect() }, 1500)
         }
@@ -238,8 +242,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == SettingsPage.REQ_RESTORE && resultCode == RESULT_OK) {
-            data?.data?.let { (pages["Settings"] as SettingsPage).restore(it) }
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val bp = pages["Backup"] as BackupPage
+        when (requestCode) {
+            SettingsPage.REQ_RESTORE, BackupPage.REQ_CLOUD_OPEN -> bp.restoreFrom(uri)
+            BackupPage.REQ_CLOUD_CREATE -> bp.cloudCreated(uri)
+            BackupPage.REQ_LOCAL_SAVE -> bp.localSaved(uri)
         }
     }
 
@@ -266,7 +275,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
-        if (Prefs.backgroundWatch) ObdService.start(this)
+        if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
     }
 
     fun hasBtPerms(): Boolean =

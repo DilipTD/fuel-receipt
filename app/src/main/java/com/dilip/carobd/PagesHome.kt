@@ -19,6 +19,9 @@ class HomePage(a: MainActivity) : Page(a) {
     private var statusTv: TextView? = null
     private var gen = 0
     private var carView: SmartCarView? = null
+    private var roadTv: TextView? = null
+    private var roadSub: TextView? = null
+    private var signView: RoadSignView? = null
 
     override fun build(): View { box = ui.col(); return ui.scroll(box) }
 
@@ -26,6 +29,9 @@ class HomePage(a: MainActivity) : Page(a) {
 
     override fun refresh() {
         val m = ObdManager
+        val ri = RoadAssist.info
+        signView?.let { it.limit = ri?.limit; it.estimated = ri?.estimated == true; it.over = ri?.limit != null && RoadAssist.speedKmh > ri.limit + Prefs.speedMargin }
+        roadSub?.text = if (ri == null) "" else "${RoadAssist.compass(RoadAssist.heading)} · %.0f km/h".format(RoadAssist.speedKmh) + (ri.limit?.let { " · limit $it" } ?: "")
         carView?.let { it.engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED; it.speedKmh = m.values[0x0D] ?: 0.0 }
         statusTv?.text = when (m.state) {
             ObdManager.State.CONNECTED -> "Connected · ${m.deviceName}" + if (m.engineOn) " · ${ui.f(m.batteryV, 1, " V")}" else " · ignition off"
@@ -100,6 +106,23 @@ class HomePage(a: MainActivity) : Page(a) {
             }
             addView(ui.btn("AI diagnosis", Ui.VIOLET) { a.show("Diag") }, ui.lp(10))
         }, ui.lp(10))
+
+        // Road AI strip
+        run {
+            val ri = RoadAssist.info
+            val sg = RoadSignView(a).apply { limit = ri?.limit; estimated = ri?.estimated == true; scaleX = 0.6f; scaleY = 0.6f }
+            roadTv = ui.tv(if (!Prefs.roadAssist) "Road assistant is off" else ri?.let { listOf(it.ref, it.road).filter { s -> s.isNotEmpty() }.joinToString(" · ").ifEmpty { "Current road" } } ?: "Road AI · waiting for GPS", 14f, Ui.WHITE, true)
+            roadSub = ui.tv("", 12f, Ui.DIM)
+            box.addView(LinearLayout(a).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = ui.rounded(Ui.CARD, 20); setPadding(0, 0, ui.dp(14), 0)
+                addView(sg, LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)))
+                addView(ui.vbox().apply { addView(roadTv); addView(roadSub) }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                addView(ui.chip("Road AI", Ui.GOOD, Ic.NAV))
+                setOnClickListener { a.show("Road") }; ui.pressAnim(this)
+            }, ui.lp(10))
+            signView = sg
+        }
 
         // weather
         box.addView(ui.section("Weather", Ic.SUN))

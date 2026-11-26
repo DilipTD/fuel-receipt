@@ -339,18 +339,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
 
     private fun data() {
         body.addView(ui.section("Backup & restore", Ic.DATABASE))
-        val vCount = Db.vehicles().size
-        val sizeKb = try { Db.file(a).length() / 1024 } catch (_: Exception) { 0L }
-        body.addView(ui.iconCard(Ic.DATABASE, Ui.VIOLET, "Local database", "$vCount vehicle(s) · $sizeKb KB · trips, routes, fuel, service, alerts"))
-        body.addView(ui.row(
-            ui.btn("Backup data") { backup() },
-            ui.btn("Restore", Ui.CARD) {
-                val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
-                @Suppress("DEPRECATION")
-                a.startActivityForResult(i, REQ_RESTORE)
-            }
-        ), ui.lp(10))
-        hint("Backups are saved to Downloads/CarOBD. Restore replaces everything on this phone.")
+        body.addView(ui.iconCard(Ic.DATABASE, Ui.VIOLET, "Backup, restore & cloud", "All trips, fuel log, service, settings and parameters", Ui.CARD) { a.show("Backup") })
         body.addView(ui.section("Clear", Ic.TRASH))
         body.addView(ui.btn("Clear alert log", Ui.BAD) { Db.clearAlerts(); ui.toast("Alert log cleared") })
     }

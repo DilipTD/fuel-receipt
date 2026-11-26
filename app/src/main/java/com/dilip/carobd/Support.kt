@@ -49,6 +49,33 @@ object Prefs {
     private fun b(k: String, def: Boolean) = sp.getBoolean(k, def)
     private fun putB(k: String, v: Boolean) = sp.edit().putBoolean(k, v).apply()
 
+    // v3.9 – road assistant & backup
+    var roadAssist: Boolean get() = b("roadAssist", true)
+        set(v) = putB("roadAssist", v)
+    var roadAnnounce: Boolean get() = b("roadAnnounce", true)
+        set(v) = putB("roadAnnounce", v)
+    var roadHazards: Boolean get() = b("roadHazards", true)
+        set(v) = putB("roadHazards", v)
+    var roadEstWarn: Boolean get() = b("roadEstWarn", false)
+        set(v) = putB("roadEstWarn", v)
+    var speedMargin: Int
+        get() = sp.getInt("speedMargin", 5)
+        set(v) = sp.edit().putInt("speedMargin", v).apply()
+    var cloudUri: String
+        get() = sp.getString("cloudUri", "") ?: ""
+        set(v) = sp.edit().putString("cloudUri", v).apply()
+    var cloudName: String
+        get() = sp.getString("cloudName", "") ?: ""
+        set(v) = sp.edit().putString("cloudName", v).apply()
+    var autoBackup: Boolean get() = b("autoBackup", true)
+        set(v) = putB("autoBackup", v)
+    var lastBackupT: Long
+        get() = sp.getLong("lastBackupT", 0L)
+        set(v) = sp.edit().putLong("lastBackupT", v).apply()
+    var lastBackupWhere: String
+        get() = sp.getString("lastBackupWhere", "") ?: ""
+        set(v) = sp.edit().putString("lastBackupWhere", v).apply()
+
     var activeVehicle: Long
         get() = sp.getLong("activeVehicle", 0L)
         set(v) = sp.edit().putLong("activeVehicle", v).apply()

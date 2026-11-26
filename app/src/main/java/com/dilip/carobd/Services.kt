@@ -71,6 +71,17 @@ object Alerts : TextToSpeech.OnInitListener {
         } else if (Prefs.beepAlerts) beep()
     }
 
+    /** Road-assistant announcement (own switch, independent of driving-event alerts). */
+    fun announce(key: String, text: String, cooldownMs: Long = 30_000) {
+        if (!Prefs.roadAnnounce) return
+        val now = System.currentTimeMillis()
+        synchronized(last) {
+            if (now - (last[key] ?: 0L) < cooldownMs) return
+            last[key] = now
+        }
+        if (ready) tts?.speak(text, TextToSpeech.QUEUE_ADD, null, key) else beep()
+    }
+
     /** Short beep for driving events when voice is off or busy. */
     fun beepIfQuiet() {
         if (Prefs.eventAlerts && Prefs.beepAlerts) beep()
@@ -154,6 +165,7 @@ object Gps : LocationListener {
     override fun onLocationChanged(location: Location) {
         last = location
         ObdManager.onGps(location)
+        try { RoadAssist.onLocation(location) } catch (_: Exception) {}
     }
 
     override fun onProviderEnabled(provider: String) {}
@@ -327,6 +339,7 @@ class ObdService : Service() {
                 return START_NOT_STICKY
             }
         }
+        if (Prefs.roadAssist) Gps.start(this)
         if (wl == null) {
             val pm = getSystemService(PowerManager::class.java)
             wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CarOBD:link").apply {
@@ -334,11 +347,12 @@ class ObdService : Service() {
                 acquire(12 * 60 * 60 * 1000L)
             }
         }
-        if (Prefs.backgroundWatch && watcher == null) {
+        if ((Prefs.backgroundWatch || Prefs.roadAssist) && watcher == null) {
             watcher = Thread({
                 try { Thread.sleep(3000) } catch (_: InterruptedException) { return@Thread }
                 while (running && !Thread.currentThread().isInterrupted) {
                     try {
+                        try { Backup.auto(applicationContext) } catch (_: Exception) {}
                         if (Prefs.backgroundWatch && Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED && !ObdManager.userDisconnected)
                             AutoStart.connectLast(applicationContext)
                         Thread.sleep(30_000)
@@ -346,7 +360,7 @@ class ObdService : Service() {
                 }
             }, "obd-watch").apply { isDaemon = true; start() }
         }
-        return if (Prefs.backgroundWatch) START_STICKY else START_NOT_STICKY
+        return if (Prefs.backgroundWatch || Prefs.roadAssist) START_STICKY else START_NOT_STICKY
     }
 
     override fun onDestroy() {

@@ -76,6 +76,8 @@ class MorePage(a: MainActivity) : Page(a) {
         }
         menu("Tools", Ic.GRID,
             Triple("Live data", Ui.ACC) { a.show("Live") },
+            Triple("Road assistant", Ui.GOOD) { a.show("Road") },
+            Triple("Backup & cloud", Ui.VIOLET) { a.show("Backup") },
             Triple("Diagnosis", Ui.PINK) { a.show("Diag") },
             Triple("Drive mode", Ui.CYAN) { a.show("Car") },
             Triple("Car health", Ui.GOOD) { a.show("Health") },
@@ -105,7 +107,7 @@ class MorePage(a: MainActivity) : Page(a) {
     }
 
     private fun iconOf(l: String): Ic = when {
-        l.startsWith("Live") -> Ic.CHART; l.startsWith("Diag") -> Ic.PULSE; l.startsWith("Drive") -> Ic.GAUGE
+        l.startsWith("Live") -> Ic.CHART; l.startsWith("Road") -> Ic.NAV; l.startsWith("Backup") -> Ic.DATABASE; l.startsWith("Diag") -> Ic.PULSE; l.startsWith("Drive") -> Ic.GAUGE
         l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
