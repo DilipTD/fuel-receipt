@@ -18,6 +18,7 @@ class HomePage(a: MainActivity) : Page(a) {
     private lateinit var box: LinearLayout
     private var statusTv: TextView? = null
     private var gen = 0
+    private var carView: SmartCarView? = null
 
     override fun build(): View { box = ui.col(); return ui.scroll(box) }
 
@@ -25,6 +26,7 @@ class HomePage(a: MainActivity) : Page(a) {
 
     override fun refresh() {
         val m = ObdManager
+        carView?.let { it.engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED; it.speedKmh = m.values[0x0D] ?: 0.0 }
         statusTv?.text = when (m.state) {
             ObdManager.State.CONNECTED -> "Connected · ${m.deviceName}" + if (m.engineOn) " · ${ui.f(m.batteryV, 1, " V")}" else " · ignition off"
             ObdManager.State.CONNECTING -> m.status
@@ -64,6 +66,40 @@ class HomePage(a: MainActivity) : Page(a) {
             ui.pressAnim(this)
         }, ui.lp(6))
         refresh()
+
+        // AI status with animated car
+        val st = SmartAi.status()
+        val stCol = when (st.overall) { 2 -> Ui.BAD; 1 -> Ui.WARN; else -> Ui.GOOD }
+        val car = SmartCarView(a).apply {
+            zones = st.zones; overall = st.overall; engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED
+            speedKmh = m.values[0x0D] ?: 0.0
+        }
+        carView = car
+        box.addView(LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ui.outlined(Ui.CARD, Ui.alpha(stCol, 130), 20, 1); setPadding(ui.dp(12), ui.dp(12), ui.dp(12), ui.dp(12))
+            addView(LinearLayout(a).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(ui.chip("AI", Ui.VIOLET, Ic.SHIELD), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = ui.dp(8) })
+                addView(ui.tv(st.headline, 14.5f, Ui.WHITE, true), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                addView(View(a).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(stCol) } }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)))
+            })
+            addView(car, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(150)).apply { topMargin = ui.dp(4) })
+            if (st.alerts.isEmpty()) addView(ui.tv("Engine, battery, cooling, fuel and service are all being watched by the on-device AI.", 12f, Ui.DIM))
+            else st.alerts.take(3).forEach { al ->
+                val col = if (al.sev >= 2) Ui.BAD else Ui.WARN
+                addView(ui.iconCard(al.ic, col, al.title, al.detail, Ui.SEL) { a.show(al.page) }, ui.lp(8))
+            }
+            if (st.alerts.size > 3) addView(ui.tv("+ ${st.alerts.size - 3} more · open Diagnose", 12f, Ui.DIM).apply { setOnClickListener { a.show("Diag") } }, ui.lp(8))
+            SmartAi.insights().take(2).forEach { (ic, tx) ->
+                addView(LinearLayout(a).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(ui.iconView(ic, Ui.VIOLET, 16), LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)).apply { rightMargin = ui.dp(8) })
+                    addView(ui.tv(tx, 12f, Color.parseColor("#C8D3DE")))
+                }, ui.lp(8))
+            }
+            addView(ui.btn("AI diagnosis", Ui.VIOLET) { a.show("Diag") }, ui.lp(10))
+        }, ui.lp(10))
 
         // weather
         box.addView(ui.section("Weather", Ic.SUN))

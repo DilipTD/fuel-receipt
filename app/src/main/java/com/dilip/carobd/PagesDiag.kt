@@ -2,15 +2,24 @@ package com.dilip.carobd
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
 import android.view.View
 import android.widget.TextView
 
 class DiagPage(a: MainActivity) : Page(a) {
     override val parent = "More"
     private lateinit var out: TextView
+    private lateinit var aiBox: android.widget.LinearLayout
+    private var renderedScan = -1
+    private var reports: List<SmartAi.Report> = emptyList()
+    private val manual = LinkedHashSet<String>()
 
     override fun build(): View {
         val c = ui.col()
+        c.addView(ui.btn("AI diagnosis · scan all codes", Ui.VIOLET) { aiScan() }, ui.lp(10))
+        c.addView(ui.row(ui.btn("Analyze a code", Ui.CARD) { askCode() }, ui.btn("Share AI report", Ui.CARD) { shareAi() }), ui.lp(8))
+        aiBox = ui.vbox()
+        c.addView(aiBox, ui.lp(8))
         c.addView(ui.row(ui.btn("Read DTCs") { readDtcs() }, ui.btn("Clear DTCs", Ui.BAD) { confirmClear() }), ui.lp(10))
         c.addView(ui.row(ui.btn("Deep scan (UDS)") { udsScan() }, ui.btn("Freeze frame") { freezeFrame() }), ui.lp(8))
         c.addView(ui.row(
@@ -33,6 +42,102 @@ class DiagPage(a: MainActivity) : Page(a) {
         }
         c.addView(out, ui.lp(12))
         return ui.scroll(c)
+    }
+
+    /* ---------------- AI diagnosis ---------------- */
+
+    private fun aiScan() = ObdManager.runDiag("AI scan – reading all modules") { e ->
+        val vid = ObdManager.vehicle.id
+        val found = LinkedHashSet<String>()
+        for ((mode, kind) in listOf("03" to "Stored", "07" to "Pending", "0A" to "Permanent")) {
+            e.readDtcs(mode, kind).forEach { Db.insertDtc(vid, it); found += it.code }
+        }
+        for ((h, label) in listOf("7E0" to "Engine ECU", "7E1" to "Transmission (TCU)")) {
+            try { e.readUdsDtcs(h, label).first.forEach { Db.insertDtc(vid, it); found += it.code } } catch (_: Exception) { }
+        }
+        SmartAi.lastScan = found.toList(); SmartAi.scanId++
+        if (found.isEmpty()) "AI scan complete – no fault codes found. 👍" else "AI scan complete – ${found.size} code(s). See the analysis above."
+    }
+
+    private fun askCode() {
+        val et = ui.edit("e.g. P0171", "")
+        et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        val l = ui.vbox().apply { setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0); addView(et) }
+        AlertDialog.Builder(a).setTitle("Analyze a fault code").setView(l)
+            .setPositiveButton("Analyze") { _, _ ->
+                val cds = et.text.toString().split(Regex("[,\\s]+")).map { it.trim().uppercase() }.filter { Regex("[PCBU][0-9A-F]{4}").matches(it) }
+                if (cds.isEmpty()) ui.toast("Enter a code such as P0300") else { manual.addAll(cds); renderedScan = -1; renderAi() }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun shareAi() {
+        if (reports.isEmpty()) { ui.toast("Nothing to share yet – run AI diagnosis first"); return }
+        a.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, "AI diagnosis – ${ObdManager.vehicle.title}").putExtra(Intent.EXTRA_TEXT, SmartAi.toText(reports)), "Share AI report"))
+    }
+
+    private fun renderAi() {
+        val hist = try { Db.dtcHistory(ObdManager.vehicle.id).filter { it.t > System.currentTimeMillis() - 30 * 86_400_000L }.map { it.code } } catch (_: Exception) { emptyList() }
+        val codes = LinkedHashSet<String>().apply { addAll(SmartAi.lastScan); addAll(manual); if (isEmpty()) addAll(hist.distinct()) }
+        reports = SmartAi.analyze(codes)
+        renderedScan = SmartAi.scanId
+        aiBox.removeAllViews()
+        if (reports.isEmpty()) {
+            aiBox.addView(ui.iconCard(Ic.SHIELD, Ui.GOOD, "No fault codes", "Tap AI diagnosis to scan the car, or analyze a code you already have."))
+            return
+        }
+        aiBox.addView(ui.section("AI root-cause analysis", Ic.SHIELD))
+        SmartAi.rootCause(reports)?.let {
+            aiBox.addView(ui.iconCard(Ic.CHECK, Ui.VIOLET, "Most likely common cause", it), ui.lp(4))
+        }
+        for (r in reports) aiBox.addView(reportCard(r), ui.lp(10))
+        aiBox.addView(ui.tv("On-device expert engine · uses live data, service history and the other codes. A guide – confirm with tests before replacing parts.", 11.5f, Ui.DIM), ui.lp(10))
+    }
+
+    private fun reportCard(r: SmartAi.Report): View {
+        val ucol = when (r.urgency) { 0 -> Ui.ACC; 1 -> Ui.WARN; else -> Ui.BAD }
+        val card = ui.vbox().apply { background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(12)) }
+        card.addView(android.widget.LinearLayout(a).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(ui.badge(Ic.WARN, ucol, 40), android.widget.LinearLayout.LayoutParams(ui.dp(40), ui.dp(40)).apply { rightMargin = ui.dp(10) })
+            addView(ui.vbox().apply {
+                addView(ui.tv(r.code, 17f, Ui.WHITE, true))
+                addView(ui.tv(r.desc, 12f, Ui.DIM))
+            }, android.widget.LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            addView(ui.chip(r.urgencyText, ucol))
+        })
+        card.addView(ui.tv("Root-cause code ${r.rc}" + if (r.repeats >= 2) " · seen ${r.repeats}×" else "", 11.5f, Ui.DIM).apply { typeface = android.graphics.Typeface.MONOSPACE }, ui.lp(8))
+        r.causes.take(4).forEachIndexed { i, cz ->
+            val cc = if (i == 0) Ui.VIOLET else Ui.ACC
+            val steps = ui.vbox().apply {
+                visibility = if (i == 0) View.VISIBLE else View.GONE
+                setPadding(ui.dp(4), ui.dp(6), 0, 0)
+                cz.why?.let { addView(ui.tv("● Evidence: $it", 12f, Ui.GOOD)) }
+                cz.steps.forEachIndexed { n, st -> addView(ui.tv("${n + 1}.  $st", 12.5f, Color.parseColor("#D5DEE8")), ui.lp(4)) }
+                addView(android.widget.LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    if (cz.parts.isNotEmpty()) addView(ui.chip(cz.parts, Ui.CYAN, Ic.WRENCH), android.widget.LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = ui.dp(8) })
+                    addView(ui.chip(if (cz.diy) "DIY possible" else "Workshop", if (cz.diy) Ui.GOOD else Ui.ORANGE, if (cz.diy) Ic.CHECK else Ic.USER))
+                }, ui.lp(8))
+                addView(ui.tv(cz.rc, 11f, Ui.DIM).apply { typeface = android.graphics.Typeface.MONOSPACE }, ui.lp(6))
+            }
+            val bar = ProgressBarView(a).apply { value = cz.prob / 100f; color = cc }
+            card.addView(android.widget.LinearLayout(a).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                addView(android.widget.LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(ui.tv("${i + 1}", 12f, cc, true), android.widget.LinearLayout.LayoutParams(ui.dp(18), Ui.WRAP))
+                    addView(ui.tv(cz.name, 14f, Ui.WHITE, true), android.widget.LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                    addView(ui.tv("${cz.prob}%", 14f, cc, true))
+                })
+                addView(bar, ui.lp(5))
+                addView(steps)
+                setPadding(0, ui.dp(2), 0, ui.dp(2))
+                setOnClickListener { steps.visibility = if (steps.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+            }, ui.lp(12))
+        }
+        card.addView(ui.tv("Tap a cause to show or hide the repair steps", 11f, Ui.DIM), ui.lp(10))
+        return card
     }
 
     private fun appendDtc(sb: StringBuilder, d: Dtc) {
@@ -155,7 +260,10 @@ class DiagPage(a: MainActivity) : Page(a) {
             }
     }
 
+    override fun onShow() { renderedScan = -1; renderAi() }
+
     override fun refresh() {
+        if (!ObdManager.busy && SmartAi.scanId != renderedScan) renderAi()
         out.text = ObdManager.diagText + if (ObdManager.busy) "\n\n⏳ working…" else ""
     }
 }
