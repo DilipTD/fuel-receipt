@@ -66,48 +66,53 @@ class MorePage(a: MainActivity) : Page(a) {
         box.addView(ui.row(s4, s5, s6), ui.lp(8))
 
         val alertN = try { Db.alertCountSince(System.currentTimeMillis() - 7 * 86_400_000L) } catch (_: Exception) { 0 }
-        val nVeh = Db.vehicles().size
-        box.addView(ui.section("Tools", Ic.GRID))
-        box.addView(ui.grid(
-            ui.tile(Ic.CAR, "Garage", "$nVeh vehicle(s)", Ui.ACC) { a.show("Garage") },
-            ui.tile(Ic.FUEL, "Fuel log", "Real mileage & cost", Ui.ORANGE) { a.show("Fuel") }
-        ), ui.lp(0))
-        box.addView(ui.grid(
-            ui.tile(Ic.WRENCH, "Maintenance", if (due.isEmpty()) "All up to date" else "${due.size} need attention", if (due.isEmpty()) Ui.GOOD else Ui.WARN) { a.show("Maint") },
-            ui.tile(Ic.CHART, "Analysis", "Trends & driving tips", Ui.VIOLET) { a.show("Analysis") }
-        ), ui.lp(8))
-        box.addView(ui.grid(
-            ui.tile(Ic.BELL, "Alerts", if (alertN > 0) "$alertN this week" else "No alerts", if (alertN > 0) Ui.PINK else Ui.DIM) { a.show("Alerts") },
-            ui.tile(Ic.TIMER, "Performance", "0-100 · ¼ mile · braking", Ui.CYAN) { a.show("Perf") }
-        ), ui.lp(8))
-        box.addView(ui.grid(
-            ui.tile(Ic.BATTERY, "Battery", "Voltage & cranking", Ui.GOOD) { a.show("Battery") },
-            ui.tile(Ic.PIN, "Where's my car", if (Prefs.parkT > 0) "Parked " + ui.date(Prefs.parkT, "dd MMM HH:mm") else "Saved when a trip ends", Ui.ORANGE) { openParking() }
-        ), ui.lp(8))
-        box.addView(ui.section("Nearby", Ic.PIN))
-        box.addView(ui.grid(
-            ui.tile(Ic.FUEL, "Petrol pump", "Find nearest", Ui.ORANGE) { openNearby("petrol pump") },
-            ui.tile(Ic.WRENCH, "Service centre", "Garages near you", Ui.ACC) { openNearby("car service center") },
-            ui.tile(Ic.PIN, "Parking", "Find parking", Ui.CYAN) { openNearby("parking") }
-        ), ui.lp(8))
-        box.addView(ui.grid(
-            ui.tile(Ic.BOLT, "EV / CNG", "Charging & CNG", Ui.GOOD) { openNearby("EV charging station") },
-            ui.tile(Ic.WIND, "Tyre shop", "Air & puncture", Ui.VIOLET) { openNearby("tyre shop") },
-            ui.tile(Ic.DROP, "Car wash", "Detailing", Ui.PINK) { openNearby("car wash") }
-        ), ui.lp(8))
-        box.addView(ui.section("More tools", Ic.GEAR))
-        box.addView(ui.grid(
-            ui.tile(Ic.SHIELD, "Car health", "Status of every system", Ui.GOOD) { a.show("Health") },
-            ui.tile(Ic.CAR, "Drive mode", "Big in-car screen", Ui.CYAN) { a.show("Car") }
-        ), ui.lp(8))
-        box.addView(ui.grid(
-            ui.tile(Ic.MONITOR, "HUD mode", "Windscreen mirror", Ui.ACC) { a.show("HUD") },
-            ui.tile(Ic.GEAR, "Settings", "Connection & options", Color.parseColor("#90A4AE")) { a.show("Settings") }
-        ), ui.lp(8))
-        box.addView(ui.tile(Ic.INFO, "About ${AppInfo.NAME}", "Version ${AppInfo.VERSION} · developed by ${AppInfo.DEVELOPER}", Ui.VIOLET) { a.show("About") }, ui.lp(8))
+        fun menu(title: String, ic: Ic, vararg items: Triple<String, Int, () -> Unit>) {
+            box.addView(ui.section(title, ic))
+            items.toList().chunked(3).forEach { row ->
+                val views = row.map { (l, col, act) -> ui.menuTile(iconOf(l), l, col, act) }.toMutableList<View>()
+                while (views.size < 3) views.add(View(a))
+                box.addView(ui.grid(*views.toTypedArray()), ui.lp(8))
+            }
+        }
+        menu("Tools", Ic.GRID,
+            Triple("Live data", Ui.ACC) { a.show("Live") },
+            Triple("Diagnosis", Ui.PINK) { a.show("Diag") },
+            Triple("Drive mode", Ui.CYAN) { a.show("Car") },
+            Triple("Car health", Ui.GOOD) { a.show("Health") },
+            Triple("Driving style", Ui.VIOLET) { a.show("Analysis") },
+            Triple("Maintenance", Ui.WARN) { a.show("Maint") },
+            Triple("Garage", Ui.ACC) { a.show("Garage") },
+            Triple(if (alertN > 0) "Alerts ($alertN)" else "Alerts", Ui.PINK) { a.show("Alerts") },
+            Triple("Performance", Ui.CYAN) { a.show("Perf") },
+            Triple("Battery", Ui.GOOD) { a.show("Battery") },
+            Triple("HUD", Ui.ACC) { a.show("HUD") },
+            Triple("Parking", Ui.ORANGE) { openParking() },
+            Triple("Connect", Ui.GOOD) { a.show("Connect") },
+            Triple("Settings", Color.parseColor("#90A4AE")) { a.show("Settings") },
+            Triple("About", Ui.VIOLET) { a.show("About") }
+        )
+        menu("Nearby", Ic.PIN,
+            Triple("Petrol pump", Ui.ORANGE) { openNearby("petrol pump") },
+            Triple("Service centre", Ui.ACC) { openNearby("car service center") },
+            Triple("Find parking", Ui.CYAN) { openNearby("parking") },
+            Triple("EV charging", Ui.GOOD) { openNearby("EV charging station") },
+            Triple("Tyre shop", Ui.VIOLET) { openNearby("tyre shop") },
+            Triple("Car wash", Ui.PINK) { openNearby("car wash") }
+        )
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply {
             gravity = android.view.Gravity.CENTER
         }, ui.lp(22))
+    }
+
+    private fun iconOf(l: String): Ic = when {
+        l.startsWith("Live") -> Ic.CHART; l.startsWith("Diag") -> Ic.PULSE; l.startsWith("Drive") -> Ic.GAUGE
+        l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
+        l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
+        l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
+        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO
+        l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
+        l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
+        else -> Ic.GRID
     }
 
     override fun refresh() {
@@ -198,114 +203,6 @@ class GaragePage(a: MainActivity) : Page(a) {
             }
             ObdManager.reloadVehicle()
             onShow()
-        }
-    }
-}
-
-/* ============================ Fuel log & real mileage ============================ */
-
-class FuelPage(a: MainActivity) : Page(a) {
-    override val parent: String? = null
-    private lateinit var box: LinearLayout
-    private val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-
-    override fun build(): View {
-        box = ui.col()
-        return ui.scroll(box)
-    }
-
-    /** Economy for each full fill = distance since previous full fill / fuel added since then. */
-    private fun fullToFull(logs: List<FuelLog>): List<Triple<FuelLog, FuelLog, Double>> {
-        val asc = logs.sortedBy { it.odo }
-        val out = mutableListOf<Triple<FuelLog, FuelLog, Double>>()
-        var prevFull: FuelLog? = null
-        var qty = 0.0
-        for (l in asc) {
-            if (prevFull != null) qty += l.qty
-            if (l.full) {
-                val p = prevFull
-                if (p != null && l.odo > p.odo && qty > 0) out.add(Triple(p, l, (l.odo - p.odo) / qty))
-                prevFull = l; qty = 0.0
-            }
-        }
-        return out
-    }
-
-    override fun onShow() {
-        box.removeAllViews()
-        val v = ObdManager.vehicle
-        val u = v.spec.unit
-        val logs = Db.fuelLogs(v.id)
-
-        box.addView(ui.section("Add refuel – ${v.name}"))
-        val date = ui.edit("yyyy-MM-dd HH:mm", fmt.format(System.currentTimeMillis()))
-        val odo = ui.edit("km", "%.0f".format(Locale.US, v.odoKm), true)
-        val qty = ui.edit(u, "", true)
-        val cost = ui.edit("total ₹", "", true)
-        val full = ui.check("Full tank (needed for real mileage)", true)
-        val note = ui.edit("station / note", "")
-        box.addView(ui.row(ui.labeled("Date & time", date), ui.labeled("Odometer km", odo)), ui.lp())
-        box.addView(ui.row(ui.labeled("Quantity ($u)", qty), ui.labeled("Total cost ₹ (blank = qty × price)", cost)), ui.lp())
-        box.addView(full, ui.lp())
-        box.addView(note, ui.lp(4))
-        box.addView(ui.btn("Save refuel", Ui.GOOD) {
-            val q = qty.num()
-            val o = odo.num()
-            if (q == null || q <= 0 || o == null) { ui.toast("Enter odometer and quantity"); return@btn }
-            val c = cost.num() ?: (q * v.fuelPrice)
-            val t = try { fmt.parse(date.text.toString())?.time } catch (_: Exception) { null } ?: System.currentTimeMillis()
-            Db.saveFuel(FuelLog(0, v.id, t, o, q, c, full.isChecked, note.text.toString()))
-            if (c > 0) v.fuelPrice = c / q
-            if (o > v.odoKm) v.odoKm = o
-            Db.saveVehicle(v); ObdManager.reloadVehicle()
-            ui.toast("Saved")
-            onShow()
-        }, ui.lp(8))
-
-        val ff = fullToFull(logs)
-        box.addView(ui.section("Real mileage (full-to-full)"))
-        if (ff.isEmpty()) box.addView(ui.tv("Log at least two full-tank fills to compute real mileage.", 13f, Ui.DIM))
-        else {
-            val econ = ff.map { it.third }
-            val asc = logs.sortedBy { it.odo }
-            val dist = asc.last().odo - asc.first().odo
-            val totalCost = logs.sumOf { it.cost }
-            val costPerKm = if (dist > 0) (totalCost - asc.last().cost) / dist else null
-            box.addView(ui.mono(
-                "Last      ${ui.econ(econ.last(), u)}\nAverage   ${ui.econ(econ.average(), u)}\n" +
-                        "Best      ${ui.econ(econ.max(), u)}\nWorst     ${ui.econ(econ.min(), u)}\n" +
-                        "Cost/km   ${ui.f(costPerKm, 2, " ₹")}\nTotal     ${ui.money(totalCost)} over ${ui.f(dist, 0, " km")}"
-            ), ui.lp())
-            val chart = LineChart(a, 140)
-            chart.set(econ.map { it.toFloat() }.toFloatArray(), "km/$u per fill")
-            box.addView(chart, ui.lp(8))
-
-            // Calibration: app-measured fuel vs real fuel for the last full-to-full interval
-            val (p, l, _) = ff.last()
-            val real = logs.filter { it.odo > p.odo && it.odo <= l.odo }.sumOf { it.qty }
-            val appFuel = Db.trips(v.id, p.t).filter { it.start < l.t }.sumOf { it.fuel }
-            if (appFuel > 0.5 && real > 0) {
-                val factor = (real / appFuel * v.fuelCorr).coerceIn(0.3, 3.0)
-                box.addView(ui.card("Calibration: app measured ${ui.f(appFuel, 2, " $u")} vs real ${ui.f(real, 2, " $u")} " +
-                        "since last full fill.\nSuggested fuel correction ×%.3f (now ×%.3f)".format(factor, v.fuelCorr)), ui.lp(8))
-                box.addView(ui.btn("Apply calibration") {
-                    v.fuelCorr = factor; Db.saveVehicle(v); ObdManager.reloadVehicle(); ui.toast("Applied"); onShow()
-                }, ui.lp(4))
-            }
-        }
-
-        box.addView(ui.section("Refuel history (long-press to delete)"))
-        if (logs.isEmpty()) box.addView(ui.tv("No refuels yet.", 13f, Ui.DIM))
-        for (l in logs) {
-            box.addView(ui.card("${ui.date(l.t)} · ${ui.f(l.odo, 0, " km")}\n${ui.f(l.qty, 2, " $u")} · ${ui.money(l.cost)} · " +
-                    "${ui.f(if (l.qty > 0) l.cost / l.qty else null, 2, " ₹/$u")}${if (l.full) " · FULL" else ""}" +
-                    (if (l.note.isNotEmpty()) "\n${l.note}" else ""), 12f).apply {
-                setOnLongClickListener {
-                    AlertDialog.Builder(a).setTitle("Delete this refuel?")
-                        .setPositiveButton("Delete") { _, _ -> Db.deleteFuel(l.id); onShow() }
-                        .setNegativeButton("Cancel", null).show(); true
-                }
-            }, ui.lp(4))
         }
     }
 }

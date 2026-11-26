@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
+import android.graphics.Paint
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
@@ -318,6 +320,35 @@ class Ui(val a: Activity) {
                 pressAnim(this)
             }
         }
+
+    /** Big icon-only menu tile (icon on top, short label below). */
+    fun menuTile(ic: Ic, label: String, color: Int, onClick: () -> Unit): LinearLayout = LinearLayout(a).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        background = pressable(rounded(CARD, 20), outlined(SEL, color, 20, 1))
+        setPadding(dp(6), dp(16), dp(6), dp(14))
+        minimumHeight = dp(104)
+        addView(iconView(ic, color, 36))
+        addView(tv(label, 12.5f, WHITE).apply { gravity = Gravity.CENTER; maxLines = 2 }, lp(10))
+        setOnClickListener { onClick() }
+        pressAnim(this)
+    }
+
+    /** Row "Label ........ value" with a dotted leader line. */
+    fun dotRow(label: String, value: String, ic: Ic? = null, color: Int = WHITE): LinearLayout = LinearLayout(a).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(7), 0, dp(7))
+        if (ic != null) addView(iconView(ic, DIM, 18), LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
+        addView(tv(label, 14f, Color.parseColor("#C8D3DE")))
+        addView(object : View(a) {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = dp(1).toFloat(); this.color = Color.parseColor("#4A5666")
+                pathEffect = DashPathEffect(floatArrayOf(dp(3).toFloat(), dp(4).toFloat()), 0f)
+            }
+            override fun onDraw(c: Canvas) { c.drawLine(0f, height / 2f, width.toFloat(), height / 2f, p) }
+        }, LinearLayout.LayoutParams(0, dp(12), 1f).apply { leftMargin = dp(8); rightMargin = dp(8) })
+        addView(tv(value, 14.5f, color, true))
+    }
 
     /** Menu tile: big badge, title, one-line subtitle. */
     fun tile(ic: Ic, title: String, sub: String, color: Int, onClick: () -> Unit): LinearLayout = LinearLayout(a).apply {

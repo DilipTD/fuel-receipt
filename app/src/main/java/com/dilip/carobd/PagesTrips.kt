@@ -5,95 +5,186 @@ import android.graphics.Color
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.Calendar
+import java.util.Locale
 
-/* ============================ Trips ============================ */
+/* ============================ Place names (reverse geocoding, cached) ============================ */
+
+object Geo {
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val ends = java.util.concurrent.ConcurrentHashMap<Long, Pair<Pair<Double, Double>, Pair<Double, Double>>>()
+    private val ex = java.util.concurrent.Executors.newFixedThreadPool(2)
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** First and last GPS point of a trip (computed off the UI thread). */
+    fun endpoints(tripId: Long, cb: (Pair<Pair<Double, Double>, Pair<Double, Double>>?) -> Unit) {
+        ends[tripId]?.let { cb(it); return }
+        ex.execute {
+            val g = try { Db.track(tripId).filter { it.lat != null && it.lon != null } } catch (_: Exception) { emptyList() }
+            val r = if (g.size >= 2) (g.first().lat!! to g.first().lon!!) to (g.last().lat!! to g.last().lon!!) else null
+            if (r != null) ends[tripId] = r
+            main.post { cb(r) }
+        }
+    }
+
+    fun name(ctx: android.content.Context, lat: Double, lon: Double, cb: (String) -> Unit) {
+        val key = "%.3f,%.3f".format(Locale.US, lat, lon)
+        cache[key]?.let { cb(it); return }
+        val sp = ctx.getSharedPreferences("geo_cache", android.content.Context.MODE_PRIVATE)
+        sp.getString(key, null)?.let { cache[key] = it; cb(it); return }
+        ex.execute {
+            val txt = try {
+                val ad = android.location.Geocoder(ctx, Locale.getDefault()).getFromLocation(lat, lon, 1)?.firstOrNull()
+                if (ad == null) null else listOfNotNull(
+                    ad.thoroughfare ?: ad.featureName?.takeIf { f -> f.any { c -> c.isLetter() } },
+                    ad.subLocality, ad.locality, ad.adminArea
+                ).distinct().take(3).joinToString(", ").ifBlank { null }
+            } catch (_: Exception) { null }
+            val out = txt ?: "%.4f, %.4f".format(Locale.US, lat, lon)
+            if (txt != null) { cache[key] = txt; sp.edit().putString(key, txt).apply() }
+            main.post { cb(out) }
+        }
+    }
+}
+
+/* ============================ Driving log ============================ */
 
 class TripsPage(a: MainActivity) : Page(a) {
     private lateinit var cur: TextView
     private lateinit var hist: LinearLayout
+    private lateinit var sumDist: TextView
+    private lateinit var sumTime: TextView
+    private lateinit var filterTv: TextView
     private var histSig = ""
+    private var filter = 0
+    private val periods = listOf("All", "Last 7 days", "Last 30 days", "This month")
 
     override fun build(): View {
         val c = ui.col()
-        cur = ui.mono("", 13f)
-        c.addView(cur, ui.lp())
+        // filter dropdown
+        filterTv = ui.tv("All ▾", 22f, Ui.WHITE, true).apply {
+            setOnClickListener { v ->
+                val pm = android.widget.PopupMenu(a, v)
+                periods.forEachIndexed { i, f -> pm.menu.add(0, i, i, f) }
+                pm.setOnMenuItemClickListener { filter = it.itemId; histSig = ""; true }
+                pm.show()
+            }
+        }
+        c.addView(filterTv, ui.lp(4))
+        sumDist = ui.tv("0 km", 26f, Ui.WHITE, true)
+        sumTime = ui.tv("0 h", 26f, Ui.WHITE, true)
         c.addView(ui.row(
-            ui.btn("Start new trip", Ui.GOOD) { ObdManager.stopTrip(); ObdManager.startTrip(); histSig = "" },
-            ui.btn("Stop & save", Ui.BAD) { ObdManager.stopTrip(); histSig = "" }
+            LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(ui.iconView(Ic.CAR, Ui.ACC, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(6) })
+                    addView(ui.tv("Total distance", 13f, Ui.DIM))
+                }); addView(sumDist)
+            },
+            LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(ui.iconView(Ic.CLOCK, Ui.ACC, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(6) })
+                    addView(ui.tv("Driving time", 13f, Ui.DIM))
+                }); addView(sumTime)
+            }
         ), ui.lp(10))
+        cur = ui.card("", 13f).apply { visibility = View.GONE; setOnClickListener { } }
+        c.addView(cur, ui.lp(12))
         c.addView(ui.row(
-            ui.btn("Export trips CSV", Ui.CARD) { exportAll() },
-            ui.btn("Analysis", Ui.CARD) { a.show("Analysis") }
+            ui.btn("Start", Ui.GOOD) { ObdManager.stopTrip(); ObdManager.startTrip(); histSig = "" },
+            ui.btn("Stop", Ui.BAD) { ObdManager.stopTrip(); histSig = "" },
+            ui.btn("CSV", Ui.CARD) { exportAll() }
         ), ui.lp(8))
-        c.addView(ui.section("Trip history (tap for route, charts & events)"))
         hist = ui.vbox()
         c.addView(hist)
         return ui.scroll(c)
     }
 
-    override fun onShow() {
-        histSig = ""
+    override fun onShow() { histSig = "" }
+
+    private fun tag(score: Int) = when { score >= 85 -> "Smooth" to Ui.GOOD; score >= 65 -> "Normal" to Ui.ACC; else -> "Aggressive" to Ui.BAD }
+
+    private fun flagRow(ic: Ic, col: Int, text: String): Pair<LinearLayout, TextView> {
+        val t = ui.tv(text, 14f, Ui.WHITE)
+        return LinearLayout(a).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(ui.iconView(ic, col, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(10) })
+            addView(t, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+        } to t
     }
 
     override fun refresh() {
         val m = ObdManager
         val t = m.engine.current
         val u = m.vehicle.spec.unit
-        cur.text = if (t == null) "No trip running.\nA trip starts automatically when the engine runs\nand ends 90 s after it stops (or ignition off)." else buildString {
-            append("Running since  ${ui.date(t.start, "dd MMM HH:mm")}\n\n")
-            append("Distance       ${ui.f(t.distanceKm, 2, " km")}\n")
-            append("Duration       ${ui.hms(t.durationS)}\n")
-            append("Fuel used      ${ui.f(t.fuel, 2, " $u")}  (${ui.money(t.cost)})\n")
-            append("Economy        ${ui.econ(t.kmpl)}\n")
-            append("Avg / moving   ${ui.f(t.avgSpeed, 1)} / ${ui.f(t.movingAvgSpeed, 1, " km/h")}\n")
-            append("Max speed/RPM  ${ui.f(t.maxSpeed, 0)} km/h / ${ui.f(t.maxRpm, 0)}\n")
-            append("Idle           ${ui.hms(t.idleS)}  (${ui.f(t.idleFuel, 2, " $u")})\n")
-            append("CO2            ${ui.f(t.co2Kg, 2, " kg")}\n")
-            append("Driver score   ${t.score}/100\n")
-            append("Rapid acc      ${t.rapidAcc}    Hard brake  ${t.hardBrake}\n")
-            append("Sudden brake   ${t.suddenBrake}    Cornering   ${t.corner}\n")
-            append("Overspeed      ${t.overspeed} (${ui.hms(t.overspeedS)})  Over-rev ${t.overRev}\n")
-            if (t.best060 > 0) append("0-60 km/h      ${ui.f(t.best060, 1, " s")}\n")
-            if (t.best0100 > 0) append("0-100 km/h     ${ui.f(t.best0100, 1, " s")}\n")
-            m.values[0x2F]?.let {
-                val q = it * m.vehicle.tankL / 100
-                append("Fuel in tank   ${ui.f(q, 1, " $u")}")
-                t.kmpl?.let { k -> append("  → range ≈ ${ui.f(q * k, 0, " km")}") }
-                append("\n")
-            }
+        if (t == null) cur.visibility = View.GONE else {
+            cur.visibility = View.VISIBLE
+            cur.text = "● Recording   ${ui.f(t.distanceKm, 2, " km")} · ${ui.hms(t.durationS)} · ${ui.econ(t.kmpl)}\n" +
+                    "${ui.f(t.fuel, 2, " $u")} · ${ui.money(t.cost)} · max ${ui.f(t.maxSpeed, 0, " km/h")} · score ${t.score}"
         }
-        val trips = Db.trips(m.vehicle.id, limit = 100)
-        val s = trips.size.toString() + ":" + (trips.firstOrNull()?.id ?: 0)
-        if (s != histSig) {
-            histSig = s
-            hist.removeAllViews()
-            if (trips.isEmpty()) hist.addView(ui.tv("No saved trips for ${m.vehicle.name} yet.", 13f, Ui.DIM))
-            for (tr in trips) {
-                val col = when {
-                    tr.score >= 85 -> Ui.GOOD; tr.score >= 65 -> Ui.WARN; else -> Ui.BAD
-                }
-                val row = LinearLayout(a).apply {
-                    background = ui.rounded(Ui.CARD, 14)
+        val now = System.currentTimeMillis()
+        val since = when (filter) {
+            1 -> now - 7 * 86_400_000L; 2 -> now - 30 * 86_400_000L
+            3 -> Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis
+            else -> 0L
+        }
+        val trips = Db.trips(m.vehicle.id, since, 300)
+        val s = filter.toString() + ":" + trips.size + ":" + (trips.firstOrNull()?.id ?: 0)
+        if (s == histSig) return
+        histSig = s
+        filterTv.text = periods[filter] + " ▾"
+        sumDist.text = "%,.0f km".format(trips.sumOf { it.distanceKm })
+        sumTime.text = "%,.0f h".format(trips.sumOf { it.durationS } / 3600.0)
+        hist.removeAllViews()
+        if (trips.isEmpty()) {
+            hist.addView(ui.iconCard(Ic.ROUTE, Ui.ACC, "No drives yet", "Trips are saved automatically"), ui.lp(14)); return
+        }
+        var day = ""
+        for (tr in trips) {
+            val d = ui.date(tr.start, "EEE/MMM/dd")
+            if (d != day) { day = d; hist.addView(ui.tv(d, 20f, Ui.WHITE, true), ui.lp(18)) }
+            val (tg, tc) = tag(tr.score)
+            val (startRow, startTv) = flagRow(Ic.FLAG, Ui.ACC, "…")
+            val (endRow, endTv) = flagRow(Ic.FLAG, Ui.BAD, "…")
+            val mins = (tr.durationS / 60).toInt()
+            val card = LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                background = ui.rounded(Ui.CARD, 20)
+                setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+                addView(LinearLayout(a).apply {
+                    gravity = android.view.Gravity.BOTTOM
+                    addView(ui.tv("%.2f".format(tr.distanceKm), 30f, Ui.ACC, true))
+                    addView(ui.tv(" km", 20f, Ui.DIM, true), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { bottomMargin = ui.dp(2) })
+                    addView(View(a), LinearLayout.LayoutParams(0, 1, 1f))
+                    addView(ui.tv(ui.econ(tr.kmpl) + " · " + ui.money(tr.cost), 12.5f, Ui.DIM))
+                })
+                addView(LinearLayout(a).apply {
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10))
-                    addView(ui.tv("${tr.score}", 17f, col, true).apply {
+                    addView(ui.iconView(Ic.CLOCK, Ui.DIM, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(10) })
+                    addView(ui.tv("${ui.date(tr.start, "HH:mm")} ~ ${ui.date(if (tr.end > 0) tr.end else tr.start, "HH:mm")} (${mins}min)", 14.5f, Ui.WHITE))
+                }, ui.lp(8))
+                addView(startRow, ui.lp(8)); addView(endRow, ui.lp(8))
+                addView(LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(ui.iconView(Ic.FLAG, tc, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(10) })
+                    addView(ui.tv(tg, 14.5f, tc, true))
+                    addView(View(a), LinearLayout.LayoutParams(0, 1, 1f))
+                    addView(ui.tv("${tr.score}", 14f, tc, true).apply {
                         gravity = android.view.Gravity.CENTER
-                        background = android.graphics.drawable.GradientDrawable().apply {
-                            shape = android.graphics.drawable.GradientDrawable.OVAL
-                            setColor(Ui.alpha(col, 40)); setStroke(ui.dp(3), col)
-                        }
-                    }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { rightMargin = ui.dp(12) })
-                    addView(ui.tv(
-                        "${ui.date(tr.start)} · ${ui.f(tr.distanceKm, 1, " km")} · ${ui.hms(tr.durationS)}\n" +
-                                "${ui.econ(tr.kmpl)} · ${ui.f(tr.fuel, 2, " $u")} · ${ui.money(tr.cost)} · " +
-                                "avg ${ui.f(tr.avgSpeed, 0)} · ${tr.events} events", 12f
-                    ), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
-                    setOnClickListener {
-                        a.selectedTripId = tr.id
-                        a.show("TripDetail")
-                    }
-                }
-                hist.addView(row, ui.lp(6))
+                        background = ui.rounded(Ui.alpha(tc, 40), 12); setPadding(ui.dp(10), ui.dp(2), ui.dp(10), ui.dp(2))
+                    })
+                }, ui.lp(8))
+                setOnClickListener { a.selectedTripId = tr.id; a.show("TripDetail") }
+            }
+            ui.pressAnim(card)
+            hist.addView(card, ui.lp(8))
+            Geo.endpoints(tr.id) { ep ->
+                if (ep == null) { startTv.text = "No GPS"; endTv.text = "No GPS"; return@endpoints }
+                Geo.name(a, ep.first.first, ep.first.second) { startTv.text = it }
+                Geo.name(a, ep.second.first, ep.second.second) { endTv.text = it }
             }
         }
     }
@@ -137,23 +228,9 @@ class TripDetailPage(a: MainActivity) : Page(a) {
         val track = Db.track(t.id)
         val events = Db.events(t.id)
 
-        box.addView(ui.btn("← Back to trips", Ui.CARD) { a.show("Trips") }, ui.lp(6))
-        box.addView(ui.section("Trip ${ui.date(t.start)}"))
-        box.addView(ui.mono(buildString {
-            append("Distance     ${ui.f(t.distanceKm, 2, " km")} (GPS ${ui.f(t.gpsKm, 2, " km")})\n")
-            append("Duration     ${ui.hms(t.durationS)}  · moving ${ui.hms(t.movingS)}\n")
-            append("Fuel         ${ui.f(t.fuel, 2, " $u")} · ${ui.money(t.cost)} · CO2 ${ui.f(t.co2Kg, 1, " kg")}\n")
-            append("Economy      ${ui.econ(t.kmpl, u)}\n")
-            append("Speed avg    ${ui.f(t.avgSpeed, 1)} · moving ${ui.f(t.movingAvgSpeed, 1)} · max ${ui.f(t.maxSpeed, 0, " km/h")}\n")
-            append("Max RPM      ${ui.f(t.maxRpm, 0)} · max coolant ${ui.f(t.maxCoolant, 0, "°C")}\n")
-            append("Idle         ${ui.hms(t.idleS)} (${ui.f(t.idleFuel, 2, " $u")})\n")
-            append("Score        ${t.score}/100\n")
-            t.speedoErrorPct?.let { append("Speedometer  %+.1f%% vs GPS\n".format(it)) }
-            if (t.best0100 > 0) append("0-100 km/h   ${ui.f(t.best0100, 1, " s")}\n")
-            if (t.fuelStartPct >= 0 && t.fuelEndPct >= 0) append("Tank         ${ui.f(t.fuelStartPct, 0)}% → ${ui.f(t.fuelEndPct, 0)}%\n")
-        }), ui.lp())
+        box.addView(ui.tv(ui.date(t.start, "EEE/MMM/dd"), 28f, Ui.WHITE, true), ui.lp(6))
 
-        box.addView(ui.section("Route"))
+        box.addView(ui.section("Driving replay", Ic.ROUTE))
         val route = RouteView(a)
         val gpsTrack = track.filter { it.lat != null && it.lon != null }
         route.setSpeeds(gpsTrack.map { it.speed })
@@ -161,7 +238,68 @@ class TripDetailPage(a: MainActivity) : Page(a) {
             gpsTrack.map { it.lat!! to it.lon!! },
             events.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.eventColor(it.type)) }
         )
-        box.addView(route, ui.lp())
+        box.addView(route, ui.lp(4))
+
+        // driving record card
+        val tagTxt = when { t.score >= 85 -> "Smooth" to Ui.GOOD; t.score >= 65 -> "Normal" to Ui.ACC; else -> "Aggressive" to Ui.BAD }
+        val depTv = ui.tv("…", 14f, Ui.DIM); val arrTv = ui.tv("…", 14f, Ui.DIM)
+        box.addView(ui.section("Driving records", Ic.DOC))
+        box.addView(LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(10))
+            addView(ui.chip(tagTxt.first, tagTxt.second, Ic.FLAG))
+            addView(LinearLayout(a).apply {
+                gravity = android.view.Gravity.TOP
+                addView(ui.iconView(Ic.PIN, Ui.ACC, 22), LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)).apply { rightMargin = ui.dp(10) })
+                addView(ui.tv("Dep.", 17f, Ui.WHITE, true), LinearLayout.LayoutParams(ui.dp(56), Ui.WRAP))
+                addView(ui.vbox().apply { addView(ui.tv(ui.date(t.start, "HH:mm"), 15f, Ui.WHITE)); addView(depTv) }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            }, ui.lp(12))
+            addView(LinearLayout(a).apply {
+                gravity = android.view.Gravity.TOP
+                addView(ui.iconView(Ic.PIN, Ui.BAD, 22), LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)).apply { rightMargin = ui.dp(10) })
+                addView(ui.tv("Arr.", 17f, Ui.WHITE, true), LinearLayout.LayoutParams(ui.dp(56), Ui.WRAP))
+                addView(ui.vbox().apply { addView(ui.tv(ui.date(if (t.end > 0) t.end else t.start, "HH:mm"), 15f, Ui.WHITE)); addView(arrTv) }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            }, ui.lp(12))
+            addView(View(a).apply { setBackgroundColor(Ui.STROKE) }, LinearLayout.LayoutParams(Ui.MATCH, 1).apply { topMargin = ui.dp(12); bottomMargin = ui.dp(4) })
+            addView(ui.dotRow("Time", "${(t.durationS / 60).toInt()}m", Ic.CLOCK))
+            addView(ui.dotRow("Dist.", ui.f(t.distanceKm, 2, " km"), Ic.CAR))
+            addView(ui.dotRow("Odometer on Dep.", if (t.odoStart > 0) ui.f(t.odoStart, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
+            addView(ui.dotRow("Odometer on Arr.", if (t.odoStart > 0) ui.f(t.odoStart + t.distanceKm, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
+        }, ui.lp(6))
+        Geo.endpoints(t.id) { ep ->
+            if (ep == null) { depTv.text = "No GPS data"; arrTv.text = "No GPS data" }
+            else {
+                Geo.name(a, ep.first.first, ep.first.second) { depTv.text = it }
+                Geo.name(a, ep.second.first, ep.second.second) { arrTv.text = it }
+            }
+        }
+
+        // general data
+        val rpms = track.map { it.rpm }.filter { it > 300 }
+        val idleShare = if (t.durationS > 0) t.idleS / t.durationS else 0.0
+        val eco = (100 - idleShare * 80 - t.overRev * 3 - t.rapidAcc * 3 - t.coldRev * 3).coerceIn(0.0, 100.0)
+        box.addView(ui.section("General data", Ic.GRID))
+        box.addView(LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8))
+            addView(ui.dotRow("Safety score", "${t.score} P", Ic.SHIELD, tagTxt.second))
+            addView(ui.dotRow("Economic score", "%.0f P".format(eco), Ic.LEAF, Ui.GOOD))
+            addView(ui.dotRow("Fuel efficiency", ui.econ(t.kmpl, u), Ic.CHART))
+            addView(ui.dotRow("Fuel consumed", ui.f(t.fuel, 2, " $u"), Ic.FUEL))
+            addView(ui.dotRow("Carbon emissions", ui.f(t.co2Kg, 2, " kg CO₂"), Ic.WIND))
+            addView(ui.dotRow("Fuel cost (₹)", "%.2f".format(t.cost), Ic.DATABASE))
+            addView(ui.dotRow("Rapid decel.", "${t.hardBrake + t.suddenBrake} times", Ic.WARN))
+            addView(ui.dotRow("Rapid acc.", "${t.rapidAcc} times", Ic.BOLT))
+            addView(ui.dotRow("Speeding", "${t.overspeed} times", Ic.GAUGE))
+            addView(ui.dotRow("Harsh cornering", "${t.corner} times", Ic.ROUTE))
+            addView(ui.dotRow("Avg. speed", ui.f(t.avgSpeed, 0, " km/h"), Ic.GAUGE))
+            addView(ui.dotRow("Max speed", ui.f(t.maxSpeed, 0, " km/h"), Ic.GAUGE))
+            addView(ui.dotRow("Avg. RPM", if (rpms.isEmpty()) "-" else "%.0f RPM".format(rpms.average()), Ic.ENGINE))
+            addView(ui.dotRow("Max RPM", ui.f(t.maxRpm, 0, " RPM"), Ic.ENGINE))
+            addView(ui.dotRow("Max coolant temp", ui.f(t.maxCoolant, 0, " °C"), Ic.THERM))
+            addView(ui.dotRow("Idle", ui.hms(t.idleS), Ic.TIMER))
+            if (t.best0100 > 0) addView(ui.dotRow("0-100 km/h", ui.f(t.best0100, 1, " s"), Ic.TIMER))
+        }, ui.lp(6))
 
         val spdChart = LineChart(a)
         spdChart.set(track.map { it.speed.toFloat() }.toFloatArray(), "Speed", " km/h", Color.parseColor("#4FC3F7"))

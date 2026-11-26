@@ -38,10 +38,13 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Dash" to "Dashboard", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Health" to "Car health", "Car" to "Drive mode", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
     )
     private lateinit var content: FrameLayout
-    private lateinit var nav: LinearLayout
+    private lateinit var nav: FrameLayout
+    private lateinit var navRow: LinearLayout
+    private lateinit var navWrap: FrameLayout
+    private lateinit var navInd: View
     val pages = LinkedHashMap<String, Page>()
     private val navButtons = HashMap<String, LinearLayout>()
     var current = "Dash"
@@ -49,7 +52,8 @@ class MainActivity : Activity() {
     private var lastState = ObdManager.State.DISCONNECTED
     var btAdapter: BluetoothAdapter? = null
     var selectedTripId = 0L
-    private val tabs = listOf("Dash", "Live", "Trips", "Fuel", "Diag", "More")
+    var selectedFuelId = 0L
+    private val tabs = listOf("Dash", "Trips", "Fuel", "Live", "More")
     private val handler = Handler(Looper.getMainLooper())
 
     private val tick = object : Runnable {
@@ -104,14 +108,23 @@ class MainActivity : Activity() {
         root.addView(header)
         content = FrameLayout(this)
         root.addView(content, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
-        nav = LinearLayout(this).apply {
+        navRow = LinearLayout(this)
+        navInd = View(this).apply { background = ui.rounded(Color.parseColor("#2C2A44"), 28) }
+        nav = FrameLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#0F161D")); setStroke(ui.dp(1), Ui.STROKE)
+                cornerRadius = ui.dp(34).toFloat(); setColor(Color.parseColor("#F0161C24")); setStroke(ui.dp(1), Color.parseColor("#3A4452"))
             }
+            elevation = ui.dp(10).toFloat()
             setPadding(ui.dp(6), ui.dp(6), ui.dp(6), ui.dp(6))
+            addView(navInd, FrameLayout.LayoutParams(0, 0))
+            addView(navRow, FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         }
-        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Live" to Ic.CHART, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Diag" to Ic.PULSE, "More" to Ic.GRID)
-        val tabNames = mapOf("Dash" to "Dash", "Live" to "Live", "Trips" to "Trips", "Fuel" to "Fuel", "Diag" to "Diagnose", "More" to "My car")
+        navWrap = FrameLayout(this).apply {
+            setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(12))
+            addView(nav, FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
+        }
+        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Live" to Ic.CHART, "More" to Ic.GRID)
+        val tabNames = mapOf("Dash" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Live" to "Live", "More" to "More")
         for (name in tabs) {
             val dr = IconDrawable(tabIcons[name] ?: Ic.GRID, Ui.DIM, ui.dp(24))
             val lbl = ui.tv(tabNames[name] ?: name, 10.5f, Ui.DIM).apply { gravity = Gravity.CENTER }
@@ -124,10 +137,10 @@ class MainActivity : Activity() {
                 addView(lbl, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { topMargin = ui.dp(2) })
                 setOnClickListener { show(name) }
             }
-            nav.addView(item, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { leftMargin = ui.dp(2); rightMargin = ui.dp(2) })
+            navRow.addView(item, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { leftMargin = ui.dp(2); rightMargin = ui.dp(2) })
             navButtons[name] = item; navIcons[name] = dr; navLabels[name] = lbl
         }
-        root.addView(nav)
+        root.addView(navWrap)
         val frame = FrameLayout(this)
         frame.addView(root, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         val splash = buildSplash()
@@ -156,6 +169,7 @@ class MainActivity : Activity() {
         pages["About"] = AboutPage(this)
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
+        pages["FuelAdd"] = FuelAddPage(this)
         for (p in pages.values) {
             p.view = p.build()
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
@@ -258,6 +272,18 @@ class MainActivity : Activity() {
 
     /* ---------------- navigation ---------------- */
 
+    private fun moveIndicator(item: View) {
+        item.post {
+            if (item.width == 0) return@post
+            val lp = navInd.layoutParams as FrameLayout.LayoutParams
+            val first = navInd.width == 0
+            lp.width = item.width; lp.height = item.height; navInd.layoutParams = lp
+            val tx = (item.left + nav.paddingLeft).toFloat()
+            if (first) { navInd.x = tx; navInd.y = nav.paddingTop.toFloat() }
+            else navInd.animate().x(tx).setDuration(320).setInterpolator(android.view.animation.OvershootInterpolator(1.2f)).start()
+        }
+    }
+
     fun show(name: String) {
         if (!pages.containsKey(name)) return
         val prev = current
@@ -268,9 +294,9 @@ class MainActivity : Activity() {
         while (tab !in tabs && guard++ < 4) tab = pages[tab]?.parent ?: "More"
         navButtons.forEach { (k, v) ->
             val on = k == tab
-            navIcons[k]?.color = if (on) Ui.CYAN else Ui.DIM
-            navLabels[k]?.setTextColor(if (on) Ui.WHITE else Ui.DIM)
-            v.background = if (on) ui.rounded(Ui.SEL, 14) else null
+            navIcons[k]?.color = if (on) Ui.CYAN else Color.parseColor("#E3E9EF")
+            navLabels[k]?.setTextColor(if (on) Ui.CYAN else Color.parseColor("#E3E9EF"))
+            if (on) moveIndicator(v)
             if (on && prev != name) {
                 v.scaleX = 0.8f; v.scaleY = 0.8f
                 v.animate().scaleX(1f).scaleY(1f).setDuration(380).setInterpolator(android.view.animation.OvershootInterpolator(3.5f)).start()
@@ -284,7 +310,7 @@ class MainActivity : Activity() {
         requestedOrientation = if (name == "Car") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (name != "Perf" && PerfMeter.mode != PerfMeter.Mode.IDLE) PerfMeter.cancel()
-        nav.visibility = if (full) View.GONE else View.VISIBLE
+        navWrap.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()
         if (prev != name && name != "Car" && name != "HUD") pages[name]?.view?.let { pv ->
