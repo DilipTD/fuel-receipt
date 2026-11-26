@@ -66,6 +66,7 @@ class BootReceiver : BroadcastReceiver() {
             Prefs.init(ctx)
             Db.init(ctx)
             Maint.schedule(ctx)
+            if (Prefs.backgroundWatch) ObdService.start(ctx)
         } catch (_: Exception) {
         }
     }

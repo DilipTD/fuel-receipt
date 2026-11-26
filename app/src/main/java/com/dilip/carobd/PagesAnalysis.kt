@@ -51,7 +51,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
         val obd = trips.sumOf { it.sumObdSpd }
         val gps = trips.sumOf { it.sumGpsSpd }
 
-        box.addView(ui.mono(buildString {
+        box.addView(ui.facts(buildString {
             append("Trips          ${trips.size}\n")
             append("Distance       ${ui.f(km, 1, " km")}\n")
             append("Driving time   ${ui.f(hours, 1, " h")}  (idle ${ui.f(idle / maxOf(hours, 0.01) * 100, 0, "%")})\n")
@@ -156,7 +156,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
         val co = trips.sumOf { it.corner }; val os = trips.sumOf { it.overspeed }; val osS = trips.sumOf { it.overspeedS }
         val orv = trips.sumOf { it.overRev }; val cr = trips.sumOf { it.coldRev }; val li = trips.sumOf { it.longIdle }
         box.addView(ui.section("Driving behaviour (per 100 km)"))
-        box.addView(ui.mono(
+        box.addView(ui.facts(
             "Rapid acceleration  %3d  (%.1f)\nHard braking        %3d  (%.1f)\nSudden braking      %3d  (%.1f)\n".format(ra, ra * per100, hb, hb * per100, sb, sb * per100) +
                     "Harsh cornering     %3d  (%.1f)\nOverspeed           %3d  (%s total)\nOver-rev            %3d\nCold high-RPM       %3d\nLong idle           %3d".format(
                         co, co * per100, os, ui.hms(osS), orv, cr, li)

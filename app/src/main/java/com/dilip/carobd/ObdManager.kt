@@ -100,6 +100,7 @@ object ObdManager {
         init(ctx)
         if (state != State.DISCONNECTED) return
         userStopped = false
+        userDisconnected = false
         state = State.CONNECTING
         status = "Connecting…"
         values.clear(); texts.clear(); customValues.clear(); history.clear(); batteryV = null
@@ -115,7 +116,10 @@ object ObdManager {
         Thread({ runLoop(factory) }, "obd-worker").start()
     }
 
+    @Volatile var userDisconnected = false
+
     fun disconnect() {
+        userDisconnected = true
         userStopped = true
         transport?.close()
     }
@@ -178,7 +182,8 @@ object ObdManager {
         } finally {
             stopTrip()
             Gps.stop()
-            try { app.stopService(Intent(app, ObdService::class.java)) } catch (_: Exception) {}
+            if (!Prefs.backgroundWatch || userDisconnected) try { app.stopService(Intent(app, ObdService::class.java)) } catch (_: Exception) {}
+            else ObdService.update(app, AppInfo.NAME, "Waiting for the car – will connect automatically")
             if (!status.startsWith("Error")) status = "Disconnected"
             busy = false
             engineOn = false

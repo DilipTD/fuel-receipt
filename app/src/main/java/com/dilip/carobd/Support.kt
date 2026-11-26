@@ -78,6 +78,8 @@ object Prefs {
         set(v) = putB("eventAlerts", v)
     var autoConnect: Boolean get() = b("autoConnect", true)
         set(v) = putB("autoConnect", v)
+    var backgroundWatch: Boolean get() = b("bgWatch", true)
+        set(v) = putB("bgWatch", v)
     var autoReconnect: Boolean get() = b("autoReconnect", true)
         set(v) = putB("autoReconnect", v)
     var autoDtc: Boolean get() = b("autoDtc", true)

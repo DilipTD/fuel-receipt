@@ -282,6 +282,14 @@ class ObdService : Service() {
         }
 
         /** Refreshes the ongoing notification with live trip figures. */
+        /** Starts the background service (keeps auto-connect + trip logging alive after the UI is closed). */
+        fun start(ctx: Context) {
+            try {
+                val i = Intent(ctx, ObdService::class.java)
+                if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
+            } catch (_: Exception) {}
+        }
+
         fun update(ctx: Context, title: String, text: String) {
             if (!running) return
             try {
@@ -293,8 +301,12 @@ class ObdService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var watcher: Thread? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val n = build(this, AppInfo.NAME, "Connected – logging live data, trip & GPS")
+        try { ObdManager.init(this) } catch (_: Exception) {}
+        val connected = ObdManager.state != ObdManager.State.DISCONNECTED
+        val n = build(this, AppInfo.NAME, if (connected) "Connected – logging live data, trip & GPS" else "Waiting for the car – will connect automatically")
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -322,10 +334,23 @@ class ObdService : Service() {
                 acquire(12 * 60 * 60 * 1000L)
             }
         }
-        return START_NOT_STICKY
+        if (Prefs.backgroundWatch && watcher == null) {
+            watcher = Thread({
+                try { Thread.sleep(3000) } catch (_: InterruptedException) { return@Thread }
+                while (running && !Thread.currentThread().isInterrupted) {
+                    try {
+                        if (Prefs.backgroundWatch && Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED && !ObdManager.userDisconnected)
+                            AutoStart.connectLast(applicationContext)
+                        Thread.sleep(30_000)
+                    } catch (_: InterruptedException) { break } catch (_: Exception) {}
+                }
+            }, "obd-watch").apply { isDaemon = true; start() }
+        }
+        return if (Prefs.backgroundWatch) START_STICKY else START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        watcher?.interrupt(); watcher = null
         running = false
         try {
             wl?.release()

@@ -220,3 +220,36 @@ class ProgressBarView(ctx: Context) : View(ctx) {
         p.shader = null
     }
 }
+
+/* ---------- Mini sparkline for PID cards ---------- */
+
+class SparkView(ctx: Context) : View(ctx) {
+    private var data = FloatArray(0)
+    var color = Color.parseColor("#2FA8FF")
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ctx.px(1.8f); strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val path = Path()
+    private val area = Path()
+
+    fun set(d: FloatArray) { data = d; invalidate() }
+
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), context.px(30f).toInt())
+
+    override fun onDraw(c: Canvas) {
+        if (data.size < 2) return
+        val mn = data.min(); val mx = data.max()
+        val span = max(mx - mn, 1e-6f)
+        val pad = context.px(2f)
+        val h = height - pad * 2
+        path.reset(); area.reset()
+        for (i in data.indices) {
+            val x = i * (width - 1f) / (data.size - 1)
+            val y = pad + h - (data[i] - mn) / span * h
+            if (i == 0) { path.moveTo(x, y); area.moveTo(x, height.toFloat()); area.lineTo(x, y) } else { path.lineTo(x, y); area.lineTo(x, y) }
+        }
+        area.lineTo(width.toFloat(), height.toFloat()); area.close()
+        fill.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), Color.argb(70, Color.red(color), Color.green(color), Color.blue(color)), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        c.drawPath(area, fill)
+        line.color = color; c.drawPath(path, line)
+    }
+}

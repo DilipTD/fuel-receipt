@@ -1,4 +1,4 @@
-# Car OBD Pro v3.5.0 – universal ELM327 app (any OBD-II / EOBD car)
+# Car OBD Pro v3.6.0 – universal ELM327 app (any OBD-II / EOBD car)
 
 **Software developed by Dilip Kumar TD**
 

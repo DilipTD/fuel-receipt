@@ -134,7 +134,7 @@ class Ui(val a: Activity) {
 
     fun mono(t: String = "", size: Float = 13f) = tv(t, size).apply {
         typeface = Typeface.MONOSPACE
-        background = rounded(CARD, 14)
+        background = rounded(CARD, 20)
         setPadding(dp(14), dp(12), dp(14), dp(12))
         setTextIsSelectable(true)
     }
@@ -298,7 +298,7 @@ class Ui(val a: Activity) {
     }
 
     fun card(text: String, size: Float = 13f, color: Int = WHITE, bg: Int = CARD) = tv(text, size, color).apply {
-        background = rounded(bg, 14)
+        background = rounded(bg, 20)
         setPadding(dp(14), dp(12), dp(14), dp(12))
         setLineSpacing(0f, 1.1f)
     }
@@ -332,6 +332,20 @@ class Ui(val a: Activity) {
         addView(tv(label, 12.5f, WHITE).apply { gravity = Gravity.CENTER; maxLines = 2 }, lp(10))
         setOnClickListener { onClick() }
         pressAnim(this)
+    }
+
+    /** Turns "Label    value" text lines into a rounded card of dotted rows (same style as every data list). */
+    fun facts(text: String): LinearLayout = LinearLayout(a).apply {
+        orientation = LinearLayout.VERTICAL
+        background = rounded(CARD, 20)
+        setPadding(dp(16), dp(8), dp(16), dp(8))
+        val re = Regex("^(.*?)\\s{2,}(.*)$")
+        for (line in text.lines()) {
+            if (line.isBlank()) continue
+            val m = re.find(line.trim())
+            if (m != null) addView(dotRow(m.groupValues[1].trim(), m.groupValues[2].trim()))
+            else addView(tv(line.trim(), 13f, DIM), lp(4))
+        }
     }
 
     /** Row "Label ........ value" with a dotted leader line. */

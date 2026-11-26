@@ -73,11 +73,16 @@ class FuelPage(a: MainActivity) : Page(a) {
         val info = FuelMath.analyse(v.id, logs)
 
         // header
-        val add = ui.btn("+", Ui.ACC) { a.selectedFuelId = 0; a.show("FuelAdd") }
+        val add = ui.iconView(Ic.PLUS, Ui.WHITE, 26).apply {
+            background = ui.rounded(Ui.ACC, 26)
+            setPadding(ui.dp(11), ui.dp(11), ui.dp(11), ui.dp(11))
+            setOnClickListener { a.selectedFuelId = 0; a.show("FuelAdd") }
+            ui.pressAnim(this)
+        }
         box.addView(LinearLayout(a).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(ui.tv("Fill-ups", 30f, Ui.WHITE, true), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
-            addView(add, LinearLayout.LayoutParams(ui.dp(84), Ui.WRAP))
+            addView(add, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
         })
         box.addView(ui.row(
             *listOf(Triple(0, "List", Ic.DOC), Triple(1, "Stats", Ic.CHART), Triple(2, "Charts", Ic.PULSE)).map { (m, l, ic) ->

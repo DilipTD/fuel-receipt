@@ -53,7 +53,7 @@ class MainActivity : Activity() {
     var btAdapter: BluetoothAdapter? = null
     var selectedTripId = 0L
     var selectedFuelId = 0L
-    private val tabs = listOf("Dash", "Trips", "Fuel", "Live", "More")
+    private val tabs = listOf("Dash", "Trips", "Fuel", "Diag", "More")
     private val handler = Handler(Looper.getMainLooper())
 
     private val tick = object : Runnable {
@@ -123,8 +123,8 @@ class MainActivity : Activity() {
             setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(12))
             addView(nav, FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         }
-        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Live" to Ic.CHART, "More" to Ic.GRID)
-        val tabNames = mapOf("Dash" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Live" to "Live", "More" to "More")
+        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Diag" to Ic.PULSE, "More" to Ic.GRID)
+        val tabNames = mapOf("Dash" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Diag" to "Diagnose", "More" to "More")
         for (name in tabs) {
             val dr = IconDrawable(tabIcons[name] ?: Ic.GRID, Ui.DIM, ui.dp(24))
             val lbl = ui.tv(tabNames[name] ?: name, 10.5f, Ui.DIM).apply { gravity = Gravity.CENTER }
@@ -179,6 +179,7 @@ class MainActivity : Activity() {
         intent?.getStringExtra("open")?.let { show(it) }
         requestPerms()
         Maint.schedule(this)
+        if (Prefs.backgroundWatch) ObdService.start(this)
         if (Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED) {
             handler.postDelayed({ (pages["Connect"] as ConnectPage).autoConnect() }, 1500)
         }
@@ -262,6 +263,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
+        if (Prefs.backgroundWatch) ObdService.start(this)
     }
 
     fun hasBtPerms(): Boolean =

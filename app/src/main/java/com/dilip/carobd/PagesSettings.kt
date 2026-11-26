@@ -244,6 +244,10 @@ class SettingsPage(a: MainActivity) : Page(a) {
         body.addView(ui.section("Automatic trip logging", Ic.BOLT))
         body.addView(ui.iconCard(Ic.CAR, Ui.CYAN, "How it works",
             "Car on → phone joins the car's Bluetooth → app connects to the OBD adapter in the background → trip starts with the engine → trip saved after it stops."))
+        toggle("Keep running after the app is closed (auto-connect and log trips)", { Prefs.backgroundWatch }) {
+            Prefs.backgroundWatch = it
+            if (it) ObdService.start(a) else if (ObdManager.state == ObdManager.State.DISCONNECTED) a.stopService(android.content.Intent(a, ObdService::class.java))
+        }
         val carBt = toggle("Auto-start when the phone connects to the car's Bluetooth", { Prefs.autoStartCarBt }) { }
         val btList = mutableListOf("" to "– select car stereo / hands-free –")
         try {
