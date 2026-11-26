@@ -1,8 +1,13 @@
-# Car OBD Pro v3.0.0 – universal ELM327 app (any OBD-II / EOBD car)
+# Car OBD Pro v3.1.0 – universal ELM327 app (any OBD-II / EOBD car)
 
 **Software developed by Dilip Kumar TD**
 
-## New in v3.0.0
+## New in v3.1.0 – completely redesigned interface
+- Pictograms for every function, drawn in code (no image files), and an illustrated car showing the live link status.
+- New header, bottom navigation with icons, tile menus and toggle switches.
+- Redesigned Connect screen. Settings are regrouped into Connection, Trips, Alerts, Driving, Auto, Custom PIDs, Data and About.
+
+## v3.0.0
 - Animated gauges with gradient arcs, redline zone, needle and peak marker. Ring gauges for coolant, fuel, battery and throttle. G-force meter and eco bar. Distance to empty.
 - Alert centre with notifications for:
   - engine overheating, hot oil and catalyst temperature

@@ -22,215 +22,6 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import javax.net.SocketFactory
 
-/* ============================ Connect ============================ */
-
-@SuppressLint("MissingPermission", "SetTextI18n")
-class ConnectPage(a: MainActivity) : Page(a) {
-    private lateinit var typeGroup: RadioGroup
-    private lateinit var deviceBox: LinearLayout
-    private lateinit var wifiBox: LinearLayout
-    private lateinit var hostEt: android.widget.EditText
-    private lateinit var portEt: android.widget.EditText
-    private lateinit var infoTv: TextView
-    private lateinit var logTv: TextView
-    private var selected: BluetoothDevice? = null
-    private val rows = HashMap<String, TextView>()
-    private var scanning = false
-    private val h = Handler(Looper.getMainLooper())
-
-    override fun build(): View {
-        val c = ui.col()
-        c.addView(ui.section("Adapter type"))
-        typeGroup = RadioGroup(a).apply { orientation = RadioGroup.HORIZONTAL }
-        listOf("Bluetooth", "BLE 4.0", "WiFi").forEachIndexed { i, s ->
-            typeGroup.addView(RadioButton(a).apply { text = s; id = 100 + i; setTextColor(Ui.WHITE) })
-        }
-        typeGroup.check(100 + Prefs.lastType)
-        typeGroup.setOnCheckedChangeListener { _, id -> onType(id - 100) }
-        c.addView(typeGroup)
-
-        c.addView(ui.section("Device"))
-        deviceBox = ui.vbox()
-        c.addView(deviceBox)
-        c.addView(ui.row(
-            ui.btn("Refresh / scan") { refreshDevices() },
-            ui.btn("Bluetooth settings", Ui.CARD) { a.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-        ), ui.lp())
-
-        hostEt = ui.edit("IP address", Prefs.wifiHost)
-        portEt = ui.edit("Port", Prefs.wifiPort.toString(), true)
-        wifiBox = ui.vbox().apply {
-            addView(ui.tv("Join the adapter's WiFi (e.g. WiFi_OBDII, V-LINK) in phone settings first. Common: 192.168.0.10:35000 or 192.168.0.123:35000.", 12f, Ui.DIM))
-            addView(ui.row(ui.labeled("IP", hostEt), ui.labeled("Port", portEt)), ui.lp(6))
-        }
-        c.addView(wifiBox, ui.lp())
-
-        c.addView(ui.row(
-            ui.btn("Connect", Ui.GOOD) { doConnect() },
-            ui.btn("Disconnect", Ui.BAD) { ObdManager.disconnect() }
-        ), ui.lp(14))
-        infoTv = ui.tv("", 13f, Ui.DIM).apply { setTextIsSelectable(true) }
-        c.addView(infoTv, ui.lp())
-
-        c.addView(ui.section("Terminal (raw ELM327 / OBD commands)"))
-        val termEt = ui.edit("e.g. ATRV, 010C, 0902, ATSH7E1", "")
-        val sendRow = LinearLayout(a).apply {
-            addView(termEt, LinearLayout.LayoutParams(0, Ui.WRAP, 2f))
-            addView(ui.btn("Send") {
-                ObdManager.terminal(termEt.text.toString()); termEt.setText("")
-            }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { leftMargin = ui.dp(8) })
-        }
-        c.addView(sendRow)
-        logTv = ui.tv("", 11f, Ui.DIM).apply { typeface = Typeface.MONOSPACE; setTextIsSelectable(true) }
-        c.addView(logTv, ui.lp())
-        onType(Prefs.lastType)
-        return ui.scroll(c)
-    }
-
-    private fun onType(t: Int) {
-        wifiBox.visibility = if (t == 2) View.VISIBLE else View.GONE
-        deviceBox.visibility = if (t == 2) View.GONE else View.VISIBLE
-        refreshDevices()
-    }
-
-    private fun looksObd(n: String?): Boolean {
-        val u = n?.uppercase() ?: return false
-        return listOf("OBD", "ELM", "V-LINK", "VLINK", "VGATE", "ICAR", "KONNWEI", "VEEPEAK", "CAN", "CARISTA", "LELINK", "VIECAR", "KIWI")
-            .any { u.contains(it) }
-    }
-
-    fun refreshDevices() {
-        if (!::deviceBox.isInitialized) return
-        stopScan()
-        deviceBox.removeAllViews()
-        rows.clear()
-        selected = null
-        val t = typeGroup.checkedRadioButtonId - 100
-        if (t == 2) return
-        if (!a.hasBtPerms()) {
-            deviceBox.addView(ui.tv("Bluetooth permission not granted — tap here to grant.", 13f, Ui.WARN).apply {
-                setOnClickListener { a.requestPerms() }
-            })
-            return
-        }
-        val ad = a.btAdapter
-        if (ad == null) {
-            deviceBox.addView(ui.tv("This phone has no Bluetooth.", 13f, Ui.BAD)); return
-        }
-        if (!ad.isEnabled) {
-            deviceBox.addView(ui.tv("Bluetooth is off — tap here to turn it on.", 13f, Ui.WARN).apply {
-                setOnClickListener {
-                    try { a.startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) } catch (_: Exception) {}
-                }
-            })
-            return
-        }
-        if (t == 0) {
-            val list = ad.bondedDevices.sortedByDescending { looksObd(it.name) }
-            if (list.isEmpty()) deviceBox.addView(ui.tv("No paired devices. Pair the ELM327 in Bluetooth settings first (PIN 1234, 0000 or 6789).", 13f, Ui.WARN))
-            list.forEach { addDevice(it) }
-        } else startScan(ad)
-    }
-
-    private fun addDevice(d: BluetoothDevice) {
-        if (rows.containsKey(d.address)) return
-        val isBle = typeGroup.checkedRadioButtonId - 100 == 1
-        if (isBle && d.name == null) return
-        val r = ui.card("${d.name ?: "(unnamed)"}\n${d.address}" + if (looksObd(d.name)) "   · OBD adapter" else "", 14f).apply {
-            setOnClickListener { select(d) }
-        }
-        rows[d.address] = r
-        deviceBox.addView(r, ui.lp(6))
-        if (d.address == Prefs.lastAddr || (selected == null && looksObd(d.name))) select(d)
-    }
-
-    private fun select(d: BluetoothDevice) {
-        selected = d
-        rows.forEach { (addr, v) -> v.background = ui.rounded(if (addr == d.address) Ui.SEL else Ui.CARD, 8) }
-    }
-
-    private val scanCb = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            a.runOnUiThread { addDevice(result.device) }
-        }
-    }
-
-    private fun startScan(ad: BluetoothAdapter) {
-        val s = ad.bluetoothLeScanner ?: return
-        deviceBox.addView(ui.tv("Scanning for BLE adapters (10 s)… Location must be ON on older phones.", 12f, Ui.DIM))
-        try {
-            s.startScan(scanCb)
-            scanning = true
-            h.postDelayed({ stopScan() }, 10_000)
-        } catch (e: Exception) {
-            ui.toast("BLE scan failed: ${e.message}")
-        }
-    }
-
-    private fun stopScan() {
-        if (!scanning) return
-        scanning = false
-        try { a.btAdapter?.bluetoothLeScanner?.stopScan(scanCb) } catch (_: Exception) {}
-    }
-
-    private fun wifiFactory(): SocketFactory? {
-        val cm = a.getSystemService(ConnectivityManager::class.java) ?: return null
-        @Suppress("DEPRECATION")
-        for (n in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(n) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return n.socketFactory
-        }
-        return null
-    }
-
-    private fun doConnect() {
-        if (ObdManager.state != ObdManager.State.DISCONNECTED) {
-            ui.toast("Already connected / connecting"); return
-        }
-        val t = typeGroup.checkedRadioButtonId - 100
-        Prefs.lastType = t
-        if (t == 2) {
-            val host = hostEt.text.toString().trim()
-            val port = portEt.text.toString().toIntOrNull() ?: 35000
-            Prefs.wifiHost = host; Prefs.wifiPort = port
-            val fac = wifiFactory()
-            ObdManager.connect(a) { WifiTransport(host, port, fac) }
-            return
-        }
-        val d = selected ?: run { ui.toast("Select your OBD adapter first"); return }
-        stopScan()
-        Prefs.lastAddr = d.address
-        connectBt(t, d)
-    }
-
-    private fun connectBt(t: Int, d: BluetoothDevice) {
-        val ad = a.btAdapter
-        val app = a.applicationContext
-        if (t == 0) ObdManager.connect(a) { ClassicBtTransport(d, ad) }
-        else ObdManager.connect(a) { BleTransport(app, d) }
-    }
-
-    /** Connects to the last used adapter without user interaction. */
-    fun autoConnect() {
-        if (a.hasBtPerms()) AutoStart.connectLast(a)
-    }
-
-    override fun refresh() {
-        val m = ObdManager
-        infoTv.text = buildString {
-            append("Vehicle: ${m.vehicle.title}\n")
-            append("Status: ${m.status}\n")
-            if (m.elmVersion.isNotEmpty()) append("Adapter: ${m.elmVersion}\n")
-            if (m.protocol.isNotEmpty()) append("Protocol: ${m.protocol}\n")
-            if (m.vin.isNotEmpty()) append("VIN: ${m.vin}\n")
-            if (m.supported.isNotEmpty()) append("Supported PIDs: ${m.supported.size}\n")
-            if (Gps.running) append("GPS: ${if (Gps.fresh() != null) "fix ✓" else "searching…"}\n")
-            if (m.logFile.isNotEmpty()) append("CSV log: ${m.logFile}\n")
-        }
-        logTv.text = m.logText().lines().takeLast(60).joinToString("\n")
-    }
-}
-
 /* ============================ Dashboard ============================ */
 
 @SuppressLint("SetTextI18n")
@@ -253,6 +44,16 @@ class DashPage(a: MainActivity) : Page(a) {
         "Load", "Boost", "MAP", "MAF", "Intake air", "Oil temp",
         "Timing", "STFT", "LTFT", "Ambient", "Fuel rate", "Trip km"
     )
+    private val keyIcons = mapOf(
+        "Load" to Ic.ENGINE, "Boost" to Ic.GAUGE, "MAP" to Ic.GAUGE, "MAF" to Ic.WIND, "Intake air" to Ic.WIND,
+        "Oil temp" to Ic.DROP, "Timing" to Ic.BOLT, "STFT" to Ic.SLIDERS, "LTFT" to Ic.SLIDERS,
+        "Ambient" to Ic.THERM, "Fuel rate" to Ic.FUEL, "Trip km" to Ic.ROUTE
+    )
+    private val keyColors = mapOf(
+        "Load" to Ui.ORANGE, "Boost" to Ui.CYAN, "MAP" to Ui.CYAN, "MAF" to Ui.ACC, "Intake air" to Ui.ACC,
+        "Oil temp" to Ui.WARN, "Timing" to Ui.VIOLET, "STFT" to Ui.PINK, "LTFT" to Ui.PINK,
+        "Ambient" to Ui.GOOD, "Fuel rate" to Ui.ORANGE, "Trip km" to Ui.GOOD
+    )
 
     override fun build(): View {
         val c = ui.col()
@@ -265,10 +66,11 @@ class DashPage(a: MainActivity) : Page(a) {
         alertTv = ui.card("", 13f).apply { visibility = View.GONE; setOnClickListener { a.show("Alerts") } }
         c.addView(alertTv, ui.lp(4))
 
-        rCool = RingGauge(a, "Coolant", "°C", 40f, 120f) { v -> if (v >= Prefs.coolantMax) 2 else if (v >= Prefs.coolantMax - 5) 1 else 0 }
+        rCool = RingGauge(a, "Coolant", "°C", 40f, 120f, 0) { v -> if (v >= Prefs.coolantMax) 2 else if (v >= Prefs.coolantMax - 5) 1 else 0 }
         rFuel = RingGauge(a, "Fuel", "%", 0f, 100f) { v -> if (v <= Prefs.lowFuelPct) 2 else if (v <= 25) 1 else 0 }
         rBatt = RingGauge(a, "Battery", "V", 10f, 16f, 1) { v -> if (v < 11.8f || v > Prefs.chargeMaxV) 2 else if (v < 12.3f) 1 else 0 }
         rThr = RingGauge(a, "Throttle", "%", 0f, 100f) { v -> if (v > 85) 1 else 0 }
+        rCool.icon = Ic.THERM; rFuel.icon = Ic.FUEL; rBatt.icon = Ic.BATTERY; rThr.icon = Ic.ENGINE
         c.addView(ui.row(rCool, rFuel, rBatt, rThr), ui.lp(10))
 
         gMeter = GMeterView(a)
@@ -293,14 +95,9 @@ class DashPage(a: MainActivity) : Page(a) {
         c.addView(driveTv, ui.lp(10))
         for (chunk in keys.chunked(3)) {
             val tiles = chunk.map { key ->
-                val v = ui.tv("--", 16f, Ui.WHITE, true)
+                val (box, v) = ui.stat(keyIcons[key] ?: Ic.GAUGE, key, keyColors[key] ?: Ui.ACC)
                 vals[key] = v
-                ui.vbox().apply {
-                    background = ui.rounded(Ui.CARD)
-                    setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
-                    addView(ui.tv(key, 11f, Ui.DIM))
-                    addView(v)
-                }
+                box
             }
             c.addView(ui.row(*tiles.toTypedArray()), ui.lp(8))
         }
@@ -309,7 +106,7 @@ class DashPage(a: MainActivity) : Page(a) {
             ui.btn("Performance", Ui.CARD) { a.show("Perf") },
             ui.btn("New trip", Ui.CARD) { ObdManager.stopTrip(); ObdManager.startTrip() }
         ), ui.lp(12))
-        c.addView(ui.tv("Long-press a gauge or the G-meter to reset its peak.", 11f, Ui.DIM), ui.lp(6))
+        c.addView(ui.tv("Long-press a gauge or the G-meter to reset its peak.", 11f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(8))
         return ui.scroll(c)
     }
 

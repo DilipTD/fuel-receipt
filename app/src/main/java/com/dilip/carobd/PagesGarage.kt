@@ -26,6 +26,7 @@ fun EditText.num(): Double? = text.toString().trim().replace(",", ".").toDoubleO
 
 class MorePage(a: MainActivity) : Page(a) {
     private lateinit var box: LinearLayout
+    private var hero: CarHeroView? = null
 
     override fun build(): View {
         box = ui.col()
@@ -35,17 +36,18 @@ class MorePage(a: MainActivity) : Page(a) {
     override fun onShow() {
         box.removeAllViews()
         val v = ObdManager.vehicle
-        box.addView(ui.section("🚗 ${v.title}"))
-        box.addView(ui.card("Fuel: ${v.fuel} · ${v.dispL} L engine · ${v.tankL} ${v.spec.unit} tank\n" +
-                "Odometer: ${ui.f(v.odoKm, 0, " km")} · price ${ui.money(v.fuelPrice)}/${v.spec.unit}" +
-                (if (v.vin.isNotEmpty()) "\nVIN: ${v.vin}" else "")), ui.lp())
+        val h = CarHeroView(a, true)
+        hero = h
+        h.title = v.title
+        h.subtitle = "${v.fuel} · ${v.dispL} L\nOdometer ${ui.f(v.odoKm, 0, " km")}" + (if (v.vin.isNotEmpty()) "\nVIN ${v.vin}" else "")
+        h.linkIc = when (Prefs.lastType) { 1 -> Ic.BLE; 2 -> Ic.WIFI; else -> Ic.BLUETOOTH }
+        box.addView(h, ui.lp(4))
 
         val due = Maint.dueList(v).filter { it.overdue || it.soon }
         if (due.isNotEmpty()) {
-            box.addView(ui.card("🔧 Maintenance attention\n" + due.take(5).joinToString("\n") { "• ${it.item.name}: ${it.text}" },
-                13f, Ui.WHITE, if (due.any { it.overdue }) Ui.BAD else 0xFF8A6D00.toInt()).apply {
-                setOnClickListener { a.show("Maint") }
-            }, ui.lp(8))
+            box.addView(ui.iconCard(Ic.WRENCH, if (due.any { it.overdue }) Ui.BAD else Ui.WARN, "Maintenance attention",
+                due.take(4).joinToString("\n") { "${it.item.name}: ${it.text}" },
+                if (due.any { it.overdue }) Color.parseColor("#3A1A1D") else Color.parseColor("#3A2C0A")) { a.show("Maint") }, ui.lp(10))
         }
 
         val cal = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }
@@ -53,24 +55,53 @@ class MorePage(a: MainActivity) : Page(a) {
         val km = trips.sumOf { it.distanceKm }
         val fuel = trips.sumOf { it.fuel }
         val spend = Db.fuelLogs(v.id).filter { it.t >= cal.timeInMillis }.sumOf { it.cost }
-        box.addView(ui.card("This month: ${ui.f(km, 0, " km")} · ${trips.size} trips · ${ui.f(fuel, 1, " ${v.spec.unit}")} used" +
-                " · ${ui.econ(if (fuel > 0) km / fuel else null)}\nFuel bought: ${ui.money(spend)} · avg score " +
-                (if (trips.isNotEmpty()) trips.map { it.score }.average().toInt().toString() else "--")), ui.lp(8))
+        box.addView(ui.section("This month", Ic.CALENDAR))
+        val (s1, t1) = ui.stat(Ic.ROUTE, "Distance", Ui.GOOD); t1.text = ui.f(km, 0, " km")
+        val (s2, t2) = ui.stat(Ic.CAR, "Trips", Ui.ACC); t2.text = trips.size.toString()
+        val (s3, t3) = ui.stat(Ic.LEAF, "Economy", Ui.GOOD); t3.text = ui.econ(if (fuel > 0) km / fuel else null)
+        val (s4, t4) = ui.stat(Ic.FUEL, "Fuel used", Ui.ORANGE); t4.text = ui.f(fuel, 1, " ${v.spec.unit}")
+        val (s5, t5) = ui.stat(Ic.DATABASE, "Fuel spend", Ui.VIOLET); t5.text = ui.money(spend)
+        val (s6, t6) = ui.stat(Ic.PULSE, "Avg score", Ui.CYAN); t6.text = if (trips.isNotEmpty()) trips.map { it.score }.average().toInt().toString() else "--"
+        box.addView(ui.row(s1, s2, s3))
+        box.addView(ui.row(s4, s5, s6), ui.lp(8))
 
         val alertN = try { Db.alertCountSince(System.currentTimeMillis() - 7 * 86_400_000L) } catch (_: Exception) { 0 }
-        box.addView(ui.row(ui.btn("🚘 Garage") { a.show("Garage") }, ui.btn("⛽ Fuel log") { a.show("Fuel") }), ui.lp(14))
-        box.addView(ui.row(ui.btn("🔧 Maintenance") { a.show("Maint") }, ui.btn("📊 Analysis") { a.show("Analysis") }), ui.lp(8))
-        box.addView(ui.row(
-            ui.btn("🔔 Alerts" + if (alertN > 0) " ($alertN)" else "", if (alertN > 0) Color.parseColor("#B23B00") else Ui.ACC) { a.show("Alerts") },
-            ui.btn("⏱ Performance") { a.show("Perf") }
+        val nVeh = Db.vehicles().size
+        box.addView(ui.section("Tools", Ic.GRID))
+        box.addView(ui.grid(
+            ui.tile(Ic.CAR, "Garage", "$nVeh vehicle(s)", Ui.ACC) { a.show("Garage") },
+            ui.tile(Ic.FUEL, "Fuel log", "Real mileage & cost", Ui.ORANGE) { a.show("Fuel") }
+        ), ui.lp(0))
+        box.addView(ui.grid(
+            ui.tile(Ic.WRENCH, "Maintenance", if (due.isEmpty()) "All up to date" else "${due.size} need attention", if (due.isEmpty()) Ui.GOOD else Ui.WARN) { a.show("Maint") },
+            ui.tile(Ic.CHART, "Analysis", "Trends & driving tips", Ui.VIOLET) { a.show("Analysis") }
         ), ui.lp(8))
-        box.addView(ui.row(ui.btn("🔋 Battery") { a.show("Battery") }, ui.btn("📍 Where's my car") { openParking() }), ui.lp(8))
-        box.addView(ui.row(ui.btn("⚙ Settings", Ui.CARD) { a.show("Settings") }, ui.btn("🖥 HUD mode", Ui.CARD) { a.show("HUD") }), ui.lp(8))
-        box.addView(ui.btn("ℹ About ${AppInfo.NAME}", Ui.CARD) { a.show("About") }, ui.lp(8))
-        if (Prefs.parkT > 0) box.addView(ui.tv("Car parked: ${ui.date(Prefs.parkT)}", 12f, Ui.DIM), ui.lp(8))
+        box.addView(ui.grid(
+            ui.tile(Ic.BELL, "Alerts", if (alertN > 0) "$alertN this week" else "No alerts", if (alertN > 0) Ui.PINK else Ui.DIM) { a.show("Alerts") },
+            ui.tile(Ic.TIMER, "Performance", "0-100 · ¼ mile · braking", Ui.CYAN) { a.show("Perf") }
+        ), ui.lp(8))
+        box.addView(ui.grid(
+            ui.tile(Ic.BATTERY, "Battery", "Voltage & cranking", Ui.GOOD) { a.show("Battery") },
+            ui.tile(Ic.PIN, "Where's my car", if (Prefs.parkT > 0) "Parked " + ui.date(Prefs.parkT, "dd MMM HH:mm") else "Saved when a trip ends", Ui.ORANGE) { openParking() }
+        ), ui.lp(8))
+        box.addView(ui.grid(
+            ui.tile(Ic.MONITOR, "HUD mode", "Windscreen mirror", Ui.ACC) { a.show("HUD") },
+            ui.tile(Ic.GEAR, "Settings", "Connection & options", Color.parseColor("#90A4AE")) { a.show("Settings") }
+        ), ui.lp(8))
+        box.addView(ui.tile(Ic.INFO, "About ${AppInfo.NAME}", "Version ${AppInfo.VERSION} · developed by ${AppInfo.DEVELOPER}", Ui.VIOLET) { a.show("About") }, ui.lp(8))
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply {
             gravity = android.view.Gravity.CENTER
-        }, ui.lp(20))
+        }, ui.lp(22))
+    }
+
+    override fun refresh() {
+        val m = ObdManager
+        hero?.state = when (m.state) {
+            ObdManager.State.CONNECTED -> if (m.engineOn) 2 else 3
+            ObdManager.State.CONNECTING -> 1
+            else -> 0
+        }
+        hero?.speed = m.values[0x0D] ?: 0.0
     }
 }
 

@@ -221,6 +221,8 @@ class RingGauge(
             field = v; invalidate()
         }
     var subText: String = ""
+    var icon: Ic? = null
+    private var iconDr: IconDrawable? = null
     private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; color = Color.parseColor("#26303A")
     }
@@ -261,8 +263,17 @@ class RingGauge(
         t1.textSize = s * 0.2f
         t2.textSize = s * 0.1f
         t1.color = if (v != null && zone(v) == 2) Color.parseColor("#FF5252") else Color.WHITE
-        c.drawText(v?.let { "%.${decimals}f".format(it) } ?: "--", cx, cy + t1.textSize * 0.25f, t1)
-        c.drawText(unit, cx, cy + t1.textSize * 0.25f + t2.textSize * 1.2f, t2)
+        val base = if (icon != null) cy + t1.textSize * 0.5f else cy + t1.textSize * 0.25f
+        c.drawText(v?.let { "%.${decimals}f".format(it) } ?: "--", cx, base, t1)
+        c.drawText(unit, cx, base + t2.textSize * 1.2f, t2)
+        icon?.let { ic ->
+            val d = iconDr ?: IconDrawable(ic, Color.WHITE, (s * 0.2f).toInt()).also { iconDr = it }
+            val sz = (s * 0.21f).toInt()
+            val x = (cx - sz / 2f).toInt()
+            val y = (cy - s * 0.30f).toInt()
+            d.color = if (v != null) when (zone(v)) { 2 -> Color.parseColor("#FF5252"); 1 -> Color.parseColor("#FFB300"); else -> Color.parseColor("#26C6DA") } else Color.parseColor("#5C6B7A")
+            d.setBounds(x, y, x + sz, y + sz); d.draw(c)
+        }
         t2.textSize = s * 0.105f
         c.drawText(if (subText.isNotEmpty()) "$label · $subText" else label, cx, s * 1.08f, t2)
     }

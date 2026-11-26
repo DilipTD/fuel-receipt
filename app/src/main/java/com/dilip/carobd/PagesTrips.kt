@@ -73,9 +73,16 @@ class TripsPage(a: MainActivity) : Page(a) {
                     tr.score >= 85 -> Ui.GOOD; tr.score >= 65 -> Ui.WARN; else -> Ui.BAD
                 }
                 val row = LinearLayout(a).apply {
-                    background = ui.rounded(Ui.CARD, 6)
-                    setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
-                    addView(ui.tv("${tr.score}", 20f, col, true).apply { minWidth = ui.dp(44) })
+                    background = ui.rounded(Ui.CARD, 14)
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10))
+                    addView(ui.tv("${tr.score}", 17f, col, true).apply {
+                        gravity = android.view.Gravity.CENTER
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.OVAL
+                            setColor(Ui.alpha(col, 40)); setStroke(ui.dp(3), col)
+                        }
+                    }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { rightMargin = ui.dp(12) })
                     addView(ui.tv(
                         "${ui.date(tr.start)} · ${ui.f(tr.distanceKm, 1, " km")} · ${ui.hms(tr.durationS)}\n" +
                                 "${ui.econ(tr.kmpl)} · ${ui.f(tr.fuel, 2, " $u")} · ${ui.money(tr.cost)} · " +
