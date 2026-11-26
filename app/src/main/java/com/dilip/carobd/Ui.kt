@@ -268,6 +268,10 @@ class Ui(val a: Activity) {
     fun scroll(v: View) = ScrollView(a).apply {
         isFillViewport = true
         overScrollMode = View.OVER_SCROLL_NEVER
+        // Keep focus on the scroll view itself so a text box or selectable text lower down
+        // can't grab focus and drag the page to it every time the content refreshes.
+        descendantFocusability = android.view.ViewGroup.FOCUS_BEFORE_DESCENDANTS
+        isFocusableInTouchMode = true
         addView(v)
     }
 

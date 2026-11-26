@@ -318,7 +318,7 @@ class ConnectPage(a: MainActivity) : Page(a) {
         hero.invalidate()
         fun set(k: String, v: String) {
             val p = info[k] ?: return
-            p.second.text = v
+            if (p.second.text.toString() != v) p.second.text = v
             p.first.visibility = if (v.isEmpty()) View.GONE else View.VISIBLE
         }
         set("veh", m.vehicle.title)
@@ -329,6 +329,9 @@ class ConnectPage(a: MainActivity) : Page(a) {
         set("pid", if (m.supported.isNotEmpty()) m.supported.size.toString() else "")
         set("gps", if (Gps.running) (if (Gps.fresh() != null) "fix ✓" else "searching…") else "")
         set("csv", m.logFile)
-        if (termBody.visibility == View.VISIBLE) logTv.text = m.logText().lines().takeLast(60).joinToString("\n")
+        if (termBody.visibility == View.VISIBLE) {
+            val t = m.logText().lines().takeLast(60).joinToString("\n")
+            if (logTv.text.toString() != t) logTv.text = t
+        }
     }
 }
