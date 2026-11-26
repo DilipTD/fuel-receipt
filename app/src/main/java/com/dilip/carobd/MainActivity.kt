@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var titleTv: TextView
     private lateinit var subTv: TextView
     private lateinit var stDot: View
+    private var dotAnim: android.animation.ObjectAnimator? = null
     private lateinit var stTv: TextView
     private lateinit var stBox: LinearLayout
     private lateinit var backBtn: android.widget.ImageView
@@ -48,7 +49,7 @@ class MainActivity : Activity() {
     private var lastState = ObdManager.State.DISCONNECTED
     var btAdapter: BluetoothAdapter? = null
     var selectedTripId = 0L
-    private val tabs = listOf("Dash", "Live", "Trips", "Diag", "More")
+    private val tabs = listOf("Dash", "Live", "Trips", "Fuel", "Diag", "More")
     private val handler = Handler(Looper.getMainLooper())
 
     private val tick = object : Runnable {
@@ -109,8 +110,8 @@ class MainActivity : Activity() {
             }
             setPadding(ui.dp(6), ui.dp(6), ui.dp(6), ui.dp(6))
         }
-        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Live" to Ic.CHART, "Trips" to Ic.ROUTE, "Diag" to Ic.PULSE, "More" to Ic.GRID)
-        val tabNames = mapOf("Dash" to "Dash", "Live" to "Live", "Trips" to "Trips", "Diag" to "Diagnose", "More" to "My car")
+        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Live" to Ic.CHART, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Diag" to Ic.PULSE, "More" to Ic.GRID)
+        val tabNames = mapOf("Dash" to "Dash", "Live" to "Live", "Trips" to "Trips", "Fuel" to "Fuel", "Diag" to "Diagnose", "More" to "My car")
         for (name in tabs) {
             val dr = IconDrawable(tabIcons[name] ?: Ic.GRID, Ui.DIM, ui.dp(24))
             val lbl = ui.tv(tabNames[name] ?: name, 10.5f, Ui.DIM).apply { gravity = Gravity.CENTER }
@@ -259,6 +260,7 @@ class MainActivity : Activity() {
 
     fun show(name: String) {
         if (!pages.containsKey(name)) return
+        val prev = current
         current = name
         pages.forEach { (k, p) -> p.view.visibility = if (k == name) View.VISIBLE else View.GONE }
         var tab = name
@@ -269,6 +271,10 @@ class MainActivity : Activity() {
             navIcons[k]?.color = if (on) Ui.CYAN else Ui.DIM
             navLabels[k]?.setTextColor(if (on) Ui.WHITE else Ui.DIM)
             v.background = if (on) ui.rounded(Ui.SEL, 14) else null
+            if (on && prev != name) {
+                v.scaleX = 0.8f; v.scaleY = 0.8f
+                v.animate().scaleX(1f).scaleY(1f).setDuration(380).setInterpolator(android.view.animation.OvershootInterpolator(3.5f)).start()
+            }
         }
         titleTv.text = titles[name] ?: name
         val hasBack = pages[name]?.parent != null
@@ -281,6 +287,11 @@ class MainActivity : Activity() {
         nav.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()
+        if (prev != name && name != "Car" && name != "HUD") pages[name]?.view?.let { pv ->
+            pv.alpha = 0f; pv.translationX = ui.dp(28).toFloat()
+            pv.animate().alpha(1f).translationX(0f).setDuration(260).setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
+            ui.staggerIn(pv)
+        }
         refresh()
     }
 
@@ -298,6 +309,11 @@ class MainActivity : Activity() {
             else -> "Offline" to Ui.DIM
         }
         stTv.text = stText
+        if (st == ObdManager.State.CONNECTING) {
+            if (dotAnim == null) dotAnim = android.animation.ObjectAnimator.ofFloat(stDot, "alpha", 1f, 0.2f).apply {
+                duration = 600; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE; start()
+            }
+        } else { dotAnim?.cancel(); dotAnim = null; stDot.alpha = 1f }
         stDot.background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(stCol) }
         stBox.background = ui.rounded(Ui.alpha(stCol, 40), 16)
         stTv.setTextColor(Ui.lighten(stCol, 1.2f))

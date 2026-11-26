@@ -159,6 +159,34 @@ class Ui(val a: Activity) {
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
     }
 
+    /** Springy press feedback: shrink on touch, overshoot back on release. Does not consume the touch. */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    fun pressAnim(v: View) {
+        v.setOnTouchListener { view, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> view.animate().scaleX(0.95f).scaleY(0.95f).setDuration(90).start()
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                    view.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(android.view.animation.OvershootInterpolator(3f)).start()
+            }
+            false
+        }
+    }
+
+    /** Staggered fade/slide-in of the direct children of the first LinearLayout found under [root]. */
+    fun staggerIn(root: View, maxItems: Int = 14) {
+        val box: android.view.ViewGroup = when {
+            root is android.widget.ScrollView && root.childCount > 0 && root.getChildAt(0) is android.view.ViewGroup -> root.getChildAt(0) as android.view.ViewGroup
+            root is android.view.ViewGroup -> root
+            else -> return
+        }
+        for (i in 0 until minOf(box.childCount, maxItems)) {
+            val c = box.getChildAt(i)
+            c.alpha = 0f; c.translationY = dp(26).toFloat()
+            c.animate().alpha(1f).translationY(0f).setStartDelay(60L + i * 45L).setDuration(320)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.8f)).start()
+        }
+    }
+
     private fun pressable(normal: Drawable, pressed: Drawable) = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_pressed), pressed)
         addState(intArrayOf(), normal)
@@ -185,6 +213,7 @@ class Ui(val a: Activity) {
             compoundDrawablePadding = dp(8)
         } else gravity = Gravity.CENTER
         setOnClickListener { onClick() }
+        pressAnim(this)
     }
 
     fun lp(top: Int = 8) = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(top) }
@@ -286,6 +315,7 @@ class Ui(val a: Activity) {
             if (onClick != null) {
                 addView(iconView(Ic.CHEV, DIM, 18))
                 setOnClickListener { onClick() }
+                pressAnim(this)
             }
         }
 
@@ -298,6 +328,7 @@ class Ui(val a: Activity) {
         addView(tv(title, 15f, WHITE, true), lp(12))
         addView(tv(sub, 11.5f, DIM))
         setOnClickListener { onClick() }
+        pressAnim(this)
     }
 
     /** Small stat tile: icon, caption, value. */

@@ -205,7 +205,7 @@ class GaragePage(a: MainActivity) : Page(a) {
 /* ============================ Fuel log & real mileage ============================ */
 
 class FuelPage(a: MainActivity) : Page(a) {
-    override val parent = "More"
+    override val parent: String? = null
     private lateinit var box: LinearLayout
     private val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
