@@ -227,9 +227,36 @@ object Maint {
         }
     }
 
+    /** Service schedule that suits the fuel type (no spark plugs on a diesel, no engine oil on an EV, extra CNG/EV/hybrid items). */
+    fun defaultsFor(fuel: String): List<Triple<String, Double, Int>> {
+        val ev = fuel.startsWith("Electric"); val diesel = fuel == "Diesel"
+        val gas = fuel == "CNG" || fuel == "LPG"; val hybrid = fuel.startsWith("Hybrid")
+        val out = defaults.filter { (n, _, _) ->
+            when {
+                ev -> !(n.startsWith("Engine oil") || n.startsWith("Air filter") || n.startsWith("Spark") || n.startsWith("Fuel filter") || n.startsWith("Drive belt"))
+                diesel -> !n.startsWith("Spark")
+                else -> true
+            }
+        }.map { (n, km, d) ->
+            when {
+                n.startsWith("Spark") -> Triple(if (gas) "Spark plugs (CNG/LPG)" else "Spark plugs", if (gas) 20000.0 else km, d)
+                n.startsWith("Transmission") && ev -> Triple("Reduction gear oil", 60000.0, 1825)
+                n.startsWith("Coolant") && ev -> Triple("Battery & motor coolant", km, d)
+                else -> Triple(n, km, d)
+            }
+        }.toMutableList()
+        when {
+            ev -> { out += Triple("HV battery health check", 0.0, 180); out += Triple("Charging port & cable inspection", 0.0, 365) }
+            diesel -> { out += Triple("DPF / EGR inspection", 40000.0, 1095); out += Triple("Fuel filter water drain", 10000.0, 365) }
+            gas -> { out += Triple("$fuel kit & regulator check", 10000.0, 365); out += Triple("$fuel cylinder hydro-test", 0.0, 1095) }
+            hybrid -> out += Triple("Hybrid battery check", 0.0, 365)
+        }
+        return out
+    }
+
     fun loadDefaults(v: Vehicle) {
         val now = System.currentTimeMillis()
-        for ((n, km, d) in defaults) Db.saveMaint(MaintItem(0, v.id, n, km, d, v.odoKm, now, true))
+        for ((n, km, d) in defaultsFor(v.fuel)) Db.saveMaint(MaintItem(0, v.id, n, km, d, v.odoKm, now, true))
     }
 
     class Due(val item: MaintItem, val kmLeft: Double?, val daysLeft: Int?) {

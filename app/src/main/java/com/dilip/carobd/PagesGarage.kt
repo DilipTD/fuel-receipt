@@ -9,12 +9,21 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import android.widget.TextView
 import java.util.Locale
 
 /** Shows a simple form dialog. */
 fun Page.formDialog(title: String, fields: List<Pair<String, View>>, okText: String = "Save", onOk: () -> Unit) {
     val box = ui.vbox().apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) }
     for ((label, v) in fields) box.addView(ui.labeled(label, v), ui.lp(6))
+    AlertDialog.Builder(a).setTitle(title).setView(ui.scroll(box))
+        .setPositiveButton(okText) { _, _ -> onOk() }
+        .setNegativeButton("Cancel", null).show()
+}
+
+fun Page.rawFormDialog(title: String, rows: List<View>, okText: String = "Save", onOk: () -> Unit) {
+    val box = ui.vbox().apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), 0) }
+    for (r in rows) box.addView(r, ui.lp(6))
     AlertDialog.Builder(a).setTitle(title).setView(ui.scroll(box))
         .setPositiveButton(okText) { _, _ -> onOk() }
         .setNegativeButton("Cancel", null).show()
@@ -187,26 +196,53 @@ class GaragePage(a: MainActivity) : Page(a) {
         val disp = ui.edit("litres", v.dispL.toString(), true)
         val tank = ui.edit("litres / kg / kWh", v.tankL.toString(), true)
         val ve = ui.edit("0.80–0.90", v.ve.toString(), true)
-        val price = ui.edit("₹ per unit", v.fuelPrice.toString(), true)
+        val price = ui.edit("per unit", v.fuelPrice.toString(), true)
         val corr = ui.edit("1.00", "%.3f".format(Locale.US, v.fuelCorr), true)
         val odo = ui.edit("km", "%.0f".format(Locale.US, v.odoKm), true)
         val spd = ui.edit("km/h", v.speedLimit.toString(), true)
         val rpm = ui.edit("rpm", v.rpmLimit.toString(), true)
         val vinE = ui.edit("17 characters (or Documents → Fetch VIN)", v.vin)
         val regE = ui.edit("e.g. KA01AB1234", v.regNo)
-        formDialog(if (v.id == 0L) "Add vehicle" else "Edit ${v.name}", listOf(
-            "Name" to name, "Make" to make, "Model" to model, "Year" to year, "Fuel type" to fuel,
-            "Engine displacement (L)" to disp, "Tank (L / kg) or battery (kWh)" to tank, "Volumetric efficiency" to ve,
-            "Fuel price" to price, "Fuel correction factor" to corr, "Odometer (km)" to odo,
-            "Overspeed alert (km/h)" to spd, "Over-rev alert (rpm)" to rpm,
-            "VIN" to vinE, "Registration number" to regE
+        fun labeledRow(label: String, view: View) = ui.labeled(label, view)
+        val rDisp = labeledRow("Engine displacement (L)", disp); val rTank = labeledRow("Tank", tank); val rVe = labeledRow("Volumetric efficiency", ve)
+        val rPrice = labeledRow("Fuel price", price); val rRpm = labeledRow("Over-rev alert (rpm)", rpm)
+        val rCorr = labeledRow("Fuel correction factor", corr)
+        fun defRpm(f: String) = if (f == "Diesel") 4500 else 6000
+        var lastFuel = v.fuel
+        fun applyFuel(f: String) {
+            val sp = Fuels.get(f); val ev = f.startsWith("Electric")
+            val lbl = { r: LinearLayout, t: String -> (r.getChildAt(0) as TextView).text = t }
+            rDisp.visibility = if (ev) View.GONE else View.VISIBLE
+            rVe.visibility = if (ev) View.GONE else View.VISIBLE
+            rRpm.visibility = if (ev) View.GONE else View.VISIBLE
+            lbl(rTank, when { ev -> "Battery capacity (kWh)"; sp.unit == "kg" -> "Tank capacity (kg)"; f == "LPG" -> "Tank capacity (L)"; else -> "Tank capacity (L)" })
+            tank.hint = if (ev) "kWh" else sp.unit
+            lbl(rPrice, "Price per ${sp.unit} (${Prefs.currency})")
+            lbl(rCorr, if (ev) "Energy correction factor" else "Fuel correction factor")
+            lbl(rDisp, if (f.startsWith("Hybrid")) "Petrol engine displacement (L)" else "Engine displacement (L)")
+            lbl(rVe, if (f == "Diesel") "Volumetric efficiency (turbo diesel ~0.90–1.0)" else if (sp.unit == "kg") "Volumetric efficiency (CNG ~0.80)" else "Volumetric efficiency (0.80–0.90)")
+            // follow the typical limits for the fuel unless the user already typed their own
+            if (!ev && rpm.num()?.toInt() == defRpm(lastFuel)) rpm.setText(defRpm(f).toString())
+            if (rpm.text.isNullOrBlank() && !ev) rpm.setText(defRpm(f).toString())
+            lastFuel = f
+        }
+        fuel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>?, view: View?, pos: Int, id: Long) { applyFuel(Fuels.all[pos].name) }
+            override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
+        }
+        applyFuel(v.fuel)
+        rawFormDialog(if (v.id == 0L) "Add vehicle" else "Edit ${v.name}", listOf(
+            labeledRow("Name", name), labeledRow("Make", make), labeledRow("Model", model), labeledRow("Year", year), labeledRow("Fuel type", fuel),
+            rDisp, rTank, rVe, rPrice, rCorr, labeledRow("Odometer (km)", odo),
+            labeledRow("Overspeed alert (km/h)", spd), rRpm,
+            labeledRow("VIN", vinE), labeledRow("Registration number", regE)
         )) {
             val isNew = v.id == 0L
             v.name = name.text.toString().ifBlank { "My car" }
             v.make = make.text.toString().trim(); v.model = model.text.toString().trim()
             v.year = year.num()?.toInt() ?: 0
             v.fuel = Fuels.all[fuel.selectedItemPosition.coerceAtLeast(0)].name
-            disp.num()?.let { v.dispL = it }; tank.num()?.let { v.tankL = it }; ve.num()?.let { v.ve = it }
+            if (!v.isEv) disp.num()?.let { v.dispL = it }; tank.num()?.let { v.tankL = it }; ve.num()?.let { v.ve = it }
             price.num()?.let { v.fuelPrice = it }; corr.num()?.let { v.fuelCorr = it }; odo.num()?.let { v.odoKm = it }
             spd.num()?.let { v.speedLimit = it.toInt() }; rpm.num()?.let { v.rpmLimit = it.toInt() }
             v.vin = vinE.text.toString().trim().uppercase().replace(" ", ""); v.regNo = regE.text.toString().trim().uppercase()
