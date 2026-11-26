@@ -23,15 +23,15 @@ class CarDashPage(a: MainActivity) : Page(a) {
     private lateinit var leftBox: FrameLayout
 
     private fun statBlock(ic: Ic, cap: String, col: Int): LinearLayout {
-        val v = ui.tv("--", 24f, Ui.WHITE, true).apply { gravity = Gravity.CENTER }
+        val v = ui.tv("--", 17f, Ui.WHITE, true).apply { gravity = Gravity.CENTER; maxLines = 1 }
         stats[cap] = v
         return LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             background = ui.rounded(Ui.CARD, 14)
-            setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8))
-            addView(ui.iconView(ic, col, 20))
+            setPadding(ui.dp(4), ui.dp(5), ui.dp(4), ui.dp(5))
+            addView(ui.iconView(ic, col, 16))
             addView(v)
-            addView(ui.tv(cap, 11f, Ui.DIM).apply { gravity = Gravity.CENTER })
+            addView(ui.tv(cap, 10f, Ui.DIM).apply { gravity = Gravity.CENTER; maxLines = 1 })
         }
     }
 
@@ -67,11 +67,15 @@ class CarDashPage(a: MainActivity) : Page(a) {
             addView(rightBox, LinearLayout.LayoutParams(0, Ui.MATCH, 1.2f))
         }, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
 
-        // bottom stats
-        root.addView(LinearLayout(a).apply {
-            val items = listOf(statBlock(Ic.ROUTE, "Range", Ui.GOOD), statBlock(Ic.LEAF, "Economy", Ui.GOOD),
-                statBlock(Ic.CAR, "Trip km", Ui.ACC), statBlock(Ic.BATTERY, "12 V", Ui.WARN))
-            items.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (i > 0) leftMargin = ui.dp(8) }) }
+        // bottom stats: two compact rows
+        val rows = listOf(
+            listOf(statBlock(Ic.ROUTE, "Range", Ui.GOOD), statBlock(Ic.LEAF, "Economy now", Ui.GOOD), statBlock(Ic.GAUGE, "Trip economy", Ui.GOOD),
+                statBlock(Ic.FUEL, "Fuel rate", Ui.ORANGE), statBlock(Ic.ROUTE, "Trip dist", Ui.ACC), statBlock(Ic.TIMER, "Trip time", Ui.ACC)),
+            listOf(statBlock(Ic.GAUGE, "Avg speed", Ui.CYAN), statBlock(Ic.BOLT, "Max speed", Ui.CYAN), statBlock(Ic.BATTERY, "12 V", Ui.WARN),
+                statBlock(Ic.ENGINE, "Engine load", Ui.VIOLET), statBlock(Ic.WIND, "Intake air", Ui.VIOLET), statBlock(Ic.USER, "Drive score", Ui.GOOD))
+        )
+        for (r in rows) root.addView(LinearLayout(a).apply {
+            r.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (i > 0) leftMargin = ui.dp(6) }) }
         }, ui.lp(4))
         return root
     }
@@ -90,7 +94,8 @@ class CarDashPage(a: MainActivity) : Page(a) {
         val m = ObdManager; val v = m.values; val veh = m.vehicle
         clock.text = ui.date(System.currentTimeMillis(), "HH:mm")
         val spd = v[0x0D]
-        speed.text = spd?.let { "%.0f".format(it) } ?: "--"
+        speed.text = spd?.let { "%.0f".format(Units.spd(it)) } ?: "--"
+        unitTv.text = Units.spdLabel
         speed.setTextColor(if (m.engine.overspeedNow) Ui.BAD else Ui.WHITE)
         val rpm = v[0x0C]
         gRpm.value = rpm?.toFloat()
@@ -101,9 +106,18 @@ class CarDashPage(a: MainActivity) : Page(a) {
         coolant.value = v[0x05]?.toFloat()
         val tip = Coach.tip()
         coach.text = tip?.second ?: ""
-        stats["Range"]?.text = m.rangeKm()?.let { "%.0f km".format(it) } ?: "--"
-        stats["Economy"]?.text = ui.econ(m.engine.current?.kmpl ?: m.engine.instantKmpl)
-        stats["Trip km"]?.text = ui.f(m.engine.current?.distanceKm, 1)
+        val t = m.engine.current
+        stats["Range"]?.text = m.rangeKm()?.let { ui.dist(it, 0) } ?: "--"
+        stats["Economy now"]?.text = ui.econ(m.engine.instantKmpl)
+        stats["Trip economy"]?.text = ui.econ(t?.kmpl)
+        stats["Fuel rate"]?.text = m.fuelRate()?.let { ui.vol(it, 1) + "/h" } ?: "--"
+        stats["Trip dist"]?.text = ui.dist(t?.distanceKm, 1)
+        stats["Trip time"]?.text = t?.let { "%d:%02d".format((it.durationS / 3600).toInt(), ((it.durationS % 3600) / 60).toInt()) } ?: "--"
+        stats["Avg speed"]?.text = t?.let { ui.spd(it.avgSpeed) } ?: "--"
+        stats["Max speed"]?.text = t?.let { ui.spd(it.maxSpeed) } ?: "--"
         stats["12 V"]?.text = ui.f(m.batteryV ?: v[0x42], 1, " V")
+        stats["Engine load"]?.text = v[0x04]?.let { "%.0f %%".format(it) } ?: "--"
+        stats["Intake air"]?.text = ui.temp(v[0x0F])
+        stats["Drive score"]?.text = t?.let { "${it.score}" } ?: "--"
     }
 }

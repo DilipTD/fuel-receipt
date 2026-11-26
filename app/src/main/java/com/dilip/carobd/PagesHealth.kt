@@ -18,7 +18,33 @@ object HealthScore {
 
     class Result(val items: List<Item>, val score: Int)
 
+    /** Live result merged with the last known readings, so the score survives restarts until a new reading clears a problem. */
     fun compute(): Result {
+        val live = computeLive()
+        val snap = try { org.json.JSONObject(Prefs.healthSnap) } catch (_: Exception) { org.json.JSONObject() }
+        val out = ArrayList<Item>()
+        val nsnap = org.json.JSONObject()
+        for (i in live.items) {
+            if (i.status >= 0) {
+                out += i
+                nsnap.put(i.name, org.json.JSONObject().put("s", i.status).put("d", i.detail))
+            } else {
+                val o = snap.optJSONObject(i.name)
+                if (o != null) {
+                    out += Item(i.name, i.ic, o.optInt("s", -1), o.optString("d") + " · last reading")
+                    nsnap.put(i.name, o)
+                } else out += i
+            }
+        }
+        val s = nsnap.toString()
+        if (s != Prefs.healthSnap) Prefs.healthSnap = s
+        val known = out.count { it.status >= 0 }
+        var pen = 0
+        for (it in out) pen += when (it.status) { 2 -> 22; 1 -> 9; else -> 0 }
+        return Result(out, if (known == 0) 0 else (100 - pen).coerceIn(5, 100))
+    }
+
+    private fun computeLive(): Result {
         val m = ObdManager
         val v = m.values
         val veh = m.vehicle
@@ -318,6 +344,9 @@ class HealthPage(a: MainActivity) : Page(a) {
             val col = when (i.status) { 0 -> Ui.GOOD; 1 -> Ui.WARN; 2 -> Ui.BAD; else -> Ui.DIM }
             box.addView(ui.iconCard(i.ic, col, i.name, i.detail), ui.lp(6))
         }
+        if (r.items.any { it.detail.endsWith("last reading") })
+            box.addView(ui.btn("Clear stored readings", Ui.CARD) { Prefs.healthSnap = ""; onShow() }, ui.lp(12))
+        box.addView(ui.tv("Readings are kept until the car reports a new value or you clear them.", 11.5f, Ui.DIM).apply { gravity = android.view.Gravity.CENTER }, ui.lp(8))
         box.addView(ui.tv(AppInfo.credit, 11f, Ui.DIM).apply { gravity = android.view.Gravity.CENTER }, ui.lp(16))
     }
 

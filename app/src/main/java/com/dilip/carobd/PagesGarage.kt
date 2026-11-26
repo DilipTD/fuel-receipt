@@ -87,7 +87,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Road assistant", Ui.GOOD) { a.show("Road") },
             Triple("Documents", Ui.CYAN) { a.show("Docs") },
             Triple("Backup & cloud", Ui.VIOLET) { a.show("Backup") },
-            Triple("Home Assistant", Ui.CYAN) { (a.pages["Settings"] as? SettingsPage)?.openTab(7); a.show("Settings") },
+            Triple("Reports", Ui.VIOLET) { a.show("Reports") },
             Triple("Diagnosis", Ui.PINK) { a.show("Diag") },
             Triple("Drive mode", Ui.CYAN) { a.show("Car") },
             Triple("Car health", Ui.GOOD) { a.show("Health") },
@@ -118,7 +118,7 @@ class MorePage(a: MainActivity) : Page(a) {
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
         l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Permissions") -> Ic.SLIDERS; l.startsWith("Home Assistant") -> Ic.HOME; l.startsWith("Documents") -> Ic.DOC
-        l.startsWith("Calc") -> Ic.CHART; l.startsWith("Help") -> Ic.INFO
+        l.startsWith("Reports") -> Ic.DOC; l.startsWith("Calc") -> Ic.CHART; l.startsWith("Help") -> Ic.INFO
         l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
         l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
         else -> Ic.GRID

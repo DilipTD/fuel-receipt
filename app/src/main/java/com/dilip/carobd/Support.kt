@@ -170,6 +170,12 @@ object Prefs {
         set(v) = sp.edit().putString("distMethod", v).apply()
     var voltMethod: String get() = sp.getString("voltMethod", "ADAPTER") ?: "ADAPTER"
         set(v) = sp.edit().putString("voltMethod", v).apply()
+    var purchasePrice: Double get() = dbl("buyPrice", 0.0)
+        set(v) = putD("buyPrice", v)
+    var currentValue: Double get() = dbl("curValue", 0.0)
+        set(v) = putD("curValue", v)
+    var healthSnap: String get() = sp.getString("healthSnap", "") ?: ""
+        set(v) = sp.edit().putString("healthSnap", v).apply()
     var battType: String get() = sp.getString("battType", "Lead-acid (flooded)") ?: "Lead-acid (flooded)"
         set(v) = sp.edit().putString("battType", v).apply()
     var battCca: Int get() = sp.getInt("battCca", 0)
