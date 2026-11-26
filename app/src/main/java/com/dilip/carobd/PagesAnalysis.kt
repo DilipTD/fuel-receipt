@@ -57,7 +57,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
             append("Driving time   ${ui.f(hours, 1, " h")}  (idle ${ui.f(idle / maxOf(hours, 0.01) * 100, 0, "%")})\n")
             append("Fuel used      ${ui.vol(fuel, 1)} (idle ${ui.vol(idleFuel, 2)})\n")
             append("Economy        ${ui.econ(if (fuel > 0) km / fuel else null, u)}\n")
-            append("Fuel cost      ${ui.money(cost)}  (${ui.f(if (km > 0) cost / km else null, 2, " ₹/km")})\n")
+            append("Fuel cost      ${ui.money(cost)}  (${ui.f(if (km > 0) cost / km else null, 2, " ${Prefs.currency}/km")})\n")
             append("CO2            ${ui.f(co2, 1, " kg")}\n")
             append("Avg speed      ${ui.spd(km / maxOf(hours, 0.01), 1)}\n")
             append("Max speed      ${ui.spd(trips.maxOf { it.maxSpeed }, 0)}\n")
@@ -182,7 +182,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
         if (logs.isNotEmpty()) {
             box.addView(ui.section("Fuel purchases"))
             box.addView(ui.card("${logs.size} refuels · ${ui.vol(logs.sumOf { it.qty }, 1)} · ${ui.money(logs.sumOf { it.cost })}\n" +
-                    "Avg price ${ui.f(logs.sumOf { it.cost } / maxOf(logs.sumOf { it.qty }, 0.01), 2, " ₹/$u")}"), ui.lp())
+                    "Avg price ${ui.f(logs.sumOf { it.cost } / maxOf(logs.sumOf { it.qty }, 0.01), 2, " ${Prefs.currency}/$u")}"), ui.lp())
         }
     }
 }

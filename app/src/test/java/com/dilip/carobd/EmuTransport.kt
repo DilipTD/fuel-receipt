@@ -16,6 +16,8 @@ class EmuTransport(
               val load: Double = 30.0, val maf: Double = 8.0, val fuelPct: Double = 62.0, val volt: Double = 14.1)
 
     override val name = "Emulator"
+    /** Ignition switch: when false the ECU stops answering (adapter still answers AT commands). */
+    @Volatile var ignition = true
     private val t0 = System.currentTimeMillis()
     private var headers = false
     private var spaces = true
@@ -70,7 +72,8 @@ class EmuTransport(
 
     private fun reply(cmdRaw: String): String {
         val cmd = cmdRaw.replace(" ", "").uppercase()
-        val car = profile(now())
+        val car0 = profile(now())
+        val car = if (ignition) car0 else EmuTransport.Car(null, 0.0, volt = 12.5)
         if (cmd.startsWith("AT")) {
             val a = cmd.substring(2)
             return when {

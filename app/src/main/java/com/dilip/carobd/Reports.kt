@@ -20,7 +20,13 @@ import java.util.Locale
 
 /** Small multi-page A4 PDF writer: title block, headings, key/value rows and tables. */
 class PdfBuilder(private val title: String, private val sub: String) {
-    private val doc = PdfDocument()
+    companion object {
+        /** Simulation hook: draw pages on this canvas instead of a native PdfDocument. */
+        @Volatile var testCanvas: (() -> android.graphics.Canvas)? = null
+    }
+    private val tc = testCanvas
+    private val doc: PdfDocument? = if (tc == null) PdfDocument() else null
+    val pages get() = n
     private var page: PdfDocument.Page? = null
     private var c: android.graphics.Canvas? = null
     private var y = 0f
@@ -32,10 +38,16 @@ class PdfBuilder(private val title: String, private val sub: String) {
     init { newPage(true) }
 
     private fun newPage(first: Boolean = false) {
-        page?.let { footer(); doc.finishPage(it) }
-        n++
-        page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, n).create())
-        c = page!!.canvas
+        if (doc != null) {
+            page?.let { footer(); doc.finishPage(it) }
+            n++
+            page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, n).create())
+            c = page!!.canvas
+        } else {
+            if (n > 0) footer()
+            n++
+            c = tc!!()
+        }
         if (first) {
             p.color = Color.parseColor("#0F1A24"); c!!.drawRect(0f, 0f, W, 96f, p)
             p.color = Color.parseColor("#2FA8FF"); c!!.drawRect(0f, 92f, W, 96f, p)
@@ -103,7 +115,9 @@ class PdfBuilder(private val title: String, private val sub: String) {
     }
 
     fun save(ctx: Context, name: String): String? {
-        footer(); doc.finishPage(page!!)
+        footer()
+        if (doc == null) return "simulated/$name ($n page${if (n == 1) "" else "s"})"
+        doc.finishPage(page!!)
         val os = Exporter.open(ctx, name, "application/pdf")
         return try { if (os == null) null else { os.use { doc.writeTo(it) }; "Downloads/CarOBD/$name" } } catch (_: Exception) { null } finally { doc.close() }
     }

@@ -423,7 +423,7 @@ class TripDetailPage(a: MainActivity) : Page(a) {
             addView(ui.dotRow("Fuel efficiency", ui.econ(t.kmpl, u), Ic.CHART))
             addView(ui.dotRow("Fuel consumed", ui.vol(t.fuel, 2), Ic.FUEL))
             addView(ui.dotRow("Carbon emissions", ui.f(t.co2Kg, 2, " kg CO₂"), Ic.WIND))
-            addView(ui.dotRow("Fuel cost (₹)", "%.2f".format(t.cost), Ic.DATABASE))
+            addView(ui.dotRow("Fuel cost (${Prefs.currency})", "%.2f".format(t.cost), Ic.DATABASE))
             addView(ui.dotRow("Rapid decel.", "${t.hardBrake + t.suddenBrake} times", Ic.WARN))
             addView(ui.dotRow("Rapid acc.", "${t.rapidAcc} times", Ic.BOLT))
             addView(ui.dotRow("Speeding", "${t.overspeed} times", Ic.GAUGE))

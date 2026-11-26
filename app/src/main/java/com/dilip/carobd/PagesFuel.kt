@@ -123,21 +123,21 @@ class FuelPage(a: MainActivity) : Page(a) {
                     })
                 })
                 addView(View(a).apply { setBackgroundColor(Color.parseColor("#3A3A4C")) }, LinearLayout.LayoutParams(Ui.MATCH, 1).apply { topMargin = ui.dp(10); bottomMargin = ui.dp(8) })
-                addView(infoRow(Ic.DROP, Ui.VIOLET, "%.2f %s → ₹%.2f/%s%s".format(Locale.US, l.qty, u, ppu, u, if (l.full) "" else "  (partial)"), Ui.WHITE))
+                addView(infoRow(Ic.DROP, Ui.VIOLET, "%.2f %s → ${Prefs.currency}%.2f/%s%s".format(Locale.US, l.qty, u, ppu, u, if (l.full) "" else "  (partial)"), Ui.WHITE))
                 val econCol = f.econ?.let { e -> if (avg != null && e < avg * 0.95) Ui.BAD else Ui.GOOD } ?: Ui.DIM
                 addView(LinearLayout(a).apply {
                     gravity = Gravity.CENTER_VERTICAL
                     addView(ui.iconView(Ic.CHART, Ui.VIOLET, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(10) })
                     addView(ui.tv(f.econ?.let { "%.2f km/%s".format(Locale.US, it, u) } ?: "-- km/$u", 15f, econCol, true))
                     addView(ui.iconView(Ic.DATABASE, Ui.VIOLET, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(8) })
-                    addView(ui.tv(if (f.sinceKm > 0 && l.cost > 0) "₹%.3f/km".format(Locale.US, l.cost / f.sinceKm) else "--", 15f, Ui.DIM))
+                    addView(ui.tv(if (f.sinceKm > 0 && l.cost > 0) "${Prefs.currency}%.3f/km".format(Locale.US, l.cost / f.sinceKm) else "--", 15f, Ui.DIM))
                 }, ui.lp(8))
                 if (l.station.isNotEmpty() || l.lat != null) addView(infoRow(Ic.PIN, Ui.ORANGE, l.station.ifEmpty { "Location saved" }, Ui.WHITE), ui.lp(8))
                 if (l.receipt.isNotEmpty()) addView(LinearLayout(a).apply {
                     gravity = Gravity.CENTER_VERTICAL
                     addView(ui.chip("Receipt attached", Ui.GOOD, Ic.DOC))
                 }, ui.lp(8))
-                if (f.tripN > 0) addView(infoRow(Ic.ROUTE, Ui.CYAN, "OBD trips ${f.tripN} · %.1f %s · ₹%.0f".format(Locale.US, f.tripFuel, u, f.tripCost), Ui.CYAN), ui.lp(8))
+                if (f.tripN > 0) addView(infoRow(Ic.ROUTE, Ui.CYAN, "OBD trips ${f.tripN} · %.1f %s · ${Prefs.currency}%.0f".format(Locale.US, f.tripFuel, u, f.tripCost), Ui.CYAN), ui.lp(8))
             }
             card.setOnClickListener { a.selectedFuelId = l.id; a.show("FuelAdd") }
             ui.pressAnim(card)
@@ -174,8 +174,8 @@ class FuelPage(a: MainActivity) : Page(a) {
         box.addView(LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             background = ui.rounded(Ui.CARD, 18); setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(8))
-            addView(ui.dotRow("Cost per km", costKm?.let { "₹%.2f".format(it) } ?: "--"))
-            addView(ui.dotRow("Avg price / $u", if (qty > 0) "₹%.2f".format(spend / qty) else "--"))
+            addView(ui.dotRow("Cost per km", costKm?.let { "${Prefs.currency}%.2f".format(it) } ?: "--"))
+            addView(ui.dotRow("Avg price / $u", if (qty > 0) "${Prefs.currency}%.2f".format(spend / qty) else "--"))
             addView(ui.dotRow("Fill-ups", "${logs.size}"))
             addView(ui.dotRow("OBD trip cost", ui.money(trips), Ic.ROUTE, Ui.CYAN))
         }, ui.lp(6))
@@ -210,9 +210,9 @@ class FuelPage(a: MainActivity) : Page(a) {
         val econ = asc.mapNotNull { it.econ }
         if (econ.size >= 2) { val c = LineChart(a, 150); c.set(econ.map { it.toFloat() }.toFloatArray(), "Economy per fill", " km/$u", Color.parseColor("#3DDC97")); box.addView(c, ui.lp(12)) }
         val price = asc.filter { it.log.qty > 0 }.map { (it.log.cost / it.log.qty).toFloat() }
-        if (price.size >= 2) { val c = LineChart(a, 150); c.set(price.toFloatArray(), "Price per $u", " ₹", Color.parseColor("#FFB300")); box.addView(c, ui.lp(8)) }
+        if (price.size >= 2) { val c = LineChart(a, 150); c.set(price.toFloatArray(), "Price per $u", " ${Prefs.currency}", Color.parseColor("#FFB300")); box.addView(c, ui.lp(8)) }
         val labels = asc.takeLast(8).map { ui.date(it.log.t, "dd/MM") }
-        if (labels.size >= 2) { val b = BarChart(a); b.set(labels, asc.takeLast(8).map { it.log.cost.toFloat() }, "Spend per fill (₹)"); box.addView(b, ui.lp(8)) }
+        if (labels.size >= 2) { val b = BarChart(a); b.set(labels, asc.takeLast(8).map { it.log.cost.toFloat() }, "Spend per fill (${Prefs.currency})"); box.addView(b, ui.lp(8)) }
         val dn = DonutView(a)
         val spendTrips = info.sumOf { it.tripCost }
         val spend = info.sumOf { it.log.cost }
@@ -277,8 +277,8 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         val qty = ui.edit("0", existing?.let { "%.2f".format(Locale.US, it.qty) } ?: "", true)
         val price = ui.edit("0", if (existing != null && existing.qty > 0) "%.2f".format(Locale.US, existing.cost / existing.qty) else "%.2f".format(Locale.US, v.fuelPrice), true)
         val cost = ui.edit("0", existing?.let { "%.2f".format(Locale.US, it.cost) } ?: "", true)
-        card1.addView(ui.row(ui.labeled("Fuel ($u)", qty), ui.labeled("Fuel price (₹/$u)", price)), ui.lp(12))
-        card1.addView(ui.labeled("Total cost (₹)", cost), ui.lp(8))
+        card1.addView(ui.row(ui.labeled("Fuel ($u)", qty), ui.labeled("Fuel price (${Prefs.currency}/$u)", price)), ui.lp(12))
+        card1.addView(ui.labeled("Total cost (${Prefs.currency})", cost), ui.lp(8))
         card1.addView(ui.chip("Auto-calculates any 2 → 3rd", Ui.CYAN, Ic.BOLT), ui.lp(10))
         box.addView(card1, ui.lp(8))
         paint()
@@ -471,7 +471,7 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         if (odo > v.odoKm) v.odoKm = odo
         Db.saveVehicle(v); ObdManager.reloadVehicle()
         FuelMath.repriceTrips(v.id)
-        ui.toast("Saved · price ₹%.2f/%s applied to trips".format(Locale.US, c / q, v.spec.unit))
+        ui.toast("Saved · price ${Prefs.currency}%.2f/%s applied to trips".format(Locale.US, c / q, v.spec.unit))
         a.show("Fuel")
     }
 

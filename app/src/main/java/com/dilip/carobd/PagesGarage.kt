@@ -343,7 +343,7 @@ class MaintPage(a: MainActivity) : Page(a) {
     private fun markDone(item: MaintItem) {
         val v = ObdManager.vehicle
         val odo = ui.edit("km", "%.0f".format(Locale.US, v.odoKm), true)
-        val cost = ui.edit("₹", "", true)
+        val cost = ui.edit("${Prefs.currency}", "", true)
         val note = ui.edit("workshop / parts / note", "")
         formDialog("Done: ${item.name}", listOf("Odometer" to odo, "Cost" to cost, "Note" to note)) {
             val o = odo.num() ?: v.odoKm

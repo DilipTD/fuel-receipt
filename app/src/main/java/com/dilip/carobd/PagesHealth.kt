@@ -429,7 +429,7 @@ object PdfReport {
         // KPI cards
         val kp = listOf(
             "Distance" to "%.0f km".format(km), "Trips" to "${trips.size}",
-            "Economy" to (if (fuel > 0.01) "%.1f km/$u".format(km / fuel) else "--"), "Fuel cost" to "₹%.0f".format(cost)
+            "Economy" to (if (fuel > 0.01) "%.1f km/$u".format(km / fuel) else "--"), "Fuel cost" to "${Prefs.currency}%.0f".format(cost)
         )
         var x = 32f
         for ((k, vv) in kp) {

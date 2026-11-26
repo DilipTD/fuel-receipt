@@ -345,22 +345,50 @@ class HudPage(a: MainActivity) : Page(a) {
         speed = ui.tv("--", 130f, Color.parseColor("#4FC3F7"), true).apply { gravity = Gravity.CENTER; includeFontPadding = false }
         unit = ui.tv("km/h", 16f, Color.GRAY).apply { gravity = Gravity.CENTER }
         shift = ui.tv("", 18f, Color.parseColor("#B2FF59"), true).apply { gravity = Gravity.CENTER }
-        inner.addView(speed); inner.addView(unit); inner.addView(shift)
+        // speed block + readings grid side by side in landscape, stacked in portrait (HUD must fit without scrolling)
+        speedCol = ui.vbox().apply { gravity = Gravity.CENTER; addView(speed); addView(unit); addView(shift) }
+        cellsCol = ui.vbox().apply { gravity = Gravity.CENTER }
         for (rowKeys in cellKeys.chunked(3)) {
-            inner.addView(LinearLayout(a).apply {
+            cellsCol.addView(LinearLayout(a).apply {
                 for (k in rowKeys) addView(cell(k), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(2) })
         }
+        body = LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL }
+        body.addView(speedCol); body.addView(cellsCol)
+        inner.addView(body, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         advice = ui.tv("", 15f, Color.parseColor("#FFD54F"), true).apply { gravity = Gravity.CENTER }
         inner.addView(advice, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(8) })
-        inner.addView(ui.tv("tap: mirror for windscreen · long-press: exit\n${AppInfo.credit}", 11f, Color.DKGRAY).apply { gravity = Gravity.CENTER },
-            LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(6) })
+        footer = ui.tv("tap: mirror for windscreen · long-press: exit\n${AppInfo.credit}", 11f, Color.DKGRAY).apply { gravity = Gravity.CENTER }
+        inner.addView(footer, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(6) })
+        arrange(false)
+        root.addOnLayoutChangeListener { _, l, t, r, bt, _, _, _, _ -> val land = (r - l) > (bt - t); if (land != isLand) root.post { arrange(land) } }
         root.addView(ui.scroll(inner).apply { setBackgroundColor(Color.BLACK) }, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         root.setOnClickListener { flip() }
         inner.setOnClickListener { flip() }
         inner.setOnLongClickListener { a.show("Dash"); true }
         root.setOnLongClickListener { a.show("Dash"); true }
         return root
+    }
+
+    private lateinit var speedCol: LinearLayout
+    private lateinit var cellsCol: LinearLayout
+    private lateinit var body: LinearLayout
+    private lateinit var footer: TextView
+    private var isLand = false
+
+    private fun arrange(land: Boolean) {
+        isLand = land
+        body.orientation = if (land) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        speedCol.layoutParams = if (land) LinearLayout.LayoutParams(0, Ui.WRAP, 1f) else LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP)
+        cellsCol.layoutParams = if (land) LinearLayout.LayoutParams(0, Ui.WRAP, 1.25f).apply { leftMargin = ui.dp(8) } else LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP)
+        speed.textSize = if (land) 110f else 130f
+        for (c in cells.values) c.textSize = if (land) 19f else 24f
+        for (i in 0 until cellsCol.childCount) (cellsCol.getChildAt(i) as LinearLayout).let { r ->
+            for (j in 0 until r.childCount) r.getChildAt(j).setPadding(0, ui.dp(if (land) 2 else 6), 0, ui.dp(if (land) 2 else 6))
+        }
+        footer.visibility = if (land) View.GONE else View.VISIBLE
+        inner.setPadding(ui.dp(10), ui.dp(if (land) 6 else 14), ui.dp(10), ui.dp(if (land) 4 else 8))
+        body.requestLayout()
     }
 
     private fun flip() { mirrored = !mirrored; inner.scaleY = if (mirrored) -1f else 1f }

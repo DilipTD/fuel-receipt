@@ -65,6 +65,7 @@ abstract class SimBase {
         Prefs.init(app)
         Prefs.consentVersion = LegalText.VERSION
         Prefs.autoConnect = false
+        PdfBuilder.testCanvas = { android.graphics.Canvas(android.graphics.Bitmap.createBitmap(595, 842, android.graphics.Bitmap.Config.ARGB_8888)) }
         Prefs.roadAssist = false
         Thread.setDefaultUncaughtExceptionHandler { t, e -> synchronized(workerErrors) { workerErrors += e }; Report.bad("Uncaught on thread ${t.name}", e) }
     }
@@ -163,6 +164,7 @@ abstract class SimBase {
 @RunWith(org.robolectric.RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-port")
 @LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class SimulationTest : SimBase() {
 
     private val petrolPids = setOf(0x01, 0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x1C, 0x1F, 0x20, 0x21, 0x2F,
@@ -177,7 +179,7 @@ class SimulationTest : SimBase() {
         t < 34 -> EmuTransport.Car(1600.0, 40.0, throttle = 18.0)
         t < 37 -> { val s = 40 - (t - 34) * 13.3; EmuTransport.Car(1000.0, s.coerceAtLeast(0.0), throttle = 0.0) }
         t < 48 -> EmuTransport.Car(800.0, 0.0)
-        else -> EmuTransport.Car(null, 0.0, volt = 12.5)   // ignition off
+        else -> EmuTransport.Car(1800.0, 50.0, throttle = 15.0)   // steady cruise until the test switches the ignition off
     }
 
     @Test
@@ -207,12 +209,13 @@ class SimulationTest : SimBase() {
         val keys = listOf("Home", "Dash", "Live", "HUD", "Car", "Health", "Battery", "Perf", "Trips", "Diag", "Alerts", "Analysis", "Road", "Nav")
         var ki = 0
         val start = System.currentTimeMillis()
-        var maxSpd = 0.0; var sawTrip = false
+        var maxSpd = 0.0; var sawTrip = false; var runV = 0.0
         while (System.currentTimeMillis() - start < 46_000) {
             val k = keys[ki++ % keys.size]
             showPage(k)
             try { act.pages[k]!!.refresh() } catch (e: Throwable) { Report.bad("[live] '$k' refresh crashed", e) }
             maxSpd = maxOf(maxSpd, ObdManager.values[0x0D] ?: 0.0)
+            ObdManager.batteryV?.let { runV = maxOf(runV, it) }
             if (ObdManager.engine.current != null) sawTrip = true
             Thread.sleep(1500)
         }
@@ -232,7 +235,7 @@ class SimulationTest : SimBase() {
             if (cur.overRev >= 1) Report.ok("Over-rev detected") else Report.bad("Over-rev (6400 rpm) not detected")
             if (cur.fuel > 0.005) Report.ok("Fuel use computed from MAF") else Report.bad("Fuel use is zero")
         }
-        if (m.batteryV != null) Report.ok("Battery voltage %.1f V".format(m.batteryV)) else Report.bad("No battery voltage read")
+        if (runV in 13.8..14.4) Report.ok("Charging voltage read from adapter while driving: %.1f V".format(runV)) else Report.bad("Charging voltage while driving was %.2f V (expected 14.1)".format(runV))
         if (m.monitorRaw != null) Report.ok("Monitor status read") else Report.bad("PID 01 monitor status never read")
         val dtcs = Db.dtcHistory(v.id).map { it.code }.distinct()
         if (dtcs.containsAll(listOf("P0420", "P0301"))) Report.ok("Auto DTC scan stored ${dtcs.joinToString()}") else Report.bad("Auto DTC scan stored only $dtcs")
@@ -247,7 +250,7 @@ class SimulationTest : SimBase() {
         monkey("Diag", 30)
         if (!waitFor(15_000) { !ObdManager.busy }) Report.bad("Diagnostic job still busy after 15 s")
         Report.info("Last diagnostic output: " + ObdManager.diagText.take(160).replace("\n", " ⏎ "))
-        val clr = ObdManager.runDiag("Clear") { e -> if (e.clearDtcs()) "cleared" else "fail" }
+        ObdManager.runDiag("Clear") { e -> if (e.clearDtcs()) "cleared" else "fail" }
         waitFor(8000) { !ObdManager.busy }
         if (ObdManager.diagText == "cleared") Report.ok("Clear codes accepted") else Report.bad("Clear codes returned '${ObdManager.diagText}'")
         ObdManager.runDiag("Readiness") { e -> Health.readiness(e.pid01(0x01)) }
@@ -255,6 +258,19 @@ class SimulationTest : SimBase() {
         val em2 = EmissionAi.analyse()
         if (em2.level == 1 && em2.incomplete >= 3) Report.ok("After clearing, readiness shows ${em2.incomplete} monitors pending") else Report.bad("After clearing expected pending monitors, got level ${em2.level} '${em2.headline}'")
         for (k in listOf("Dash", "Health", "Live", "Car", "HUD", "Battery", "Perf")) monkey(k, 25)
+
+        Report.head("4b. Corrections while cruising at 50 km/h")
+        Prefs.speedCorrPct = 10.0
+        waitFor(4000) { (ObdManager.values[0x0D] ?: 0.0) > 54 }
+        val cs = ObdManager.values[0x0D] ?: 0.0
+        if (cs in 54.5..55.5) Report.ok("Speed correction +10 %%: 50 → %.1f km/h".format(cs)) else Report.bad("Speed correction +10 %% gave %.1f km/h (expected 55)".format(cs))
+        Prefs.speedCorrPct = 0.0
+        Prefs.voltMethod = "ECU"
+        Thread.sleep(9000); idle(100)
+        val ev = ObdManager.batteryV ?: 0.0
+        if (ev in 13.9..14.0) Report.ok("Voltage source ECU (PID 42): %.2f V".format(ev)) else Report.bad("Voltage source ECU gave %.2f V (expected 13.98 from PID 42)".format(ev))
+        Prefs.voltMethod = "ADAPTER"
+        emu.ignition = false
 
         Report.head("5. Ignition off and trip end")
         if (waitFor(40_000) { !ObdManager.engineOn }) Report.ok("Ignition-off detected (engine off)") else Report.bad("Engine still 'on' 40 s after the ECU stopped answering")
@@ -312,6 +328,12 @@ class SimulationTest : SimBase() {
             } catch (e: Throwable) { Report.bad("$fuel: crashed", e) }
         }
         val vv = Db.activeVehicle(); vv.fuel = "Petrol"; Db.saveVehicle(vv); ObdManager.reloadVehicle()
+        Report.head("9. Car health is remembered after a restart")
+        relaunch()
+        val hs2 = HealthScore.compute()
+        val kept = hs2.items.filter { it.detail.endsWith("last reading") }
+        if (kept.isNotEmpty()) Report.ok("Restored after restart: " + kept.joinToString { "${it.name} (${it.detail})" } + ", score ${hs2.score}")
+        else Report.bad("No health readings were restored after restart: " + hs2.items.joinToString { "${it.name}=${it.status}" })
         Report.flush("Full application (phone portrait)")
     }
 
@@ -342,13 +364,23 @@ class SimulationTest : SimBase() {
 @RunWith(org.robolectric.RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w740dp-h360dp-land")
 @LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class DriveModeLayoutTest : SimBase() {
     @Test fun layout() = check("740×360 dp landscape")
 }
 
 @RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-port")
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class HudPortraitLayoutTest : SimBase() {
+    @Test fun layout() = check("411×891 dp portrait")
+}
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w640dp-h320dp-land")
 @LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class DriveModeSmallLayoutTest : SimBase() {
     @Test fun layout() = check("640×320 dp landscape (small phone)")
 }
@@ -359,7 +391,7 @@ fun SimBase.check(name: String) {
     setState(ObdManager.State.CONNECTED)
     ObdManager.values[0x0C] = 2500.0; ObdManager.values[0x0D] = 88.0; ObdManager.values[0x05] = 90.0; ObdManager.values[0x2F] = 55.0
     ObdManager.values[0x04] = 40.0; ObdManager.values[0x0F] = 33.0
-    for (k in listOf("Car", "HUD")) {
+    for (k in if (name.contains("portrait")) listOf("HUD") else listOf("Car", "HUD")) {
         showPage(k); act.pages[k]!!.refresh(); idle(800)
         val root = act.window.decorView
         val h = root.height; val w = root.width
