@@ -106,6 +106,14 @@ object HealthScore {
             else -> Item("Service", Ic.WRENCH, 0, "All up to date")
         }
 
+        val em = EmissionAi.analyse()
+        if (em.applicable) items += when {
+            !em.known -> Item("Emissions", Ic.LEAF, -1, "Not read yet")
+            em.level == 2 -> Item("Emissions", Ic.LEAF, 2, "Not ready – check-engine light on")
+            em.level == 1 -> Item("Emissions", Ic.LEAF, 1, "${em.incomplete} monitor(s) pending")
+            else -> Item("Emissions", Ic.LEAF, 0, "Ready for test")
+        }
+
         val intake = v[0x0F]
         items += when {
             intake == null -> Item("Intake air", Ic.WIND, -1, "No live data")

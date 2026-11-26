@@ -11,6 +11,7 @@ object Health {
 
     /** Readiness monitors from PID 01 (spark-ignition engine). */
     fun readiness(d: IntArray?): String {
+        if (d != null) { ObdManager.monitorRaw = d; return EmissionAi.text() }
         if (d == null || d.size < 4) return "Readiness: not available"
         val sb = StringBuilder()
         sb.append(if (d[0] and 0x80 != 0) "MIL (check-engine lamp): ON\n" else "MIL (check-engine lamp): off\n")

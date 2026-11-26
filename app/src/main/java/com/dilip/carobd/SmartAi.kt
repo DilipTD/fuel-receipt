@@ -303,7 +303,7 @@ object SmartAi {
                 if (it.status < 1) continue
                 val (zone, page) = when (it.name) {
                     "Cooling" -> "Cooling" to "Health"; "Battery" -> "Battery" to "Battery"; "Fuel" -> "Fuel" to "Health"
-                    "Catalyst", "Intake air" -> "Engine" to "Health"; "Service" -> "Service" to "Maint"; "Fault codes" -> "Codes" to "Diag"
+                    "Catalyst", "Intake air" -> "Engine" to "Health"; "Emissions" -> "Engine" to "Diag"; "Service" -> "Service" to "Maint"; "Fault codes" -> "Codes" to "Diag"
                     else -> continue
                 }
                 val act = when (it.name) {
@@ -312,6 +312,7 @@ object SmartAi {
                     "Fuel" -> if (veh.isEv) "Plan charging soon." else "Refuel soon – Navigate can find a pump."
                     "Service" -> "Open Maintenance to log or schedule."
                     "Fault codes" -> "Run AI diagnosis for root causes."
+                    "Emissions" -> EmissionAi.analyse().tips.firstOrNull() ?: "Open Diagnose → Readiness."
                     else -> "Check Car health."
                 }
                 alerts += Alert(it.status, it.ic, zone, "${it.name}: ${it.detail}", act, page)

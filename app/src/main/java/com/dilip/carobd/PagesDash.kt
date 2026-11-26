@@ -31,6 +31,8 @@ class DashPage(a: MainActivity) : Page(a) {
     private lateinit var headDot: View
     private lateinit var modeTv: TextView
     private lateinit var adviceBox: LinearLayout
+    private lateinit var emBox: LinearLayout
+    private var emSig = ""
     private var adviceSig = ""
     private lateinit var fRange: TextView
     private lateinit var fCool: TextView
@@ -94,6 +96,8 @@ class DashPage(a: MainActivity) : Page(a) {
 
         adviceBox = ui.vbox()
         c.addView(adviceBox, ui.lp(6))
+        emBox = ui.vbox()
+        c.addView(emBox, ui.lp(6))
         eventTv = ui.card("", 15f).apply { visibility = View.GONE; gravity = Gravity.CENTER }
         c.addView(eventTv, ui.lp(6))
         alertTv = ui.card("", 13f).apply { visibility = View.GONE; setOnClickListener { a.show("Alerts") } }
@@ -188,6 +192,14 @@ class DashPage(a: MainActivity) : Page(a) {
         headTv.text = st.headline
         headDot.background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(sc) }
         led.frac = ((v[0x0C] ?: 0.0) / veh.rpmLimit.toDouble().coerceAtLeast(1000.0)).toFloat().let { if (it < 0.45f) 0f else (it - 0.45f) / 0.55f }
+
+        val er = EmissionAi.analyse()
+        val esig = "${er.level}|${er.headline}|${ObdManager.vehicle.fuel}"
+        if (esig != emSig) {
+            emSig = esig; emBox.removeAllViews()
+            if (er.applicable) emBox.addView(ui.iconCard(Ic.LEAF, when (er.level) { 0 -> Ui.GOOD; 1 -> Ui.WARN; 2 -> Ui.BAD; else -> Ui.DIM },
+                "Emission readiness · ${ObdManager.vehicle.fuel}", er.headline + if (er.monitors.isNotEmpty()) " · ${er.readyPct} % monitors done" else "") { a.show("Diag") }, ui.lp(0))
+        }
 
         // advice
         val adv = SmartLive.advice()

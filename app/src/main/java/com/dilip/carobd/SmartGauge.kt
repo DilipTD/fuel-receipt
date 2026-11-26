@@ -129,6 +129,7 @@ object SmartLive {
         if (thr > 85 && spd < 40) out += Triple(Ic.BOLT, "Heavy throttle at low speed – squeeze it gently.", 1)
         val bv = m.batteryV ?: v[0x42]
         if (m.engineOn && bv != null && bv < Prefs.chargeMinV) out += Triple(Ic.BATTERY, "Charging voltage is low (%.1f V) – check the alternator/battery.".format(bv), 2)
+        if (out.isEmpty()) EmissionAi.liveTip()?.let { out += Triple(Ic.LEAF, it, 1) }
         if (out.isEmpty() && spd in 30.0..90.0 && rpm in 1200.0..2300.0) out += Triple(Ic.LEAF, "In the efficient band – hold a steady speed.", 0)
         if (out.isEmpty()) out += Triple(Ic.SHIELD, "AI is watching: all readings are normal.", 0)
         return out.sortedByDescending { it.third }.take(2)
