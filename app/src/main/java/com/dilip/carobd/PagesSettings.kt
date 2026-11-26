@@ -37,7 +37,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
 
     private val tabDefs = listOf(
         Ic.PLUG to "Connection", Ic.ROUTE to "Trips", Ic.BELL to "Alerts", Ic.PULSE to "Driving",
-        Ic.BOLT to "Auto", Ic.SLIDERS to "Custom PIDs", Ic.DATABASE to "Data", Ic.INFO to "About"
+        Ic.BOLT to "Auto", Ic.HOME to "Home Assistant", Ic.SLIDERS to "Custom PIDs", Ic.DATABASE to "Data", Ic.INFO to "About"
     )
 
     override fun build(): View {
@@ -60,6 +60,9 @@ class SettingsPage(a: MainActivity) : Page(a) {
     }
 
     override fun onShow() = populate()
+
+    /** Opens Settings on a given tab (5 = Home Assistant). */
+    fun openTab(i: Int) { tab = i }
 
     private fun applySaves() {
         try { saves.forEach { it() } } catch (e: Exception) { ui.toast("Could not save: ${e.message}") }
@@ -86,11 +89,12 @@ class SettingsPage(a: MainActivity) : Page(a) {
             2 -> alerts()
             3 -> driving()
             4 -> automation()
-            5 -> pids()
-            6 -> data()
+            5 -> homeAssistant()
+            6 -> pids()
+            7 -> data()
             else -> about()
         }
-        saveBar.visibility = if (tab in listOf(0, 1, 2, 3, 4)) View.VISIBLE else View.GONE
+        saveBar.visibility = if (tab in listOf(0, 1, 2, 3, 4, 5)) View.VISIBLE else View.GONE
     }
 
     /* ---------- field helpers ---------- */
@@ -336,6 +340,41 @@ class SettingsPage(a: MainActivity) : Page(a) {
         body.addView(ui.iconCard(Ic.DATABASE, Ui.VIOLET, "Backup, restore & cloud", "All trips, fuel log, service, settings and parameters", Ui.CARD) { a.show("Backup") })
         body.addView(ui.section("Clear", Ic.TRASH))
         body.addView(ui.btn("Clear alert log", Ui.BAD) { Db.clearAlerts(); ui.toast("Alert log cleared") })
+    }
+
+    private fun homeAssistant() {
+        body.addView(ui.section("Home Assistant (MQTT)", Ic.HOME))
+        body.addView(ui.tv("Publishes live car data to your MQTT broker (for example Mosquitto). Home Assistant finds the car by itself through MQTT discovery – no YAML needed.", 12f, Ui.DIM), ui.lp(4))
+        toggle("Send data to Home Assistant", { Prefs.mqttOn }, { Prefs.mqttOn = it })
+        fun text(label: String, hint: String, value: String, pass: Boolean = false, onSave: (String) -> Unit): View {
+            val et = ui.edit(hint, value)
+            if (pass) et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            saves += { onSave(et.text.toString().trim()) }
+            return ui.labeled(label, et)
+        }
+        body.addView(text("Broker address", "e.g. 192.168.1.10 or homeassistant.local", Prefs.mqttHost) { Prefs.mqttHost = it }, ui.lp(8))
+        body.addView(num("Port (1883 plain, 8883 TLS)", Prefs.mqttPort.toString()) { Prefs.mqttPort = it.toInt().coerceIn(1, 65535) }, ui.lp(6))
+        toggle("Use TLS (encrypted, certificate checked)", { Prefs.mqttTls }, { Prefs.mqttTls = it })
+        body.addView(text("User name", "MQTT user (optional)", Prefs.mqttUser) { Prefs.mqttUser = it }, ui.lp(6))
+        body.addView(text("Password", "MQTT password", Prefs.mqttPass, true) { Prefs.mqttPass = it }, ui.lp(6))
+        body.addView(text("Topic prefix", "carobd", Prefs.mqttBase) { Prefs.mqttBase = it.ifEmpty { "carobd" } }, ui.lp(6))
+        body.addView(text("Discovery prefix", "homeassistant", Prefs.mqttDisc) { Prefs.mqttDisc = it.ifEmpty { "homeassistant" } }, ui.lp(6))
+        body.addView(num("Update every (seconds, 1–60)", Prefs.mqttSec.toString()) { Prefs.mqttSec = it.toInt().coerceIn(1, 60) }, ui.lp(6))
+        saves += { Mqtt.apply(a) }
+        body.addView(ui.section("Status", Ic.PULSE))
+        val st = Mqtt.status
+        val col = if (st.startsWith("Connected")) Ui.GOOD else if (st.startsWith("Off")) Ui.DIM else Ui.WARN
+        body.addView(ui.iconCard(Ic.PLUG, col, st, if (Mqtt.sent > 0) "${Mqtt.sent} messages sent · tap to refresh" else "Tap to refresh", Ui.CARD) { populate() }, ui.lp(6))
+        body.addView(ui.row(
+            ui.btn("Test connection", Ui.GOOD) { applySaves(); ui.toast("Testing…"); Mqtt.test { m -> a.runOnUiThread { ui.toast(m) } } },
+            ui.btn("Re-send discovery", Ui.CARD) { applySaves(); Mqtt.resendDiscovery(a); ui.toast("Discovery messages sent") }
+        ), ui.lp(8))
+        body.addView(ui.section("What Home Assistant gets", Ic.INFO))
+        body.addView(ui.card("Sensors: speed, engine speed, coolant, intake and ambient temperature, throttle, engine load, fuel level, battery voltage, range, trip distance and economy, instant economy, fuel rate, odometer, driving score, car health score, fault-code count, road speed limit.\n" +
+            "Binary sensors: engine running, OBD adapter connected, check-engine lamp, over-speed.\n" +
+            "Device tracker: GPS location of the car.\n\n" +
+            "Topics: ${Prefs.mqttBase.ifEmpty { "carobd" }}/${Mqtt.deviceId()}/<sensor>. The app must be running (it keeps running in the background while the road assistant or background watching is on). " +
+            "The password is stored only on this phone and is not included in backups. Turn on TLS when the broker is outside your home network.", 12f), ui.lp(6))
     }
 
     private fun about() {

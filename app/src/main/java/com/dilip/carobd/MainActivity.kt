@@ -187,6 +187,7 @@ class MainActivity : Activity() {
         intent?.getStringExtra("open")?.let { show(it) }
         if (Legal.needsConsent(this)) Legal.consent(this) { requestPerms() } else requestPerms()
         Maint.schedule(this)
+        Mqtt.ensureStarted(applicationContext)
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
         if (Prefs.roadAssist) Gps.start(this)
         Thread { try { Backup.auto(applicationContext) } catch (_: Exception) {} }.start()

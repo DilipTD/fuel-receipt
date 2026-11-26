@@ -342,6 +342,7 @@ class ObdService : Service() {
             }
         }
         if (Prefs.roadAssist) Gps.start(this)
+        Mqtt.ensureStarted(applicationContext)
         if (wl == null) {
             val pm = getSystemService(PowerManager::class.java)
             wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CarOBD:link").apply {

@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 /* ============================ Place names (reverse geocoding, cached) ============================ */
@@ -81,21 +82,24 @@ class TripsPage(a: MainActivity) : Page(a) {
     private lateinit var sumTime: TextView
     private lateinit var filterTv: TextView
     private var histSig = ""
-    private var filter = 0
-    private val periods = listOf("All", "Last 7 days", "Last 30 days", "This month")
+    private lateinit var rangeTv: TextView
+    private var filter = Prefs.tripFilter
 
     override fun build(): View {
         val c = ui.col()
         // filter dropdown
-        filterTv = ui.tv("All ▾", 22f, Ui.WHITE, true).apply {
+        filterTv = ui.tv("All time ▾", 22f, Ui.WHITE, true).apply {
             setOnClickListener { v ->
                 val pm = android.widget.PopupMenu(a, v)
-                periods.forEachIndexed { i, f -> pm.menu.add(0, i, i, f) }
-                pm.setOnMenuItemClickListener { filter = it.itemId; histSig = ""; true }
+                TripFilter.names.forEachIndexed { i, f -> pm.menu.add(0, i, i, f).apply { isCheckable = true; isChecked = i == filter } }
+                pm.menu.setGroupCheckable(0, true, true)
+                pm.setOnMenuItemClickListener { filter = it.itemId; Prefs.tripFilter = filter; histSig = ""; refresh(); true }
                 pm.show()
             }
         }
         c.addView(filterTv, ui.lp(4))
+        rangeTv = ui.tv("", 12f, Ui.DIM)
+        c.addView(rangeTv, ui.lp(0))
         sumDist = ui.tv("0 km", 26f, Ui.WHITE, true)
         sumTime = ui.tv("0 h", 26f, Ui.WHITE, true)
         c.addView(ui.row(
@@ -193,21 +197,18 @@ class TripsPage(a: MainActivity) : Page(a) {
                     "${ui.f(t.fuel, 2, " $u")} · ${ui.money(t.cost)} · max ${ui.f(t.maxSpeed, 0, " km/h")} · score ${t.score}"
         }
         val now = System.currentTimeMillis()
-        val since = when (filter) {
-            1 -> now - 7 * 86_400_000L; 2 -> now - 30 * 86_400_000L
-            3 -> Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis
-            else -> 0L
-        }
-        val trips = Db.trips(m.vehicle.id, since, 300)
+        val (since, until) = TripFilter.range(filter, m.vehicle.id)
+        val trips = Db.trips(m.vehicle.id, since, 2000).filter { it.start < until }
         val s = filter.toString() + ":" + trips.size + ":" + (trips.firstOrNull()?.id ?: 0)
         if (s == histSig) return
         histSig = s
-        filterTv.text = periods[filter] + " ▾"
+        filterTv.text = TripFilter.names[filter.coerceIn(0, TripFilter.names.size - 1)] + " ▾"
+        rangeTv.text = TripFilter.describe(filter, since, until, trips.size)
         sumDist.text = "%,.0f km".format(trips.sumOf { it.distanceKm })
         sumTime.text = "%,.0f h".format(trips.sumOf { it.durationS } / 3600.0)
         hist.removeAllViews()
         if (trips.isEmpty()) {
-            hist.addView(ui.iconCard(Ic.ROUTE, Ui.ACC, "No drives yet", "Trips are saved automatically"), ui.lp(14)); return
+            hist.addView(ui.iconCard(Ic.ROUTE, Ui.ACC, if (filter == 0) "No drives yet" else "No drives in this period", if (filter == 0) "Trips are saved automatically" else "Choose another period above"), ui.lp(14)); return
         }
         var day = ""
         for (tr in trips) {
@@ -263,7 +264,8 @@ class TripsPage(a: MainActivity) : Page(a) {
 
     private fun exportAll() {
         val v = ObdManager.vehicle
-        val trips = Db.trips(v.id)
+        val (since, until) = TripFilter.range(filter, v.id)
+        val trips = Db.trips(v.id, since).filter { it.start < until }
         val sb = StringBuilder("start,end,duration_min,distance_km,fuel,economy_km_per_unit,cost,avg_kmh,moving_avg_kmh,max_kmh,max_rpm,idle_min,co2_kg,score,rapid_acc,hard_brake,sudden_brake,cornering,overspeed,overspeed_s,over_rev,best_0_100_s\n")
         for (t in trips) {
             sb.append(listOf(
@@ -276,6 +278,44 @@ class TripsPage(a: MainActivity) : Page(a) {
         }
         val p = Exporter.writeText(a, "carobd_trips_${stamp()}.csv", "text/csv", sb.toString())
         ui.toast(if (p != null) "Saved to $p" else "Export failed")
+    }
+}
+
+/** Time filter for the drive list (same choices as the fuel-log style period menu). */
+object TripFilter {
+    val names = listOf("All time", "Year-To-Date", "Previous year", "This month", "Previous month", "Last 30 days", "Last 3 months",
+        "Last 6 months", "Last 12 months", "Today", "Yesterday", "Since last fill-up")
+
+    private fun dayStart(): Calendar = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+
+    /** (from, until) in epoch ms. until is exclusive. */
+    fun range(i: Int, vid: Long): Pair<Long, Long> {
+        val now = System.currentTimeMillis(); val inf = Long.MAX_VALUE
+        return when (i) {
+            1 -> dayStart().apply { set(Calendar.DAY_OF_YEAR, 1) }.timeInMillis to inf
+            2 -> { val s = dayStart().apply { set(Calendar.DAY_OF_YEAR, 1) }; val e = s.timeInMillis; s.add(Calendar.YEAR, -1); s.timeInMillis to e }
+            3 -> dayStart().apply { set(Calendar.DAY_OF_MONTH, 1) }.timeInMillis to inf
+            4 -> { val s = dayStart().apply { set(Calendar.DAY_OF_MONTH, 1) }; val e = s.timeInMillis; s.add(Calendar.MONTH, -1); s.timeInMillis to e }
+            5 -> now - 30 * 86_400_000L to inf
+            6 -> dayStart().apply { add(Calendar.MONTH, -3) }.timeInMillis to inf
+            7 -> dayStart().apply { add(Calendar.MONTH, -6) }.timeInMillis to inf
+            8 -> dayStart().apply { add(Calendar.MONTH, -12) }.timeInMillis to inf
+            9 -> dayStart().timeInMillis to inf
+            10 -> { val s = dayStart(); val e = s.timeInMillis; s.add(Calendar.DAY_OF_YEAR, -1); s.timeInMillis to e }
+            11 -> (try { Db.fuelLogs(vid).firstOrNull()?.t } catch (_: Exception) { null } ?: 0L) to inf
+            else -> 0L to inf
+        }
+    }
+
+    fun describe(i: Int, from: Long, until: Long, n: Int): String {
+        val f = java.text.SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        val span = when {
+            i == 0 -> "All drives"
+            i == 11 && from == 0L -> "No fill-up logged yet – showing all drives"
+            until == Long.MAX_VALUE -> "${f.format(Date(from))} – now"
+            else -> "${f.format(Date(from))} – ${f.format(Date(until - 1))}"
+        }
+        return "$span · $n drive${if (n == 1) "" else "s"}"
     }
 }
 

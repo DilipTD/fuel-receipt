@@ -52,6 +52,8 @@ Some features need the internet. Only the minimum needed is sent, and none of it
 
 • Overpass API (OpenStreetMap) – coordinates near you to find the road speed limit, hazards and the nearest petrol station name.
 
+• Your own MQTT broker / Home Assistant – only if you turn on Home Assistant in Settings. The app then sends live car readings (speed, RPM, temperatures, fuel, battery, odometer, fault-code count) and the car's GPS location to the broker address you enter. The developer never receives it; the broker's owner (usually you) does. The password is kept only on the phone and is left out of backups.
+
 • Google Maps or another maps app – only when you tap Navigate; the destination is passed to that app, which has its own privacy policy.
 
 These services have their own privacy policies. Their data is open data and may be inaccurate.

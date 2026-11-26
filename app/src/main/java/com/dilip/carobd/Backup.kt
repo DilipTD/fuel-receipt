@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream
 /** Full backup: database (vehicles, trips, routes, fuel, service, codes, alerts) + all settings/parameters, in one .carobd file. */
 object Backup {
     private val prefFiles = listOf("car_obd", "nav_places")
-    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere")
+    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere", "mqttPass")
 
     fun fileName() = "carobd_backup_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) + ".carobd"
 
