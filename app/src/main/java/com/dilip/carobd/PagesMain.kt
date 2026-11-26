@@ -39,6 +39,8 @@ class DashPage(a: MainActivity) : Page(a) {
     private lateinit var driveTv: TextView
     private lateinit var eventTv: TextView
     private lateinit var alertTv: TextView
+    private lateinit var led: LedBarView
+    private lateinit var coachTv: TextView
     private val vals = LinkedHashMap<String, TextView>()
     private val keys = listOf(
         "Load", "Boost", "MAP", "MAF", "Intake air", "Oil temp",
@@ -59,7 +61,14 @@ class DashPage(a: MainActivity) : Page(a) {
         val c = ui.col()
         gRpm = GaugeView(a, "Engine", "rpm", 8000f, 6500f, 1000f)
         gSpd = GaugeView(a, "Speed", "km/h", 220f, 120f)
+        led = LedBarView(a)
+        c.addView(led, ui.lp(2))
         c.addView(ui.row(gRpm, gSpd), ui.lp(4))
+        coachTv = ui.card("", 13f).apply {
+            visibility = View.GONE; compoundDrawablePadding = ui.dp(10)
+            setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10)); gravity = Gravity.CENTER_VERTICAL
+        }
+        c.addView(coachTv, ui.lp(4))
 
         eventTv = ui.card("", 15f).apply { visibility = View.GONE; gravity = Gravity.CENTER }
         c.addView(eventTv, ui.lp(4))
@@ -125,6 +134,13 @@ class DashPage(a: MainActivity) : Page(a) {
         val u = veh.spec.unit
         val spd = v[0x0D]
         gRpm.value = v[0x0C]?.toFloat()
+        led.frac = ((v[0x0C] ?: 0.0) / veh.rpmLimit.toDouble().coerceAtLeast(1000.0)).toFloat().let { if (it < 0.45f) 0f else (it - 0.45f) / 0.55f }
+        val tip = Coach.tip()
+        if (tip == null) coachTv.visibility = View.GONE else {
+            coachTv.visibility = View.VISIBLE
+            coachTv.text = tip.second
+            coachTv.setCompoundDrawablesWithIntrinsicBounds(ui.icon(tip.first, Ui.CYAN, 22), null, null, null)
+        }
         gSpd.value = spd?.toFloat()
         rCool.value = v[0x05]?.toFloat()
         val fuelPct = v[0x2F]

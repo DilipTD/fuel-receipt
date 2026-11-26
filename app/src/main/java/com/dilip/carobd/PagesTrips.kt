@@ -155,8 +155,10 @@ class TripDetailPage(a: MainActivity) : Page(a) {
 
         box.addView(ui.section("Route"))
         val route = RouteView(a)
+        val gpsTrack = track.filter { it.lat != null && it.lon != null }
+        route.setSpeeds(gpsTrack.map { it.speed })
         route.set(
-            track.filter { it.lat != null && it.lon != null }.map { it.lat!! to it.lon!! },
+            gpsTrack.map { it.lat!! to it.lon!! },
             events.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.eventColor(it.type)) }
         )
         box.addView(route, ui.lp())

@@ -135,8 +135,27 @@ class RouteView(ctx: Context) : View(ctx) {
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#9AA7B4"); textSize = ctx.dpf(11f) }
     private val path = Path()
 
+    private var spd: List<Double>? = null
+    private val seg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = ctx.dpf(4.5f); strokeCap = Paint.Cap.ROUND
+    }
+    private val glowP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = ctx.dpf(9f); strokeCap = Paint.Cap.ROUND; color = Color.argb(40, 255, 255, 255)
+    }
+
     fun set(points: List<Pair<Double, Double>>, markers: List<Triple<Double, Double, Int>>) {
         pts = points; marks = markers; invalidate()
+    }
+
+    /** Speeds (km/h) aligned with the points passed to set(); colours the route by speed. */
+    fun setSpeeds(s: List<Double>?) { spd = s; invalidate() }
+
+    private fun speedColor(v: Double) = when {
+        v < 30 -> Color.parseColor("#3DDC97")
+        v < 60 -> Color.parseColor("#9BE15D")
+        v < 80 -> Color.parseColor("#FFC247")
+        v < 100 -> Color.parseColor("#FF8A3D")
+        else -> Color.parseColor("#FF4D4D")
     }
 
     override fun onMeasure(w: Int, h: Int) {
@@ -163,7 +182,21 @@ class RouteView(ctx: Context) : View(ctx) {
         fun y(lat: Double) = (height - oy - (lat - minLat) * scale).toFloat()
         path.reset()
         pts.forEachIndexed { i, p -> if (i == 0) path.moveTo(x(p.second), y(p.first)) else path.lineTo(x(p.second), y(p.first)) }
-        c.drawPath(path, line)
+        val sp = spd
+        if (sp != null && sp.size == pts.size) {
+            c.drawPath(path, glowP)
+            for (i in 1 until pts.size) {
+                seg.color = speedColor((sp[i] + sp[i - 1]) / 2)
+                c.drawLine(x(pts[i - 1].second), y(pts[i - 1].first), x(pts[i].second), y(pts[i].first), seg)
+            }
+            val labs = listOf("<30" to 15.0, "60" to 45.0, "80" to 70.0, "100" to 90.0, "100+" to 120.0)
+            var lx = context.dpf(10f)
+            for ((l, v) in labs) {
+                dot.color = speedColor(v); c.drawRoundRect(lx, height - context.dpf(18f), lx + context.dpf(10f), height - context.dpf(8f), 4f, 4f, dot)
+                c.drawText(l, lx + context.dpf(14f), height - context.dpf(8f), txt); lx += context.dpf(52f)
+            }
+            c.drawText("km/h", width - context.dpf(40f), context.dpf(16f), txt)
+        } else c.drawPath(path, line)
         val r = context.dpf(5f)
         for ((la, lo, col) in marks) {
             dot.color = col; c.drawCircle(x(lo), y(la), r, dot)

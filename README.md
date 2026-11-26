@@ -1,8 +1,14 @@
-# Car OBD Pro v3.1.0 – universal ELM327 app (any OBD-II / EOBD car)
+# Car OBD Pro v3.2.0 – universal ELM327 app (any OBD-II / EOBD car)
 
 **Software developed by Dilip Kumar TD**
 
-## New in v3.1.0 – completely redesigned interface
+## New in v3.2.0 – advanced graphics & health
+- Car Health page with top-view car diagram, status dots and health score
+- Driving-profile radar, event donut, 12-week heatmap, streaks and badges
+- Speed-coloured trip route, shift-light LED bar, live driving coach
+- Nearby tiles (petrol, service, parking, EV, tyres, wash) and monthly PDF report
+
+## v3.1.0 – completely redesigned interface – completely redesigned interface
 - Pictograms for every function, drawn in code (no image files), and an illustrated car showing the live link status.
 - New header, bottom navigation with icons, tile menus and toggle switches.
 - Redesigned Connect screen. Settings are regrouped into Connection, Trips, Alerts, Driving, Auto, Custom PIDs, Data and About.

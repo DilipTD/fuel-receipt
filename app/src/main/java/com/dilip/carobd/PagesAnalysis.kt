@@ -93,6 +93,65 @@ class AnalysisPage(a: MainActivity) : Page(a) {
         sc.set(trips.map { it.score.toFloat() }.toFloatArray(), "Driver score per trip", "", Color.parseColor("#FFB300"))
         box.addView(sc, ui.lp(8))
 
+        val ra0 = trips.sumOf { it.rapidAcc }; val hb0 = trips.sumOf { it.hardBrake }; val sb0 = trips.sumOf { it.suddenBrake }
+        val co0 = trips.sumOf { it.corner }; val osS0 = trips.sumOf { it.overspeedS }
+        val orv0 = trips.sumOf { it.overRev } + trips.sumOf { it.coldRev }; val os0 = trips.sumOf { it.overspeed }; val li0 = trips.sumOf { it.longIdle }
+        val p100 = 100.0 / maxOf(km, 1.0)
+        fun cl(x: Double) = x.coerceIn(0.0, 100.0).toFloat()
+        box.addView(ui.section("Driving profile", Ic.PULSE))
+        val radar = RadarView(a)
+        radar.set(listOf("Smooth", "Braking", "Cornering", "Speed", "Idle", "Engine"), floatArrayOf(
+            cl(100 - ra0 * p100 * 8), cl(100 - (hb0 + sb0 * 2) * p100 * 8), cl(100 - co0 * p100 * 10),
+            cl(100 - osS0 / maxOf(hours * 3600, 1.0) * 500), cl(100 - idle / maxOf(hours, 0.01) * 300), cl(100 - orv0 * p100 * 10)))
+        box.addView(radar, ui.lp(6))
+        val donut = DonutView(a)
+        val totalEv = ra0 + hb0 + sb0 + co0 + os0 + orv0 + li0
+        donut.set(listOf(
+            Triple("Rapid acc", ra0.toFloat(), Ui.ORANGE), Triple("Hard brake", hb0.toFloat(), Ui.WARN),
+            Triple("Sudden brake", sb0.toFloat(), Ui.BAD), Triple("Cornering", co0.toFloat(), Ui.VIOLET),
+            Triple("Overspeed", os0.toFloat(), Ui.PINK), Triple("Over-rev", orv0.toFloat(), Ui.CYAN),
+            Triple("Long idle", li0.toFloat(), Ui.DIM)), "$totalEv", "events")
+        box.addView(donut, ui.lp(8))
+
+        // 12-week calendar heatmap + streak + badges
+        run {
+            val dayMs = 86_400_000L
+            val c0 = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, -83); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            val s0 = c0.timeInMillis
+            val arr = FloatArray(84)
+            for (t in Db.trips(v.id, s0)) { val i = ((t.start - s0) / dayMs).toInt(); if (i in 0..83) arr[i] += t.distanceKm.toFloat() }
+            val hm = HeatmapView(a)
+            hm.set(arr, (c0.get(Calendar.DAY_OF_WEEK) + 5) % 7)
+            box.addView(ui.section("Activity – last 12 weeks", Ic.CALENDAR))
+            box.addView(hm, ui.lp(6))
+            var streak = 0
+            var i = if (arr[83] > 0) 83 else 82
+            while (i >= 0 && arr[i] > 0) { streak++; i-- }
+            val active = arr.count { it > 0 }
+            val chips = mutableListOf<View>()
+            chips += ui.chip("$streak-day streak", if (streak >= 3) Ui.ORANGE else Ui.DIM, Ic.FLAG)
+            chips += ui.chip("$active active days", Ui.ACC, Ic.CALENDAR)
+            if (score >= 85 && km > 50) chips += ui.chip("Smooth operator", Ui.GOOD, Ic.SHIELD)
+            if (idle / maxOf(hours, 0.01) < 0.10 && km > 50) chips += ui.chip("Idle-free", Ui.CYAN, Ic.LEAF)
+            if ((hb0 + sb0) * p100 < 1 && km > 50) chips += ui.chip("Calm braker", Ui.VIOLET, Ic.CHECK)
+            if (km >= 1000) chips += ui.chip("1000 km club", Ui.PINK, Ic.ROUTE)
+            val flow = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+            var rowL: LinearLayout? = null
+            chips.forEachIndexed { idx, ch ->
+                if (idx % 2 == 0) { rowL = LinearLayout(a); flow.addView(rowL, ui.lp(6)) }
+                rowL!!.addView(ch, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { rightMargin = ui.dp(6) })
+            }
+            box.addView(ui.section("Achievements", Ic.FLAG))
+            box.addView(flow)
+        }
+
+        box.addView(ui.btn("Save monthly PDF report", Ui.ACC) {
+            val path = PdfReport.create(a, if (days == 0) 30 else days)
+            ui.toast(if (path != null) "Saved: $path" else "Could not save PDF – check storage permission")
+        }, ui.lp(12))
+
         val ra = trips.sumOf { it.rapidAcc }; val hb = trips.sumOf { it.hardBrake }; val sb = trips.sumOf { it.suddenBrake }
         val co = trips.sumOf { it.corner }; val os = trips.sumOf { it.overspeed }; val osS = trips.sumOf { it.overspeedS }
         val orv = trips.sumOf { it.overRev }; val cr = trips.sumOf { it.coldRev }; val li = trips.sumOf { it.longIdle }

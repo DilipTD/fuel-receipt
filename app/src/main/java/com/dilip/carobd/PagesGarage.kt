@@ -84,7 +84,20 @@ class MorePage(a: MainActivity) : Page(a) {
             ui.tile(Ic.BATTERY, "Battery", "Voltage & cranking", Ui.GOOD) { a.show("Battery") },
             ui.tile(Ic.PIN, "Where's my car", if (Prefs.parkT > 0) "Parked " + ui.date(Prefs.parkT, "dd MMM HH:mm") else "Saved when a trip ends", Ui.ORANGE) { openParking() }
         ), ui.lp(8))
+        box.addView(ui.section("Nearby", Ic.PIN))
         box.addView(ui.grid(
+            ui.tile(Ic.FUEL, "Petrol pump", "Find nearest", Ui.ORANGE) { openNearby("petrol pump") },
+            ui.tile(Ic.WRENCH, "Service centre", "Garages near you", Ui.ACC) { openNearby("car service center") },
+            ui.tile(Ic.PIN, "Parking", "Find parking", Ui.CYAN) { openNearby("parking") }
+        ), ui.lp(8))
+        box.addView(ui.grid(
+            ui.tile(Ic.BOLT, "EV / CNG", "Charging & CNG", Ui.GOOD) { openNearby("EV charging station") },
+            ui.tile(Ic.WIND, "Tyre shop", "Air & puncture", Ui.VIOLET) { openNearby("tyre shop") },
+            ui.tile(Ic.DROP, "Car wash", "Detailing", Ui.PINK) { openNearby("car wash") }
+        ), ui.lp(8))
+        box.addView(ui.section("More tools", Ic.GEAR))
+        box.addView(ui.grid(
+            ui.tile(Ic.SHIELD, "Car health", "Status of every system", Ui.GOOD) { a.show("Health") },
             ui.tile(Ic.MONITOR, "HUD mode", "Windscreen mirror", Ui.ACC) { a.show("HUD") },
             ui.tile(Ic.GEAR, "Settings", "Connection & options", Color.parseColor("#90A4AE")) { a.show("Settings") }
         ), ui.lp(8))

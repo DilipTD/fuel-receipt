@@ -37,7 +37,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Dash" to "Dashboard", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Health" to "Car health", "TripDetail" to "Trip details", "HUD" to "HUD"
     )
     private lateinit var content: FrameLayout
     private lateinit var nav: LinearLayout
@@ -153,6 +153,7 @@ class MainActivity : Activity() {
         pages["Perf"] = PerformancePage(this)
         pages["Battery"] = BatteryPage(this)
         pages["About"] = AboutPage(this)
+        pages["Health"] = HealthPage(this)
         for (p in pages.values) {
             p.view = p.build()
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
