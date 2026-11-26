@@ -14,6 +14,8 @@ class TripEngine {
     @Volatile var instantKmpl: Double? = null
     @Volatile var instantRate: Double? = null      // L/h (kg/h for CNG)
     @Volatile var liveAccelG: Double = 0.0
+    @Volatile var liveLatG: Double = 0.0
+    @Volatile var liveLatAt = 0L
     @Volatile var overspeedNow = false
     var onEvent: ((DriveEvent) -> Unit)? = null
 
@@ -42,6 +44,18 @@ class TripEngine {
             fuelPrice = v.fuelPrice
             co2PerUnit = v.spec.co2PerUnit
         }
+        current = t
+        lastT = 0L
+        spdHist.clear()
+        inAcc = false; inBrk = false; osStart = 0L; idleStart = 0L; zeroT = 0L; lastGps = null
+        overspeedNow = false
+        return t
+    }
+
+    /** Continue a trip that ended only a few minutes ago (fuel stop, signal, short errand). */
+    fun resume(v: Vehicle, t: Trip): Trip {
+        vehicle = v
+        t.end = 0L
         current = t
         lastT = 0L
         spdHist.clear()
@@ -208,9 +222,11 @@ class TripEngine {
             t.sumObdSpd += obdSpeed; t.sumGpsSpd += gpsKmh
         }
         if (l.hasBearing() && p.hasBearing() && l.speed > 5.5f) {
-            var db = abs(l.bearing - p.bearing).toDouble()
-            if (db > 180) db = 360 - db
+            val signed = ((l.bearing - p.bearing + 540.0) % 360.0) - 180.0
+            val db = abs(signed)
             val lat = l.speed * Math.toRadians(db) / dt / 9.81
+            liveLatG = if (signed >= 0) lat else -lat
+            liveLatAt = System.currentTimeMillis()
             if (lat >= Prefs.cornerG && cornerArmed) {
                 cornerArmed = false
                 emit(t, DriveEvent.EV_CORNER, lat, gpsKmh)

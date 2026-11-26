@@ -61,17 +61,25 @@ class MainActivity : Activity() {
         content = FrameLayout(this)
         root.addView(content, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         nav = LinearLayout(this).apply { setBackgroundColor(Ui.CARD) }
+        val icons = mapOf("Connect" to "🔌", "Dash" to "🏁", "Live" to "📈", "Trips" to "🗺️", "Diag" to "🩺", "More" to "☰")
         for (name in tabs) {
-            val t = ui.tv(name, 12f, Ui.DIM).apply {
+            val t = ui.tv("${icons[name]}\n$name", 11f, Ui.DIM).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, ui.dp(14), 0, ui.dp(14))
+                setPadding(0, ui.dp(8), 0, ui.dp(8))
                 setOnClickListener { show(name) }
             }
             nav.addView(t, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             navButtons[name] = t
         }
         root.addView(nav)
-        setContentView(root)
+        val frame = FrameLayout(this)
+        frame.addView(root, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        val splash = buildSplash()
+        frame.addView(splash, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        setContentView(frame)
+        handler.postDelayed({
+            splash.animate().alpha(0f).setDuration(450).withEndAction { splash.visibility = View.GONE }.start()
+        }, if (savedInstanceState == null) 1700L else 0L)
 
         pages["Connect"] = ConnectPage(this)
         pages["Dash"] = DashPage(this)
@@ -86,16 +94,47 @@ class MainActivity : Activity() {
         pages["Maint"] = MaintPage(this)
         pages["Analysis"] = AnalysisPage(this)
         pages["Settings"] = SettingsPage(this)
+        pages["Alerts"] = AlertsPage(this)
+        pages["Perf"] = PerformancePage(this)
+        pages["Battery"] = BatteryPage(this)
+        pages["About"] = AboutPage(this)
         for (p in pages.values) {
             p.view = p.build()
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         }
         show(if (ObdManager.state == ObdManager.State.CONNECTED) "Dash" else "Connect")
+        intent?.getStringExtra("open")?.let { show(it) }
         requestPerms()
         Maint.schedule(this)
         if (Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED) {
             handler.postDelayed({ (pages["Connect"] as ConnectPage).autoConnect() }, 1500)
         }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.getStringExtra("open")?.let { show(it) }
+    }
+
+    private fun buildSplash(): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#13263A"), Color.parseColor("#0A0D10"))
+            )
+            isClickable = true
+        }
+        box.addView(LogoView(this), LinearLayout.LayoutParams(ui.dp(150), ui.dp(150)))
+        box.addView(ui.tv(AppInfo.NAME, 30f, Ui.WHITE, true).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { topMargin = ui.dp(18) })
+        box.addView(ui.tv("Universal OBD-II diagnostics & trip logger", 14f, Ui.DIM).apply { gravity = Gravity.CENTER })
+        box.addView(ui.tv("Version ${AppInfo.VERSION}", 13f, Color.parseColor("#00E5FF")).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { topMargin = ui.dp(10) })
+        box.addView(ui.tv("Developed by ${AppInfo.DEVELOPER}", 15f, Ui.WHITE, true).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { topMargin = ui.dp(40) })
+        return box
     }
 
     override fun onResume() {
@@ -172,6 +211,7 @@ class MainActivity : Activity() {
             v.setBackgroundColor(if (k == tab) Ui.SEL else Ui.CARD)
         }
         val full = name == "HUD"
+        if (name != "Perf" && PerfMeter.mode != PerfMeter.Mode.IDLE) PerfMeter.cancel()
         nav.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()
@@ -186,7 +226,7 @@ class MainActivity : Activity() {
                 (if (m.engineOn) "● " else "◐ ") + "${m.vehicle.name} · ${m.deviceName} · ${ui.f(m.batteryV, 1, " V")}" +
                         if (m.engineOn) " · ${m.cycleMs} ms" else " · ignition off"
             ObdManager.State.CONNECTING -> "◌ ${m.status}"
-            ObdManager.State.DISCONNECTED -> "○ ${m.vehicle.name} · ${m.status}"
+            ObdManager.State.DISCONNECTED -> "○ ${m.vehicle.name} · ${m.status} · v${AppInfo.VERSION}"
         }
         header.setTextColor(
             when (st) {

@@ -51,6 +51,15 @@ object ObdManager {
     @Volatile var lastEventAt = 0L
     @Volatile var vehicle: Vehicle = Vehicle()
     val engine = TripEngine()
+    val battHist = Ring(900)
+    @Volatile var perfMode = false
+    @Volatile var lastCrank: Pair<Double, Double>? = null   // (min during crank, resting before)
+    private val vSamples = ArrayDeque<Pair<Long, Double>>()
+    @Volatile private var preCrankUntil = 0L
+    @Volatile private var preCrank = false
+    private var fuelChecked = false
+    private var ltKmpl: Double? = null
+    private var ltKmplAt = 0L
 
     private val logLines = ArrayDeque<String>()
     private val jobs = LinkedBlockingQueue<(Elm327) -> Unit>()
@@ -94,6 +103,7 @@ object ObdManager {
         state = State.CONNECTING
         status = "Connecting…"
         values.clear(); texts.clear(); customValues.clear(); history.clear(); batteryV = null
+        AlertCenter.resetSession()
         jobs.clear()
         reloadVehicle()
         try {
@@ -149,6 +159,10 @@ object ObdManager {
                 } catch (e: Exception) {
                     status = "Error: ${e.message}"
                     log("ERROR: ${e.message}")
+                    if (!userStopped && engineOn && state == State.CONNECTED)
+                        AlertCenter.raise(app, "link", AlertCenter.WARN, "OBD adapter disconnected",
+                            "Lost connection to ${deviceName.ifEmpty { "the adapter" }} while the engine was running" +
+                                    (if (Prefs.autoReconnect) " – reconnecting automatically." else "."), 5 * 60_000L)
                     false
                 } finally {
                     try { transport?.close() } catch (_: Exception) {}
@@ -235,6 +249,7 @@ object ObdManager {
         var lastOk = System.currentTimeMillis()
         var zeroRpmSince = 0L
         var waitTick = 0
+        var lastNotif = 0L
 
         try {
             while (!userStopped) {
@@ -246,42 +261,70 @@ object ObdManager {
                 val now0 = System.currentTimeMillis()
 
                 if (!engineOn) {
-                    // Ignition off: monitor battery, poll for ECU wake-up every ~5 s
+                    // Ignition off: sample battery quickly (parked monitor + crank capture); a jump above
+                    // 13.1 V means the alternator is charging, i.e. the engine has just been started.
                     status = "Ignition off – parked battery monitor"
-                    elm.batteryVoltage()?.let { batteryV = it }
                     waitTick++
+                    var samples = 0
+                    var charging = false
+                    val until = System.currentTimeMillis() + 5000
+                    while (!userStopped && System.currentTimeMillis() < until && jobs.isEmpty()) {
+                        val bv = elm.batteryVoltage() ?: break
+                        samples++
+                        recordVolt(bv)
+                        if (bv > 13.1) { charging = true; break }
+                        Thread.sleep(150)
+                    }
+                    if (samples == 0) sleepCheck(5000)
+                    AlertCenter.check(app)
+                    if (waitTick % 3 == 0) updateNotification()
                     val woke = if (!ecuReady) prepareEcu(elm)
-                    else elm.pid01(0x0C) != null || (waitTick % 6 == 0 && prepareEcu(elm))
+                    else elm.pid01(0x0C) != null || ((charging || waitTick % 6 == 0) && prepareEcu(elm))
                     if (woke) {
                         engineOn = true; lastOk = System.currentTimeMillis(); status = "Connected"
+                        preCrank = true; preCrankUntil = System.currentTimeMillis() + 45_000
+                        if (charging) analyseCrank()
                         if (slow.size <= 1) {
                             slow.clear()
                             slow.addAll(supported.filter { !Pids.isBitmap(it) && it !in FAST })
                             if (0x01 !in slow) slow.add(0, 0x01)
                         }
                     }
-                    if (!engineOn) {
-                        sleepCheck(5000); continue
-                    }
+                    if (!engineOn) continue
                 }
                 status = "Connected"
 
                 var rpmOk = false
-                for (p in FAST) if (p in supported) {
-                    val ok = readPid(elm, p)
-                    if (p == 0x0C && ok) rpmOk = true
-                }
-                if (0x0C !in supported && 0x0D in supported) rpmOk = true
-                repeat(3) {
-                    if (slow.isNotEmpty()) {
-                        readPid(elm, slow[slowIdx % slow.size]); slowIdx++
+                val crankWatch = preCrank && now0 < preCrankUntil
+                if (perfMode || crankWatch) {
+                    // fast path: speed + RPM only (performance timing / crank-voltage capture)
+                    val okR = readPid(elm, 0x0C)
+                    val okS = readPid(elm, 0x0D)
+                    rpmOk = okR || okS
+                    if (crankWatch) {
+                        elm.batteryVoltage()?.let { recordVolt(it) }
+                        if ((values[0x0C] ?: 0.0) > 400) {
+                            analyseCrank(); preCrank = false
+                        }
                     }
+                } else {
+                    for (p in FAST) if (p in supported) {
+                        val ok = readPid(elm, p)
+                        if (p == 0x0C && ok) rpmOk = true
+                    }
+                    if (0x0C !in supported && 0x0D in supported) rpmOk = true
+                    repeat(3) {
+                        if (slow.isNotEmpty()) {
+                            readPid(elm, slow[slowIdx % slow.size]); slowIdx++
+                        }
+                    }
+                    val customs = Prefs.customPids
+                    if (customs.isNotEmpty()) {
+                        readCustom(elm, customs[customIdx % customs.size]); customIdx++
+                    }
+                    if (cycle % 10 == 0) elm.batteryVoltage()?.let { recordVolt(it) }
+                    if (preCrank && (values[0x0C] ?: 0.0) > 400) preCrank = false
                 }
-                val customs = Prefs.customPids
-                if (customs.isNotEmpty()) {
-                    readCustom(elm, customs[customIdx % customs.size]); customIdx++
-                }
-                if (cycle % 10 == 0) elm.batteryVoltage()?.let { batteryV = it }
                 cycle++
 
                 val now = System.currentTimeMillis()
@@ -311,6 +354,17 @@ object ObdManager {
                     } else zeroRpmSince = 0L
                 }
                 engine.update(spd, rpm, fuelRate(), values[0x05])
+                AlertCenter.check(app)
+                if (now - lastNotif >= 5000) { lastNotif = now; updateNotification() }
+                val tr0 = engine.current
+                if (tr0 != null && !fuelChecked && now - tr0.start > 90_000) {
+                    fuelChecked = true
+                    val f = values[0x2F]
+                    if (f != null) {
+                        val prev = Db.trips(vehicle.id, 0, 3).firstOrNull { it.id != tr0.id && it.end > 0 }
+                        if (prev != null) AlertCenter.checkFuelJump(app, prev.fuelEndPct, f, vehicle.tankL, vehicle.spec.unit)
+                    }
+                }
 
                 val tr = engine.current
                 if (tr != null && now - lastTrack >= 2000) {
@@ -345,8 +399,97 @@ object ObdManager {
     @Synchronized
     fun startTrip() {
         if (engine.current != null) return
+        fuelChecked = false
+        val merge = Prefs.tripMergeMin
+        if (merge > 0) {
+            try {
+                val last = Db.trips(vehicle.id, 0, 1).firstOrNull()
+                if (last != null && last.end > 0 && System.currentTimeMillis() - last.end < merge * 60_000L) {
+                    engine.resume(vehicle, last)
+                    fuelChecked = true
+                    log("Trip resumed (stop shorter than $merge min)")
+                    return
+                }
+            } catch (_: Exception) {
+            }
+        }
         val t = engine.start(vehicle, values[0x2F])
         try { Db.insertTrip(t) } catch (e: Exception) { log("DB: ${e.message}") }
+    }
+
+    /** Range left from fuel level and recent economy (trip average once > 5 km, else 30-day average). */
+    fun rangeKm(): Double? {
+        val f = values[0x2F] ?: return null
+        val t = engine.current
+        val k = t?.kmpl?.takeIf { t.distanceKm > 5 } ?: longTermKmpl() ?: return null
+        return f / 100.0 * vehicle.tankL * k
+    }
+
+    fun longTermKmpl(): Double? {
+        val now = System.currentTimeMillis()
+        if (now - ltKmplAt > 10 * 60_000L) {
+            ltKmplAt = now
+            ltKmpl = try {
+                val tr = Db.trips(vehicle.id, now - 30 * 86_400_000L)
+                val km = tr.sumOf { it.distanceKm }
+                val fu = tr.sumOf { it.fuel }
+                if (km > 10 && fu > 0.3) km / fu else null
+            } catch (_: Exception) { null }
+        }
+        return ltKmpl
+    }
+
+    private fun recordVolt(v: Double) {
+        batteryV = v
+        battHist.add(v.toFloat())
+        val now = System.currentTimeMillis()
+        synchronized(vSamples) {
+            vSamples.addLast(now to v)
+            while (vSamples.isNotEmpty() && now - vSamples.first().first > 25_000) vSamples.removeFirst()
+        }
+    }
+
+    /** Engine has just started: the lowest voltage in the last seconds is the cranking dip. */
+    private fun analyseCrank() {
+        val list = synchronized(vSamples) { vSamples.toList() }
+        if (list.size < 4) return
+        val now = System.currentTimeMillis()
+        val recent = list.filter { now - it.first < 10_000 }
+        val minP = recent.minByOrNull { it.second } ?: return
+        val before = list.filter { it.first < minP.first - 300 }
+        val rest = (before.maxOfOrNull { it.second } ?: list.first().second).coerceAtMost(13.0)
+        if (rest - minP.second < 0.4) return   // no visible dip – crank happened between samples
+        lastCrank = minP.second to rest
+        log("Crank: %.2f V (rest %.2f V)".format(minP.second, rest))
+        try {
+            val a = org.json.JSONArray(Prefs.crankHistory)
+            a.put(org.json.JSONObject().put("t", now).put("min", minP.second).put("rest", rest).put("vid", vehicle.id))
+            val out = org.json.JSONArray()
+            for (i in maxOf(0, a.length() - 30) until a.length()) out.put(a.get(i))
+            Prefs.crankHistory = out.toString()
+        } catch (_: Exception) {
+        }
+        if (minP.second < Prefs.crankLowV)
+            AlertCenter.raise(app, "crank", AlertCenter.WARN, "Weak battery – cranking %.1f V".format(minP.second),
+                "Voltage dropped to %.1f V while starting (rested %.1f V). A healthy battery stays above about %.1f V. Get the battery tested.".format(minP.second, rest, Prefs.crankLowV),
+                6 * 3600_000L, "Battery is weak")
+    }
+
+    private fun updateNotification() {
+        if (!::app.isInitialized) return
+        val t = engine.current
+        val text = when {
+            t != null -> "▶ Trip %.1f km · %s · %s · score %d".format(t.distanceKm, hmsS(t.durationS),
+                t.kmpl?.let { "%.1f km/%s".format(it, vehicle.spec.unit) } ?: "--", t.score)
+            engineOn -> "Engine on · ${values[0x0D]?.let { "%.0f km/h".format(it) } ?: ""} · ${batteryV?.let { "%.1f V".format(it) } ?: ""}"
+            else -> "Ignition off · battery ${batteryV?.let { "%.2f V".format(it) } ?: "--"}"
+        }
+        ObdService.update(app, "${vehicle.name} – ${AppInfo.NAME}", text)
+    }
+
+    private fun hmsS(s: Double): String {
+        val x = s.toLong()
+        return "%d:%02d:%02d".format(x / 3600, (x % 3600) / 60, x % 60)
     }
 
     @Synchronized
@@ -356,8 +499,13 @@ object ObdManager {
             if (t.distanceKm > 0.05 || t.durationS > 60) {
                 Db.updateTrip(t)
                 if (!odoFromEcu) {
-                    vehicle.odoKm += t.distanceKm
+                    vehicle.odoKm += t.distanceKm - t.odoCounted
+                    t.odoCounted = t.distanceKm
+                    Db.updateTrip(t)
                     Db.saveVehicle(vehicle)
+                }
+                (Gps.fresh() ?: Gps.last)?.let { g ->
+                    Prefs.parkLat = g.latitude; Prefs.parkLon = g.longitude; Prefs.parkT = System.currentTimeMillis()
                 }
                 if (Prefs.tripNotify && ::app.isInitialized) {
                     val k = t.kmpl
@@ -380,6 +528,9 @@ object ObdManager {
         lastEventAt = System.currentTimeMillis()
         try { Db.insertEvent(e) } catch (_: Exception) {}
         if (e.type == DriveEvent.EV_BRAKE || e.type == DriveEvent.EV_ACC) Alerts.beepIfQuiet()
+        if (::app.isInitialized)
+            AlertCenter.raise(app, "ev_${e.type}", if (e.type == DriveEvent.EV_SUDDEN) AlertCenter.WARN else AlertCenter.INFO,
+                e.label, "Driving event during trip on ${vehicle.name}.", 0L, notify = Prefs.notifyDrivingEvents)
     }
 
     fun onGps(l: Location) {
@@ -392,8 +543,8 @@ object ObdManager {
             val fresh = all.filter { Db.insertDtc(vehicle.id, it) }
             if (fresh.isNotEmpty()) {
                 val txt = fresh.joinToString("\n") { "${it.code} ${DtcDb.describe(it.code)}" }
-                Alerts.notify(app, 2500, "New fault code(s) – ${vehicle.name}", txt)
-                Alerts.say("dtc", "Warning. New engine fault code detected.", 60_000)
+                AlertCenter.raise(app, "dtc", AlertCenter.CRIT, "New fault code(s) – ${vehicle.name}", txt, 60_000L,
+                    "Warning. New engine fault code detected.")
                 diagText = "Auto-scan found new codes:\n$txt\n\nOpen 'Read DTCs' for details."
             }
         } catch (e: Exception) {
@@ -416,6 +567,7 @@ object ObdManager {
                 val v = it(d)
                 values[p] = v
                 history.getOrPut(p) { Ring() }.add(v.toFloat())
+                if (p == 0x0D) PerfMeter.onSpeed(System.currentTimeMillis(), v)
             }
             def.text?.let { texts[p] = it(d) }
         } catch (_: Exception) {

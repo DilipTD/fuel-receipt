@@ -1,4 +1,22 @@
-# Car OBD – universal ELM327 app (any OBD-II / EOBD car)
+# Car OBD Pro v3.0.0 – universal ELM327 app (any OBD-II / EOBD car)
+
+**Software developed by Dilip Kumar TD**
+
+## New in v3.0.0
+- Animated gauges with gradient arcs, redline zone, needle and peak marker. Ring gauges for coolant, fuel, battery and throttle. G-force meter and eco bar. Distance to empty.
+- Alert centre with notifications for:
+  - engine overheating, hot oil and catalyst temperature
+  - charging fault, over-voltage, low parked battery, weak cranking
+  - low fuel, refuel detected, fuel dropping while parked
+  - check-engine light, new fault codes, adapter disconnected
+- Smart automatic trip logging:
+  - starts and stops trips with the engine
+  - merges short stops into one trip
+  - shows the trip live in the notification
+  - can start automatically when the phone connects to the car's Bluetooth
+- Performance meter: 0–60, 0–100, 60–100, ¼ mile with trap speed, and 100–0 braking distance.
+- Battery monitor with a live graph and a cranking-voltage history.
+- "Where's my car" parking location, plus an About screen with the version and developer credit.
 
 Native Android app (Kotlin, no external libraries, Android 7.0+). It works with any car that has OBD-II/EOBD: petrol cars from about 2001, diesel from about 2004, and every CAN car from about 2008. That includes Tata, Maruti, Hyundai, Kia, Mahindra, Toyota, Honda, VW/Skoda, MG and others.
 

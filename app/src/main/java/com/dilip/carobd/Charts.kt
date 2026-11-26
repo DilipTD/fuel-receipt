@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
 import android.graphics.Path
+import android.graphics.Shader
 import android.view.View
 import kotlin.math.cos
 import kotlin.math.max
@@ -21,6 +24,12 @@ class LineChart(ctx: Context, private val heightDp: Int = 160) : View(ctx) {
     private val grid = Paint().apply { color = Color.parseColor("#2A333D"); strokeWidth = 1f }
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#9AA7B4"); textSize = ctx.dpf(11f) }
     private val path = Path()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dotP = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val avgP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#66FFFFFF"); strokeWidth = ctx.dpf(1f)
+        pathEffect = DashPathEffect(floatArrayOf(ctx.dpf(4f), ctx.dpf(4f)), 0f)
+    }
 
     fun set(values: FloatArray, title: String, unit: String = "", color: Int = this.color) {
         data = values; this.title = title; this.unit = unit; this.color = color
@@ -49,15 +58,30 @@ class LineChart(ctx: Context, private val heightDp: Int = 160) : View(ctx) {
         var mx = data.max()
         if (mx - mn < 1e-3f) { mx += 1f; mn -= 1f }
         val last = data.last()
-        c.drawText("%s   now %.1f%s   min %.1f   max %.1f".format(title, last, unit, data.min(), data.max()), pad, top - context.dpf(6f), txt)
+        c.drawText("%s   now %.1f%s   min %.1f   max %.1f   avg %.1f".format(title, last, unit, data.min(), data.max(), data.average()), pad, top - context.dpf(6f), txt)
         path.reset()
+        val fillPath = Path()
         for (i in data.indices) {
             val x = pad + w * i / (data.size - 1).toFloat()
             val y = top + h - (data[i] - mn) / (mx - mn) * h
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            if (i == 0) { path.moveTo(x, y); fillPath.moveTo(x, top + h); fillPath.lineTo(x, y) }
+            else { path.lineTo(x, y); fillPath.lineTo(x, y) }
         }
+        fillPath.lineTo(pad + w, top + h)
+        fillPath.close()
+        fill.shader = LinearGradient(0f, top, 0f, top + h,
+            Color.argb(110, Color.red(color), Color.green(color), Color.blue(color)),
+            Color.argb(0, Color.red(color), Color.green(color), Color.blue(color)), Shader.TileMode.CLAMP)
+        c.drawPath(fillPath, fill)
+        val avg = data.average().toFloat()
+        val ya = top + h - (avg - mn) / (mx - mn) * h
+        c.drawLine(pad, ya, pad + w, ya, avgP)
         line.color = color
         c.drawPath(path, line)
+        val lx = pad + w
+        val ly = top + h - (last - mn) / (mx - mn) * h
+        dotP.color = color
+        c.drawCircle(lx - context.dpf(2f), ly, context.dpf(3.5f), dotP)
     }
 }
 
@@ -66,7 +90,7 @@ class BarChart(ctx: Context, private val heightDp: Int = 170) : View(ctx) {
     private var labels: List<String> = emptyList()
     private var values: List<Float> = emptyList()
     private var title = ""
-    private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#2F7FD0") }
+    private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#9AA7B4"); textSize = ctx.dpf(10f) }
 
     fun set(labels: List<String>, values: List<Float>, title: String) {
@@ -86,11 +110,12 @@ class BarChart(ctx: Context, private val heightDp: Int = 170) : View(ctx) {
         c.drawText(title, pad, top - context.dpf(6f), txt)
         if (values.isEmpty()) return
         val mx = max(values.max(), 0.001f)
+        bar.shader = LinearGradient(0f, top, 0f, bottom, Color.parseColor("#00E5FF"), Color.parseColor("#2F5FD0"), Shader.TileMode.CLAMP)
         val slot = (width - pad * 2) / values.size
         for (i in values.indices) {
             val x = pad + slot * i
             val bh = (bottom - top) * values[i] / mx
-            c.drawRect(x + slot * 0.15f, bottom - bh, x + slot * 0.85f, bottom, bar)
+            c.drawRoundRect(x + slot * 0.15f, bottom - bh, x + slot * 0.85f, bottom, context.dpf(3f), context.dpf(3f), bar)
             if (values.size <= 16 || i % 2 == 0) c.drawText(labels.getOrElse(i) { "" }, x + slot * 0.1f, height - context.dpf(5f), txt)
             if (values[i] > 0 && values.size <= 14)
                 c.drawText("%.0f".format(values[i]), x + slot * 0.15f, bottom - bh - context.dpf(2f), txt)

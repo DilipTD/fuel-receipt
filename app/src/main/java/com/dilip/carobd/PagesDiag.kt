@@ -20,8 +20,8 @@ class DiagPage(a: MainActivity) : Page(a) {
         c.addView(ui.btn("Share report", Ui.CARD) {
             val i = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, "Car OBD report – ${ObdManager.vehicle.title}")
-                putExtra(Intent.EXTRA_TEXT, ObdManager.diagText)
+                putExtra(Intent.EXTRA_SUBJECT, "${AppInfo.NAME} report – ${ObdManager.vehicle.title}")
+                putExtra(Intent.EXTRA_TEXT, ObdManager.diagText + AppInfo.footer)
             }
             a.startActivity(Intent.createChooser(i, "Share report"))
         }, ui.lp(8))

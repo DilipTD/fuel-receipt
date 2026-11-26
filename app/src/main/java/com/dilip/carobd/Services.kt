@@ -20,6 +20,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -258,22 +259,42 @@ class MaintJobService : JobService() {
 class ObdService : Service() {
     private var wl: PowerManager.WakeLock? = null
 
+    companion object {
+        @Volatile var running = false
+            private set
+
+        fun build(ctx: Context, title: String, text: String): Notification {
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(NotificationChannel("obd", "OBD connection & live trip", NotificationManager.IMPORTANCE_LOW))
+            }
+            val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            @Suppress("DEPRECATION")
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(ctx, "obd") else Notification.Builder(ctx)
+            return b.setContentTitle(title)
+                .setContentText(text)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setColor(Color.parseColor("#2F7FD0"))
+                .setContentIntent(pi)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build()
+        }
+
+        /** Refreshes the ongoing notification with live trip figures. */
+        fun update(ctx: Context, title: String, text: String) {
+            if (!running) return
+            try {
+                ctx.getSystemService(NotificationManager::class.java)?.notify(1, build(ctx, title, text))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel("obd", "OBD connection", NotificationManager.IMPORTANCE_LOW))
-        }
-        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "obd") else Notification.Builder(this)
-        val n = b.setContentTitle("Car OBD")
-            .setContentText("Connected – logging live data, trip & GPS")
-            .setSmallIcon(R.drawable.ic_stat)
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .build()
+        val n = build(this, AppInfo.NAME, "Connected – logging live data, trip & GPS")
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -282,10 +303,12 @@ class ObdService : Service() {
             } else {
                 startForeground(1, n)
             }
+            running = true
         } catch (e: Exception) {
             try {
                 if (Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
                 else throw e
+                running = true
             } catch (e2: Exception) {
                 ObdManager.log("Foreground service not allowed: ${e2.message}")
                 stopSelf()
@@ -303,6 +326,7 @@ class ObdService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         try {
             wl?.release()
         } catch (_: Exception) {

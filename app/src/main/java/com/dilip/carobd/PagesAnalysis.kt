@@ -1,5 +1,6 @@
 package com.dilip.carobd
 
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
@@ -201,6 +202,70 @@ class SettingsPage(a: MainActivity) : Page(a) {
             ui.toast("Saved. Protocol / CSV changes apply on the next connection.")
         }, ui.lp(12))
 
+        c.addView(ui.section("🔔 Alerts & notifications"))
+        val alN = ui.check("Show alert notifications (overheat, charging, low fuel, check-engine…)", Prefs.alertNotify)
+        val alD = ui.check("Also notify every driving event (hard braking, overspeed…)", Prefs.notifyDrivingEvents)
+        c.addView(alN); c.addView(alD)
+        val eCool = ui.edit("°C", Prefs.coolantMax.toString(), true)
+        val eFuel = ui.edit("%", Prefs.lowFuelPct.toString(), true)
+        val eChMin = ui.edit("V", Prefs.chargeMinV.toString(), true)
+        val eChMax = ui.edit("V", Prefs.chargeMaxV.toString(), true)
+        val ePark = ui.edit("V", Prefs.parkLowV.toString(), true)
+        val eCrank = ui.edit("V", Prefs.crankLowV.toString(), true)
+        c.addView(ui.row(ui.labeled("Overheat at (°C)", eCool), ui.labeled("Low fuel below (%)", eFuel)), ui.lp())
+        c.addView(ui.row(ui.labeled("Charging min (V)", eChMin), ui.labeled("Charging max (V)", eChMax)), ui.lp())
+        c.addView(ui.row(ui.labeled("Parked battery low (V)", ePark), ui.labeled("Weak crank below (V)", eCrank)), ui.lp())
+        c.addView(ui.tv("Lead-acid defaults: 13.0 / 15.2 / 12.2 / 9.6 V. For an LFP starter battery try 13.4 / 14.8 / 13.0 / 11.0 V.", 12f, Ui.DIM), ui.lp())
+
+        c.addView(ui.section("🤖 Automatic trip logging"))
+        val eMerge = ui.edit("min", Prefs.tripMergeMin.toString(), true)
+        c.addView(ui.labeled("Merge stops shorter than (minutes, 0 = never)", eMerge), ui.lp())
+        val carBt = ui.check("Auto-start when the phone connects to the car's Bluetooth", Prefs.autoStartCarBt)
+        c.addView(carBt)
+        val btList = mutableListOf<Pair<String, String>>("" to "– select car stereo / hands-free –")
+        try {
+            @SuppressLint("MissingPermission")
+            val bonded = a.btAdapter?.bondedDevices
+            bonded?.forEach { d ->
+                @SuppressLint("MissingPermission")
+                val n = d.name ?: d.address
+                btList += d.address to n
+            }
+        } catch (_: Exception) {
+        }
+        val carSp = Spinner(a).apply {
+            adapter = ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, btList.map { it.second })
+            setSelection(btList.indexOfFirst { it.first == Prefs.carBtAddr }.coerceAtLeast(0))
+        }
+        c.addView(ui.labeled("Car Bluetooth device (not the OBD adapter)", carSp), ui.lp())
+        c.addView(ui.tv("Flow: car switched on → phone joins car Bluetooth → app connects to the OBD adapter in the background → " +
+                "trip starts with the engine → trip saved after the engine stops. Keep 'Auto-reconnect' on and allow the app to run " +
+                "without battery restrictions.", 12f, Ui.DIM), ui.lp())
+        c.addView(ui.btn("Allow background running (battery optimisation)", Ui.CARD) {
+            try {
+                @SuppressLint("BatteryLife")
+                val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${a.packageName}"))
+                a.startActivity(i)
+            } catch (_: Exception) {
+                try { a.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
+            }
+        }, ui.lp(8))
+        c.addView(ui.btn("Save alerts & automation", Ui.GOOD) {
+            Prefs.alertNotify = alN.isChecked; Prefs.notifyDrivingEvents = alD.isChecked
+            eCool.num()?.let { Prefs.coolantMax = it.coerceIn(85.0, 130.0) }
+            eFuel.num()?.let { Prefs.lowFuelPct = it.coerceIn(0.0, 50.0) }
+            eChMin.num()?.let { Prefs.chargeMinV = it.coerceIn(11.5, 14.5) }
+            eChMax.num()?.let { Prefs.chargeMaxV = it.coerceIn(14.0, 16.5) }
+            ePark.num()?.let { Prefs.parkLowV = it.coerceIn(10.5, 13.5) }
+            eCrank.num()?.let { Prefs.crankLowV = it.coerceIn(7.0, 12.5) }
+            eMerge.num()?.let { Prefs.tripMergeMin = it.toInt().coerceIn(0, 60) }
+            val sel = btList.getOrNull(carSp.selectedItemPosition) ?: ("" to "")
+            Prefs.carBtAddr = sel.first; Prefs.carBtName = if (sel.first.isEmpty()) "" else sel.second
+            Prefs.autoStartCarBt = carBt.isChecked && sel.first.isNotEmpty()
+            if (carBt.isChecked && sel.first.isEmpty()) ui.toast("Select the car's Bluetooth device to enable auto-start")
+            else ui.toast("Saved")
+        }, ui.lp(10))
+
         c.addView(ui.section("Custom PIDs (mode 22 / manufacturer)"))
         c.addView(ui.tv("Header = module to ask (7E0 engine, 7E1 gearbox; blank = all). Request = hex, e.g. 221234. " +
                 "Formula uses reply bytes A, B, C… after the echoed request, e.g. (A*256+B)/10-40.", 12f, Ui.DIM))
@@ -245,7 +310,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
 
         c.addView(ui.section("About"))
         c.addView(ui.tv(
-            "Car OBD 2.0 — universal ELM327 app (Bluetooth / BLE / WiFi). Works with OBD-II/EOBD petrol cars (~2001+), " +
+            "${AppInfo.NAME} v${AppInfo.VERSION} — software developed by ${AppInfo.DEVELOPER}.\nUniversal ELM327 app (Bluetooth / BLE / WiFi). Works with OBD-II/EOBD petrol cars (~2001+), " +
                     "diesel (~2004+) and all CAN cars (~2008+). Live data & graphs, trip computer, real mileage, " +
                     "maintenance reminders, driving-behaviour analysis, DTC read/clear (OBD + UDS), GPS routes, HUD.\n" +
                     "Do not operate the app while driving.", 12f, Ui.DIM

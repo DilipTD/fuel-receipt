@@ -40,6 +40,7 @@ class Trip(var start: Long, var vehicleId: Long) {
     var sumGpsSpd = 0.0
     var fuelPrice = 0.0
     var co2PerUnit = 2.31
+    var odoCounted = 0.0
 
     val durationS: Double get() = ((if (end > 0) end else System.currentTimeMillis()) - start) / 1000.0
     val avgSpeed: Double get() = if (durationS > 0) distanceKm / (durationS / 3600.0) else 0.0
@@ -67,7 +68,7 @@ class Trip(var start: Long, var vehicleId: Long) {
         put("ra", rapidAcc); put("hb", hardBrake); put("sb", suddenBrake); put("co", corner); put("os", overspeed)
         put("osS", overspeedS); put("or", overRev); put("cr", coldRev); put("li", longIdle)
         put("b100", best0100); put("b60", best060); put("gpsKm", gpsKm); put("sObd", sumObdSpd); put("sGps", sumGpsSpd)
-        put("price", fuelPrice); put("co2", co2PerUnit)
+        put("price", fuelPrice); put("co2", co2PerUnit); put("odoCnt", odoCounted)
     }.toString()
 
     fun loadJson(s: String) {
@@ -81,6 +82,7 @@ class Trip(var start: Long, var vehicleId: Long) {
         longIdle = o.optInt("li"); best0100 = o.optDouble("b100", 0.0); best060 = o.optDouble("b60", 0.0)
         gpsKm = o.optDouble("gpsKm", 0.0); sumObdSpd = o.optDouble("sObd", 0.0); sumGpsSpd = o.optDouble("sGps", 0.0)
         fuelPrice = o.optDouble("price", 0.0); co2PerUnit = o.optDouble("co2", 2.31)
+        odoCounted = o.optDouble("odoCnt", 0.0)
     }
 }
 
@@ -142,7 +144,7 @@ object Db {
     private const val NAME = "carobd.db"
     private lateinit var helper: Helper
 
-    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 1) {
+    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 2) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE vehicles(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)")
             db.execSQL("CREATE TABLE trips(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, start INTEGER, data TEXT)")
@@ -155,9 +157,17 @@ object Db {
             db.execSQL("CREATE TABLE maint(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, name TEXT, ikm REAL, idays INTEGER, lkm REAL, lt INTEGER, enabled INTEGER)")
             db.execSQL("CREATE TABLE maint_rec(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, item INTEGER, name TEXT, t INTEGER, odo REAL, cost REAL, note TEXT)")
             db.execSQL("CREATE TABLE dtc(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, t INTEGER, code TEXT, ecu TEXT, kind TEXT)")
+            createV2(db)
         }
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+        private fun createV2(db: SQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, t INTEGER, level INTEGER, akey TEXT, title TEXT, body TEXT)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS alerts_t ON alerts(t)")
+        }
+
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) createV2(db)
+        }
     }
 
     fun init(ctx: Context) {
@@ -378,4 +388,24 @@ object Db {
         query("SELECT t, code, ecu, kind FROM dtc WHERE vid=? ORDER BY t DESC LIMIT 300", arrayOf(vid.toString())) {
             DtcRec(it.getLong(0), it.getString(1) ?: "", it.getString(2) ?: "", it.getString(3) ?: "")
         }
+
+    /* alert log */
+    @Synchronized
+    fun insertAlert(a: AlertRec): Long = db.insert("alerts", null, ContentValues().apply {
+        put("vid", a.vehicleId); put("t", a.t); put("level", a.level); put("akey", a.key); put("title", a.title); put("body", a.text)
+    })
+
+    fun alerts(limit: Int = 300): List<AlertRec> =
+        query("SELECT id, vid, t, level, akey, title, body FROM alerts ORDER BY t DESC LIMIT $limit", arrayOf()) {
+            AlertRec(it.getLong(1), it.getLong(2), it.getInt(3), it.getString(4) ?: "", it.getString(5) ?: "", it.getString(6) ?: "", it.getLong(0))
+        }
+
+    fun alertCountSince(t: Long): Int =
+        query("SELECT COUNT(*) FROM alerts WHERE t>=? AND level>=1", arrayOf(t.toString())) { it.getInt(0) }.firstOrNull() ?: 0
+
+    @Synchronized
+    fun clearAlerts() {
+        db.delete("alerts", null, null)
+    }
+
 }

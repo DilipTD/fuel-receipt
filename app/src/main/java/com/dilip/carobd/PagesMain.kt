@@ -212,19 +212,7 @@ class ConnectPage(a: MainActivity) : Page(a) {
 
     /** Connects to the last used adapter without user interaction. */
     fun autoConnect() {
-        if (ObdManager.state != ObdManager.State.DISCONNECTED) return
-        val t = Prefs.lastType
-        if (t == 2) {
-            ObdManager.connect(a) { WifiTransport(Prefs.wifiHost, Prefs.wifiPort, wifiFactory()) }
-            return
-        }
-        val addr = Prefs.lastAddr
-        val ad = a.btAdapter ?: return
-        if (addr.isEmpty() || !a.hasBtPerms() || !ad.isEnabled) return
-        try {
-            connectBt(t, ad.getRemoteDevice(addr))
-        } catch (_: Exception) {
-        }
+        if (a.hasBtPerms()) AutoStart.connectLast(a)
     }
 
     override fun refresh() {
@@ -249,27 +237,63 @@ class ConnectPage(a: MainActivity) : Page(a) {
 class DashPage(a: MainActivity) : Page(a) {
     private lateinit var gRpm: GaugeView
     private lateinit var gSpd: GaugeView
+    private lateinit var rCool: RingGauge
+    private lateinit var rFuel: RingGauge
+    private lateinit var rBatt: RingGauge
+    private lateinit var rThr: RingGauge
+    private lateinit var gMeter: GMeterView
+    private lateinit var eco: EcoBar
+    private lateinit var instTv: TextView
+    private lateinit var ecoInfo: TextView
     private lateinit var driveTv: TextView
     private lateinit var eventTv: TextView
+    private lateinit var alertTv: TextView
     private val vals = LinkedHashMap<String, TextView>()
     private val keys = listOf(
-        "Coolant", "Intake air", "Load", "Throttle", "Boost", "MAP",
-        "MAF", "Fuel rate", "Instant", "Fuel level", "Battery", "Timing",
-        "STFT", "LTFT", "Ambient", "Oil temp", "Trip km", "Trip avg"
+        "Load", "Boost", "MAP", "MAF", "Intake air", "Oil temp",
+        "Timing", "STFT", "LTFT", "Ambient", "Fuel rate", "Trip km"
     )
 
     override fun build(): View {
         val c = ui.col()
-        gRpm = GaugeView(a, "Engine", "rpm", 7000f, 5500f)
-        gSpd = GaugeView(a, "Speed", "km/h", 200f, 120f)
+        gRpm = GaugeView(a, "Engine", "rpm", 8000f, 6500f, 1000f)
+        gSpd = GaugeView(a, "Speed", "km/h", 220f, 120f)
         c.addView(ui.row(gRpm, gSpd), ui.lp(4))
-        eventTv = ui.card("", 14f).apply { visibility = View.GONE; gravity = Gravity.CENTER }
+
+        eventTv = ui.card("", 15f).apply { visibility = View.GONE; gravity = Gravity.CENTER }
         c.addView(eventTv, ui.lp(4))
-        driveTv = ui.card("", 13f)
-        c.addView(driveTv, ui.lp(6))
+        alertTv = ui.card("", 13f).apply { visibility = View.GONE; setOnClickListener { a.show("Alerts") } }
+        c.addView(alertTv, ui.lp(4))
+
+        rCool = RingGauge(a, "Coolant", "°C", 40f, 120f) { v -> if (v >= Prefs.coolantMax) 2 else if (v >= Prefs.coolantMax - 5) 1 else 0 }
+        rFuel = RingGauge(a, "Fuel", "%", 0f, 100f) { v -> if (v <= Prefs.lowFuelPct) 2 else if (v <= 25) 1 else 0 }
+        rBatt = RingGauge(a, "Battery", "V", 10f, 16f, 1) { v -> if (v < 11.8f || v > Prefs.chargeMaxV) 2 else if (v < 12.3f) 1 else 0 }
+        rThr = RingGauge(a, "Throttle", "%", 0f, 100f) { v -> if (v > 85) 1 else 0 }
+        c.addView(ui.row(rCool, rFuel, rBatt, rThr), ui.lp(10))
+
+        gMeter = GMeterView(a)
+        instTv = ui.tv("--", 30f, Ui.WHITE, true)
+        eco = EcoBar(a)
+        ecoInfo = ui.tv("", 12f, Ui.DIM)
+        val ecoBox = ui.vbox().apply {
+            background = ui.rounded(Ui.CARD, 12)
+            setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10))
+            addView(ui.tv("INSTANT ECONOMY", 11f, Ui.DIM))
+            addView(instTv)
+            addView(eco, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(4) })
+            addView(ecoInfo, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = ui.dp(6) })
+        }
+        val mid = LinearLayout(a).apply {
+            addView(gMeter, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            addView(ecoBox, LinearLayout.LayoutParams(0, Ui.MATCH, 1.25f).apply { leftMargin = ui.dp(8) })
+        }
+        c.addView(mid, ui.lp(10))
+
+        driveTv = ui.card("", 13f).apply { setOnClickListener { a.show("Trips") } }
+        c.addView(driveTv, ui.lp(10))
         for (chunk in keys.chunked(3)) {
             val tiles = chunk.map { key ->
-                val v = ui.tv("--", 17f, Ui.WHITE, true)
+                val v = ui.tv("--", 16f, Ui.WHITE, true)
                 vals[key] = v
                 ui.vbox().apply {
                     background = ui.rounded(Ui.CARD)
@@ -281,10 +305,20 @@ class DashPage(a: MainActivity) : Page(a) {
             c.addView(ui.row(*tiles.toTypedArray()), ui.lp(8))
         }
         c.addView(ui.row(
-            ui.btn("HUD mode") { a.show("HUD") },
+            ui.btn("HUD") { a.show("HUD") },
+            ui.btn("Performance", Ui.CARD) { a.show("Perf") },
             ui.btn("New trip", Ui.CARD) { ObdManager.stopTrip(); ObdManager.startTrip() }
         ), ui.lp(12))
+        c.addView(ui.tv("Long-press a gauge or the G-meter to reset its peak.", 11f, Ui.DIM), ui.lp(6))
         return ui.scroll(c)
+    }
+
+    override fun onShow() {
+        val veh = ObdManager.vehicle
+        val diesel = veh.fuel.contains("Diesel", true)
+        gRpm.max = if (diesel) 6000f else 8000f
+        gRpm.redFrom = if (diesel) 4500f else 6500f
+        gSpd.redFrom = veh.speedLimit.toFloat()
     }
 
     override fun refresh() {
@@ -295,48 +329,72 @@ class DashPage(a: MainActivity) : Page(a) {
         val spd = v[0x0D]
         gRpm.value = v[0x0C]?.toFloat()
         gSpd.value = spd?.toFloat()
+        rCool.value = v[0x05]?.toFloat()
+        val fuelPct = v[0x2F]
+        rFuel.value = fuelPct?.toFloat()
+        rFuel.subText = fuelPct?.let { "%.0f$u".format(it * veh.tankL / 100) } ?: ""
+        rBatt.value = (m.batteryV ?: v[0x42])?.toFloat()
+        rThr.value = (v[0x11] ?: v[0x45])?.toFloat()
+
+        val now = System.currentTimeMillis()
+        val e = m.engine
+        gMeter.push(e.liveAccelG.toFloat(), if (now - e.liveLatAt < 3000) e.liveLatG.toFloat() else 0f)
+
+        val t = e.current
+        instTv.text = ui.econ(e.instantKmpl)
+        eco.instant = e.instantKmpl?.toFloat()
+        eco.average = t?.kmpl?.toFloat()
+        eco.maxVal = maxOf(25f, (t?.kmpl?.toFloat() ?: 12f) * 2f)
+        eco.invalidate()
+        val rng = m.rangeKm()
+        ecoInfo.text = "Trip avg ${ui.econ(t?.kmpl)}\nRange ${ui.f(rng, 0, " km")}\n${ui.f(m.fuelRate(), 2, " $u/h")} · CO₂ ${ui.f(t?.co2Kg, 1, " kg")}"
+
         val map = v[0x0B]
         val baro = v[0x33] ?: 100.0
-        val fuelPct = v[0x2F]
-        val t = m.engine.current
         val s = mapOf(
-            "Coolant" to ui.f(v[0x05], 0, "°C"),
-            "Intake air" to ui.f(v[0x0F], 0, "°C"),
             "Load" to ui.f(v[0x04], 0, "%"),
-            "Throttle" to ui.f(v[0x11], 0, "%"),
             "Boost" to ui.f(map?.let { (it - baro) / 100.0 }, 2, " bar"),
             "MAP" to ui.f(map, 0, " kPa"),
             "MAF" to ui.f(v[0x10], 1, " g/s"),
-            "Fuel rate" to ui.f(m.fuelRate(), 2, " $u/h"),
-            "Instant" to ui.econ(m.engine.instantKmpl),
-            "Fuel level" to (fuelPct?.let { "%.0f%% · %.0f$u".format(it, it * veh.tankL / 100) } ?: "--"),
-            "Battery" to ui.f(m.batteryV ?: v[0x42], 2, " V"),
+            "Intake air" to ui.f(v[0x0F], 0, "°C"),
+            "Oil temp" to ui.f(v[0x5C], 0, "°C"),
             "Timing" to ui.f(v[0x0E], 1, "°"),
             "STFT" to ui.f(v[0x06], 1, "%"),
             "LTFT" to ui.f(v[0x07], 1, "%"),
             "Ambient" to ui.f(v[0x46], 0, "°C"),
-            "Oil temp" to ui.f(v[0x5C], 0, "°C"),
-            "Trip km" to ui.f(t?.distanceKm, 1),
-            "Trip avg" to ui.econ(t?.kmpl)
+            "Fuel rate" to ui.f(m.fuelRate(), 2, " $u/h"),
+            "Trip km" to ui.f(t?.distanceKm, 1)
         )
         for ((k, x) in s) vals[k]?.text = x
-        val cool = v[0x05] ?: 0.0
-        vals["Coolant"]?.setTextColor(if (cool > 105) Ui.BAD else if (cool > 100) Ui.WARN else Ui.WHITE)
-        val bv = m.batteryV ?: v[0x42]
-        vals["Battery"]?.setTextColor(if (bv != null && (bv < 12.0 || bv > 14.9)) Ui.WARN else Ui.WHITE)
-        gSpd.setBackgroundColor(if (m.engine.overspeedNow) Color.parseColor("#4A1515") else Color.TRANSPARENT)
+        val st = v[0x06] ?: 0.0
+        vals["STFT"]?.setTextColor(if (kotlin.math.abs(st) > 15) Ui.WARN else Ui.WHITE)
+        val lt = v[0x07] ?: 0.0
+        vals["LTFT"]?.setTextColor(if (kotlin.math.abs(lt) > 15) Ui.WARN else Ui.WHITE)
 
-        driveTv.text = if (t == null) "No trip running – starts automatically with the engine." else
-            "Trip %s · score %d · %s\nRapid acc %d · Hard brake %d · Sudden %d · Corner %d · Overspeed %d · Over-rev %d\nLive accel %+.2f g · limit %d km/h".format(
-                ui.hms(t.durationS), t.score, ui.money(t.cost), t.rapidAcc, t.hardBrake, t.suddenBrake, t.corner,
-                t.overspeed, t.overRev, m.engine.liveAccelG, veh.speedLimit
+        driveTv.text = if (t == null) "🚗 No trip running – starts automatically when the engine runs." else
+            "🚗 Trip %s · %s · score %d · %s\nRapid acc %d · Hard brake %d · Sudden %d · Corner %d · Overspeed %d · Over-rev %d · limit %d km/h".format(
+                ui.hms(t.durationS), ui.f(t.distanceKm, 1, " km"), t.score, ui.money(t.cost), t.rapidAcc, t.hardBrake, t.suddenBrake,
+                t.corner, t.overspeed, t.overRev, veh.speedLimit
             )
-        val e = m.lastEvent
-        if (e != null && System.currentTimeMillis() - m.lastEventAt < 8000) {
+        driveTv.background = ui.rounded(if (t == null) Ui.CARD else Color.parseColor("#14324D"), 10)
+
+        val ev = m.lastEvent
+        if (ev != null && now - m.lastEventAt < 8000) {
             eventTv.visibility = View.VISIBLE
-            eventTv.text = "⚠ ${e.label}"
-            eventTv.background = ui.rounded(Ui.eventColor(e.type), 8)
+            eventTv.text = "⚠ ${ev.label}"
+            eventTv.background = ui.rounded(Ui.eventColor(ev.type), 8)
+        } else if (e.overspeedNow) {
+            eventTv.visibility = View.VISIBLE
+            eventTv.text = "🚨 OVERSPEED – limit ${veh.speedLimit} km/h"
+            eventTv.background = ui.rounded(Color.parseColor("#B71C1C"), 8)
         } else eventTv.visibility = View.GONE
+
+        val al = AlertCenter.latest
+        if (al != null && al.level >= AlertCenter.WARN && now - AlertCenter.latestAt < 120_000) {
+            alertTv.visibility = View.VISIBLE
+            alertTv.text = "${AlertCenter.levelIcon(al.level)} ${al.title}\n${al.text}"
+            alertTv.background = ui.rounded(AlertCenter.levelColor(al.level), 8)
+        } else alertTv.visibility = View.GONE
     }
 }
 
@@ -421,7 +479,7 @@ class HudPage(a: MainActivity) : Page(a) {
         info = ui.tv("", 26f, Color.parseColor("#B2FF59"), true).apply { gravity = Gravity.CENTER }
         inner.addView(speed)
         inner.addView(info)
-        inner.addView(ui.tv("tap: mirror for windscreen · long-press: exit", 12f, Color.DKGRAY).apply { gravity = Gravity.CENTER })
+        inner.addView(ui.tv("tap: mirror for windscreen · long-press: exit\n${AppInfo.credit}", 12f, Color.DKGRAY).apply { gravity = Gravity.CENTER })
         root.addView(inner, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         root.setOnClickListener {
             mirrored = !mirrored

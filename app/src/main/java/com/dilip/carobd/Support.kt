@@ -85,6 +85,52 @@ object Prefs {
     var tripNotify: Boolean get() = b("tripNotify", true)
         set(v) = putB("tripNotify", v)
 
+    // v3 – alerts
+    var alertNotify: Boolean get() = b("alertNotify", true)
+        set(v) = putB("alertNotify", v)
+    var notifyDrivingEvents: Boolean get() = b("notifyDrive", false)
+        set(v) = putB("notifyDrive", v)
+    var coolantMax: Double get() = dbl("coolMax", 105.0)
+        set(v) = putD("coolMax", v)
+    var chargeMinV: Double get() = dbl("chgMin", 13.0)
+        set(v) = putD("chgMin", v)
+    var chargeMaxV: Double get() = dbl("chgMax", 15.2)
+        set(v) = putD("chgMax", v)
+    var parkLowV: Double get() = dbl("parkLow", 12.2)
+        set(v) = putD("parkLow", v)
+    var crankLowV: Double get() = dbl("crankLow", 9.6)
+        set(v) = putD("crankLow", v)
+    var lowFuelPct: Double get() = dbl("lowFuel", 12.0)
+        set(v) = putD("lowFuel", v)
+
+    // v3 – automation
+    var autoStartCarBt: Boolean get() = b("autoCarBt", false)
+        set(v) = putB("autoCarBt", v)
+    var carBtAddr: String
+        get() = sp.getString("carBtAddr", "") ?: ""
+        set(v) = sp.edit().putString("carBtAddr", v).apply()
+    var carBtName: String
+        get() = sp.getString("carBtName", "") ?: ""
+        set(v) = sp.edit().putString("carBtName", v).apply()
+    var tripMergeMin: Int
+        get() = sp.getInt("tripMerge", 3)
+        set(v) = sp.edit().putInt("tripMerge", v).apply()
+
+    // v3 – stored state
+    var parkLat: Double get() = dbl("parkLat", 0.0)
+        set(v) = putD("parkLat", v)
+    var parkLon: Double get() = dbl("parkLon", 0.0)
+        set(v) = putD("parkLon", v)
+    var parkT: Long
+        get() = sp.getLong("parkT", 0L)
+        set(v) = sp.edit().putLong("parkT", v).apply()
+    var crankHistory: String
+        get() = sp.getString("crankHist", "[]") ?: "[]"
+        set(v) = sp.edit().putString("crankHist", v).apply()
+    var perfRuns: String
+        get() = sp.getString("perfRuns", "[]") ?: "[]"
+        set(v) = sp.edit().putString("perfRuns", v).apply()
+
     var accelG: Double get() = dbl("accG", 0.22)
         set(v) = putD("accG", v)
     var brakeG: Double get() = dbl("brkG", 0.24)

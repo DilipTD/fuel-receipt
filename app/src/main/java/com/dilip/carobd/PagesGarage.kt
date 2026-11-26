@@ -1,6 +1,7 @@
 package com.dilip.carobd
 
 import android.app.AlertDialog
+import android.graphics.Color
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.EditText
@@ -56,9 +57,20 @@ class MorePage(a: MainActivity) : Page(a) {
                 " · ${ui.econ(if (fuel > 0) km / fuel else null)}\nFuel bought: ${ui.money(spend)} · avg score " +
                 (if (trips.isNotEmpty()) trips.map { it.score }.average().toInt().toString() else "--")), ui.lp(8))
 
-        box.addView(ui.row(ui.btn("Garage / vehicles") { a.show("Garage") }, ui.btn("Fuel log") { a.show("Fuel") }), ui.lp(14))
-        box.addView(ui.row(ui.btn("Maintenance") { a.show("Maint") }, ui.btn("Analysis") { a.show("Analysis") }), ui.lp(8))
-        box.addView(ui.row(ui.btn("Settings", Ui.CARD) { a.show("Settings") }, ui.btn("HUD mode", Ui.CARD) { a.show("HUD") }), ui.lp(8))
+        val alertN = try { Db.alertCountSince(System.currentTimeMillis() - 7 * 86_400_000L) } catch (_: Exception) { 0 }
+        box.addView(ui.row(ui.btn("🚘 Garage") { a.show("Garage") }, ui.btn("⛽ Fuel log") { a.show("Fuel") }), ui.lp(14))
+        box.addView(ui.row(ui.btn("🔧 Maintenance") { a.show("Maint") }, ui.btn("📊 Analysis") { a.show("Analysis") }), ui.lp(8))
+        box.addView(ui.row(
+            ui.btn("🔔 Alerts" + if (alertN > 0) " ($alertN)" else "", if (alertN > 0) Color.parseColor("#B23B00") else Ui.ACC) { a.show("Alerts") },
+            ui.btn("⏱ Performance") { a.show("Perf") }
+        ), ui.lp(8))
+        box.addView(ui.row(ui.btn("🔋 Battery") { a.show("Battery") }, ui.btn("📍 Where's my car") { openParking() }), ui.lp(8))
+        box.addView(ui.row(ui.btn("⚙ Settings", Ui.CARD) { a.show("Settings") }, ui.btn("🖥 HUD mode", Ui.CARD) { a.show("HUD") }), ui.lp(8))
+        box.addView(ui.btn("ℹ About ${AppInfo.NAME}", Ui.CARD) { a.show("About") }, ui.lp(8))
+        if (Prefs.parkT > 0) box.addView(ui.tv("Car parked: ${ui.date(Prefs.parkT)}", 12f, Ui.DIM), ui.lp(8))
+        box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply {
+            gravity = android.view.Gravity.CENTER
+        }, ui.lp(20))
     }
 }
 
