@@ -49,6 +49,9 @@ object Prefs {
     private fun b(k: String, def: Boolean) = sp.getBoolean(k, def)
     private fun putB(k: String, v: Boolean) = sp.edit().putBoolean(k, v).apply()
 
+    var consentVersion: Int get() = sp.getInt("consentV", 0)
+        set(v) = sp.edit().putInt("consentV", v).apply()
+
     // v3.9 – road assistant & backup
     var roadAssist: Boolean get() = b("roadAssist", true)
         set(v) = putB("roadAssist", v)

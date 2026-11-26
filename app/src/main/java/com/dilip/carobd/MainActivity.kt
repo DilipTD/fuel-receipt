@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Legal" to "Privacy & legal", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
     )
     private lateinit var content: FrameLayout
     private lateinit var nav: FrameLayout
@@ -172,6 +172,7 @@ class MainActivity : Activity() {
         pages["Perf"] = PerformancePage(this)
         pages["Battery"] = BatteryPage(this)
         pages["About"] = AboutPage(this)
+        pages["Legal"] = LegalPage(this)
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
         pages["FuelAdd"] = FuelAddPage(this)
@@ -182,7 +183,7 @@ class MainActivity : Activity() {
         val firstRun = Prefs.lastAddr.isEmpty() && Prefs.lastType != 2
         show(if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
         intent?.getStringExtra("open")?.let { show(it) }
-        requestPerms()
+        if (Legal.needsConsent(this)) Legal.consent(this) { requestPerms() } else requestPerms()
         Maint.schedule(this)
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
         if (Prefs.roadAssist) Gps.start(this)

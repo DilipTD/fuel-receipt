@@ -271,13 +271,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
         }
         hint("Keep 'Auto-reconnect' on and allow the app to run without battery restrictions.")
         body.addView(ui.btn("Allow background running (battery optimisation)", Ui.CARD) {
-            try {
-                @SuppressLint("BatteryLife")
-                val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${a.packageName}"))
-                a.startActivity(i)
-            } catch (_: Exception) {
-                try { a.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
-            }
+            try { a.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
         }, ui.lp(10))
     }
 
@@ -357,6 +351,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
                 "and all CAN cars (~2008+). Live gauges, trip computer, real mileage, maintenance reminders, driving-behaviour " +
                 "analysis, alerts, performance and battery tests, DTC read/clear (OBD + UDS), GPS routes, HUD.\n" +
                 "Do not operate the app while driving."), ui.lp(14))
+        body.addView(ui.btn("Privacy policy & legal", Ui.CARD) { a.show("Legal") }, ui.lp(10))
         body.addView(ui.btn("About & what's new", Ui.CARD) { a.show("About") }, ui.lp(10))
     }
 

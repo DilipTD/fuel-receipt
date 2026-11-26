@@ -91,6 +91,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Parking", Ui.ORANGE) { openParking() },
             Triple("Connect", Ui.GOOD) { a.show("Connect") },
             Triple("Settings", Color.parseColor("#90A4AE")) { a.show("Settings") },
+            Triple("Privacy & legal", Ui.GOOD) { a.show("Legal") },
             Triple("About", Ui.VIOLET) { a.show("About") }
         )
         menu("Nearby", Ic.PIN,
@@ -111,7 +112,7 @@ class MorePage(a: MainActivity) : Page(a) {
         l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
-        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO
+        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD
         l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
         l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
         else -> Ic.GRID
