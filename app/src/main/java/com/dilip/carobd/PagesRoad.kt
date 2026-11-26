@@ -81,7 +81,7 @@ class RoadPage(a: MainActivity) : Page(a) {
             addView(ui.vbox().apply {
                 gravity = Gravity.CENTER
                 addView(spdTv.apply { gravity = Gravity.CENTER })
-                addView(ui.tv("km/h", 12f, Ui.DIM).apply { gravity = Gravity.CENTER })
+                addView(ui.tv(Units.spdLabel, 12f, Ui.DIM).apply { gravity = Gravity.CENTER })
             }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             addView(ui.vbox().apply {
                 gravity = Gravity.CENTER
@@ -120,10 +120,10 @@ class RoadPage(a: MainActivity) : Page(a) {
         box.addView(sw("Voice announcements", Prefs.roadAnnounce) { Prefs.roadAnnounce = it }, ui.lp(4))
         box.addView(sw("Speed breaker, camera & school alerts", Prefs.roadHazards) { Prefs.roadHazards = it }, ui.lp(4))
         box.addView(sw("Warn on estimated limits too", Prefs.roadEstWarn) { Prefs.roadEstWarn = it }, ui.lp(4))
-        val marginBtn = ui.btn("Over-speed warning at limit + ${Prefs.speedMargin} km/h", Ui.CARD) {}
+        val marginBtn = ui.btn("Over-speed warning at limit + ${Units.sStr(Prefs.speedMargin.toDouble())}", Ui.CARD) {}
         marginBtn.setOnClickListener {
             Prefs.speedMargin = when (Prefs.speedMargin) { 0 -> 5; 5 -> 10; 10 -> 15; else -> 0 }
-            marginBtn.text = "Over-speed warning at limit + ${Prefs.speedMargin} km/h"
+            marginBtn.text = "Over-speed warning at limit + ${Units.sStr(Prefs.speedMargin.toDouble())}"
         }
         box.addView(marginBtn, ui.lp(8))
         box.addView(ui.tv("Limits and hazards come from OpenStreetMap and can be missing or out of date – estimated limits (grey, \"est.\") are guesses from the road type. Always follow the road signs. Needs GPS and internet.", 11.5f, Ui.DIM), ui.lp(10))
@@ -138,7 +138,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         val spd = r.speedKmh
         sign.limit = i?.limit; sign.estimated = i?.estimated == true
         sign.over = i?.limit != null && spd > i.limit + Prefs.speedMargin
-        spdTv.text = "%.0f".format(spd); spdTv.setTextColor(if (sign.over) Ui.BAD else Ui.WHITE)
+        spdTv.text = "%.0f".format(Units.spd(spd)); spdTv.setTextColor(if (sign.over) Ui.BAD else Ui.WHITE)
         compass.deg = r.heading
         headTv.text = if (r.heading != null) "${RoadAssist.compass(r.heading)} · ${r.heading!!.toInt()}°" else "—"
         roadTv.text = when {
@@ -146,12 +146,12 @@ class RoadPage(a: MainActivity) : Page(a) {
             i == null -> r.status
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
-        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${i.limit} km/h (estimated)" else "limit ${i.limit} km/h"
+        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
         val sg = RoadAssist.suggested(i?.limit)
         aiTv.text = when {
             i == null -> "Drive with GPS on – I will find the road, its limit and hazards."
-            sg != null -> "${Weather.desc(Weather.last?.code ?: 0)}: drive about ${sg.first} km/h (${sg.second}) even though the limit is ${i.limit}."
-            sign.over -> "You are ${"%.0f".format(spd - (i.limit ?: 0))} km/h over the limit – ease off."
+            sg != null -> "${Weather.desc(Weather.last?.code ?: 0)}: drive about ${Units.sStr(sg.first.toDouble())} (${sg.second}) even though the limit is ${i.limit}."
+            sign.over -> "You are ${Units.sStr(spd - (i.limit ?: 0))} over the limit – ease off."
             i.limit != null -> "Within the limit. Heading ${RoadAssist.compass(r.heading)}."
             else -> "No limit data for this road – use the road signs."
         }

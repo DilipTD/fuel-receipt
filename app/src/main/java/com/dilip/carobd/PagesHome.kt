@@ -31,7 +31,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val m = ObdManager
         val ri = RoadAssist.info
         signView?.let { it.limit = ri?.limit; it.estimated = ri?.estimated == true; it.over = ri?.limit != null && RoadAssist.speedKmh > ri.limit + Prefs.speedMargin }
-        roadSub?.text = if (ri == null) "" else "${RoadAssist.compass(RoadAssist.heading)} · %.0f km/h".format(RoadAssist.speedKmh) + (ri.limit?.let { " · limit $it" } ?: "")
+        roadSub?.text = if (ri == null) "" else "${RoadAssist.compass(RoadAssist.heading)} · " + Units.sStr(RoadAssist.speedKmh) + (ri.limit?.let { " · limit " + Units.sStr(it.toDouble()) } ?: "")
         carView?.let { it.engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED; it.speedKmh = m.values[0x0D] ?: 0.0 }
         statusTv?.text = when (m.state) {
             ObdManager.State.CONNECTED -> "Connected · ${m.deviceName}" + if (m.engineOn) " · ${ui.f(m.batteryV, 1, " V")}" else " · ignition off"
@@ -202,7 +202,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val (c1, d1) = ui.stat(Ic.SHIELD, "Health", Ui.GOOD); d1.text = if (hs >= 0) "$hs / 100" else "--"
         val (c2, d2) = ui.stat(if (v.isEv) Ic.BATTERY else Ic.FUEL, if (v.isEv) "Charge" else "Fuel", Ui.ORANGE); d2.text = ui.f(fl, 0, " %")
         val (c3, d3) = ui.stat(Ic.ROUTE, "Range", Ui.CYAN); d3.text = ui.dist(range, 0)
-        val (c4, d4) = ui.stat(Ic.WRENCH, "Next service", Ui.WARN); d4.text = due?.let { if (it.kmLeft != null) "%.0f km".format(it.kmLeft) else "${it.daysLeft} d" } ?: "--"
+        val (c4, d4) = ui.stat(Ic.WRENCH, "Next service", Ui.WARN); d4.text = due?.let { if (it.kmLeft != null) Units.dStr(it.kmLeft!!) else "${it.daysLeft} d" } ?: "--"
         val (c5, d5) = ui.stat(Ic.BELL, "Alerts · 7d", Ui.PINK); d5.text = alertN.toString()
         val (c6, d6) = ui.stat(Ic.BATTERY, "Battery", Ui.ACC); d6.text = if (m.state == ObdManager.State.CONNECTED) ui.f(m.batteryV, 1, " V") else "--"
         c1.setOnClickListener { a.show("Health") }; c4.setOnClickListener { a.show("Maint") }; c5.setOnClickListener { a.show("Alerts") }; c6.setOnClickListener { a.show("Battery") }
@@ -223,7 +223,7 @@ class HomePage(a: MainActivity) : Page(a) {
                 addView(LinearLayout(a).apply {
                     gravity = Gravity.BOTTOM
                     addView(ui.tv("%.2f".format(last.distanceKm), 26f, Ui.ACC, true))
-                    addView(ui.tv(" km", 16f, Ui.DIM, true), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { bottomMargin = ui.dp(2) })
+                    addView(ui.tv(" " + Units.distLabel, 16f, Ui.DIM, true), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { bottomMargin = ui.dp(2) })
                     addView(View(a), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(ui.tv(ui.date(last.start, "EEE dd MMM · HH:mm") + " · ${(last.durationS / 60).toInt()} min", 12.5f, Ui.DIM))
                 }, ui.lp(10))
@@ -443,7 +443,7 @@ class TripReplayPage(a: MainActivity) : Page(a) {
         map.setRoute(pts.map { it.lat!! to it.lon!! }, pts.map { it.speed }, evs.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.speedColor3(it.speed)) }, "Start", "End")
         map.setProgress(0f)
         box.addView(map, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(360)).apply { topMargin = ui.dp(10) })
-        val (s1, t1) = ui.stat(Ic.GAUGE, "Speed km/h", Ui.ACC); spdTv = t1
+        val (s1, t1) = ui.stat(Ic.GAUGE, "Speed " + Units.spdLabel, Ui.ACC); spdTv = t1
         val (s2, t2) = ui.stat(Ic.ENGINE, "RPM", Ui.ORANGE); rpmTv = t2
         val (s3, t3) = ui.stat(Ic.CLOCK, "Time", Ui.CYAN); timeTv = t3
         box.addView(ui.row(s1, s2, s3), ui.lp(10))
@@ -463,7 +463,7 @@ class TripReplayPage(a: MainActivity) : Page(a) {
         box.addView(playBtn, ui.lp(8))
         box.addView(LinearLayout(a).apply {
             gravity = android.view.Gravity.CENTER
-            for ((c, l) in listOf(Ui.speedColor3(0.0) to "Below 50 km/h", Ui.speedColor3(60.0) to "50–80 km/h", Ui.speedColor3(100.0) to "Above 80 km/h")) {
+            for ((c, l) in listOf(Ui.speedColor3(0.0) to "Below " + Units.sStr(50.0), Ui.speedColor3(60.0) to "%.0f–%s".format(Units.spd(50.0), Units.sStr(80.0)), Ui.speedColor3(100.0) to "Above " + Units.sStr(80.0))) {
                 addView(View(a).apply { background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(c) } }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)).apply { rightMargin = ui.dp(5) })
                 addView(ui.tv(l, 11.5f, Ui.DIM), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = ui.dp(14) })
             }

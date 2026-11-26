@@ -265,7 +265,7 @@ object Maint {
         val text: String
             get() {
                 val parts = mutableListOf<String>()
-                kmLeft?.let { parts += if (it < 0) "%.0f km overdue".format(-it) else "%.0f km left".format(it) }
+                kmLeft?.let { parts += if (it < 0) Units.dStr(-it) + " overdue" else Units.dStr(it) + " left" }
                 daysLeft?.let { parts += if (it < 0) "${-it} days overdue" else "$it days left" }
                 return parts.joinToString(" · ")
             }

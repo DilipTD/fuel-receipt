@@ -128,7 +128,7 @@ class DashPage(a: MainActivity) : Page(a) {
 
         // trends
         c.addView(ui.section("Live trends", Ic.CHART))
-        c.addView(ui.row(spark("Speed km/h", 0x0D, Ui.ACC, Ic.GAUGE), spark("RPM", 0x0C, Ui.ORANGE, Ic.ENGINE)), ui.lp(2))
+        c.addView(ui.row(spark("Speed", 0x0D, Ui.ACC, Ic.GAUGE), spark("RPM", 0x0C, Ui.ORANGE, Ic.ENGINE)), ui.lp(2))
         c.addView(ui.row(spark("Engine load %", 0x04, Ui.VIOLET, Ic.BOLT), spark("Coolant °C", 0x05, Ui.CYAN, Ic.THERM)), ui.lp(8))
 
         gMeter = GMeterView(a)
@@ -265,7 +265,7 @@ class DashPage(a: MainActivity) : Page(a) {
         if (ev != null && now - m.lastEventAt < 8000) {
             eventTv.visibility = View.VISIBLE; eventTv.text = "⚠ ${ev.label}"; eventTv.background = ui.rounded(Ui.eventColor(ev.type), 8)
         } else if (e.overspeedNow) {
-            eventTv.visibility = View.VISIBLE; eventTv.text = "🚨 OVERSPEED – limit ${veh.speedLimit} km/h"; eventTv.background = ui.rounded(Color.parseColor("#B71C1C"), 8)
+            eventTv.visibility = View.VISIBLE; eventTv.text = "🚨 OVERSPEED – limit ${Units.sStr(veh.speedLimit.toDouble())}"; eventTv.background = ui.rounded(Color.parseColor("#B71C1C"), 8)
         } else eventTv.visibility = View.GONE
 
         val al = AlertCenter.latest

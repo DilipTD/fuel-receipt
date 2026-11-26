@@ -100,23 +100,23 @@ object AlertCenter {
 
         v[0x05]?.let { c ->
             if (edge("cool", c >= Prefs.coolantMax, c < Prefs.coolantMax - 5))
-                raise(ctx, "cool", CRIT, "Engine overheating – %.0f °C".format(c),
-                    "Coolant is above %.0f °C. Stop safely, let the engine idle briefly, then switch off. When cool, check coolant level, radiator fan and leaks.".format(Prefs.coolantMax),
+                raise(ctx, "cool", CRIT, "Engine overheating – %s".format(Units.tStr(c)),
+                    "Coolant is above %s. Stop safely, let the engine idle briefly, then switch off. When cool, check coolant level, radiator fan and leaks.".format(Units.tStr(Prefs.coolantMax)),
                     5 * 60_000L, "Warning. Engine overheating.")
         }
         v[0x5C]?.let { o ->
             if (edge("oil", o >= 130, o < 120))
-                raise(ctx, "oil", CRIT, "Engine oil hot – %.0f °C".format(o),
+                raise(ctx, "oil", CRIT, "Engine oil hot – %s".format(Units.tStr(o)),
                     "Oil temperature is very high. Reduce load and speed; check oil level.", 5 * 60_000L, "Engine oil temperature high")
         }
         v[0x0F]?.let { i ->
             if (edge("iat", i >= 70, i < 60))
-                raise(ctx, "iat", INFO, "High intake air temperature – %.0f °C".format(i),
+                raise(ctx, "iat", INFO, "High intake air temperature – %s".format(Units.tStr(i)),
                     "Heat-soak reduces power and economy. Common after idling in traffic.", 30 * 60_000L)
         }
         v[0x3C]?.let { cat ->
             if (edge("cat", cat >= 900, cat < 850))
-                raise(ctx, "cat", WARN, "Catalyst temperature high – %.0f °C".format(cat),
+                raise(ctx, "cat", WARN, "Catalyst temperature high – %s".format(Units.tStr(cat)),
                     "Possible misfire or rich running. Avoid heavy load; scan for fault codes.", 15 * 60_000L)
         }
 

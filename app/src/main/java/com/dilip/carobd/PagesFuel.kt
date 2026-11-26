@@ -119,7 +119,7 @@ class FuelPage(a: MainActivity) : Page(a) {
                     addView(ui.vbox().apply {
                         gravity = Gravity.END
                         addView(ui.tv("%,.0f km".format(l.odo), 17f, Ui.WHITE, true).apply { gravity = Gravity.END })
-                        if (f.sinceKm > 0) addView(ui.chip("%.0f km".format(f.sinceKm), Ui.VIOLET), ui.lp(4))
+                        if (f.sinceKm > 0) addView(ui.chip(Units.dStr(f.sinceKm), Ui.VIOLET), ui.lp(4))
                     })
                 })
                 addView(View(a).apply { setBackgroundColor(Color.parseColor("#3A3A4C")) }, LinearLayout.LayoutParams(Ui.MATCH, 1).apply { topMargin = ui.dp(10); bottomMargin = ui.dp(8) })
@@ -130,7 +130,7 @@ class FuelPage(a: MainActivity) : Page(a) {
                     addView(ui.iconView(Ic.CHART, Ui.VIOLET, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(10) })
                     addView(ui.tv(f.econ?.let { "%.2f km/%s".format(Locale.US, it, u) } ?: "-- km/$u", 15f, econCol, true))
                     addView(ui.iconView(Ic.DATABASE, Ui.VIOLET, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(8) })
-                    addView(ui.tv(if (f.sinceKm > 0 && l.cost > 0) "${Prefs.currency}%.3f/km".format(Locale.US, l.cost / f.sinceKm) else "--", 15f, Ui.DIM))
+                    addView(ui.tv(if (f.sinceKm > 0 && l.cost > 0) "${Prefs.currency}%.3f/${Units.distLabel}".format(Locale.US, l.cost / Units.km(f.sinceKm)) else "--", 15f, Ui.DIM))
                 }, ui.lp(8))
                 if (l.station.isNotEmpty() || l.lat != null) addView(infoRow(Ic.PIN, Ui.ORANGE, l.station.ifEmpty { "Location saved" }, Ui.WHITE), ui.lp(8))
                 if (l.receipt.isNotEmpty()) addView(LinearLayout(a).apply {
@@ -164,7 +164,7 @@ class FuelPage(a: MainActivity) : Page(a) {
         val trips = info.sumOf { it.tripCost }
         val (s1, t1) = ui.stat(Ic.DATABASE, "Total spent", Ui.ORANGE); t1.text = ui.money(spend)
         val (s2, t2) = ui.stat(Ic.FUEL, "Total $u", Ui.VIOLET); t2.text = "%.0f".format(qty)
-        val (s3, t3) = ui.stat(Ic.ROUTE, "Distance", Ui.GOOD); t3.text = "%.0f km".format(dist)
+        val (s3, t3) = ui.stat(Ic.ROUTE, "Distance", Ui.GOOD); t3.text = Units.dStr(dist)
         box.addView(ui.row(s1, s2, s3), ui.lp(12))
         val (s4, t4) = ui.stat(Ic.LEAF, "Avg economy", Ui.GOOD); t4.text = econs.takeIf { it.isNotEmpty() }?.average()?.let { "%.1f".format(it) } ?: "--"
         val (s5, t5) = ui.stat(Ic.BOLT, "Best", Ui.CYAN); t5.text = econs.maxOrNull()?.let { "%.1f".format(it) } ?: "--"

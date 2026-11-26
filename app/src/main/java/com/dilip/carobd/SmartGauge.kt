@@ -118,7 +118,7 @@ object SmartLive {
         val lim = RoadAssist.info?.limit
         if (lim != null && RoadAssist.info?.estimated != true && spd > lim + Prefs.speedMargin) out += Triple(Ic.WARN, "Over the $lim km/h limit on this road – ease off.", 2)
         val sl = coolantSlope(); val cool = v[0x05] ?: 0.0
-        if (sl != null && sl > 4 && cool > 88) out += Triple(Ic.THERM, "Coolant rising fast (+%.0f °C/min) – ease off and watch the temperature.".format(sl), 2)
+        if (sl != null && sl > 4 && cool > 88) out += Triple(Ic.THERM, "Coolant rising fast (+%.0f°/min) – ease off and watch the temperature.".format(if (Units.tempF) sl * 1.8 else sl), 2)
         if (cool in 1.0..60.0 && rpm > 3000) out += Triple(Ic.THERM, "Engine is cold – keep revs low until it warms up.", 1)
         when (shiftHint()) {
             1 -> out += Triple(Ic.BOLT, "Revs are high for the load – ease the throttle so it upshifts (gear ${gear + 1}).", 1)
@@ -207,8 +207,8 @@ class ClusterView(ctx: Context) : View(ctx) {
 
         // digital speed (single gauge – the RPM ring; no nested ring)
         t.color = if (overSpeed) Color.parseColor("#FF3B4E") else Color.WHITE; t.textSize = R * 0.56f
-        c.drawText("%.0f".format(sSpd), cx, cy + R * 0.22f, t)
-        t.color = Color.parseColor("#8E9BAA"); t.textSize = R * 0.11f; c.drawText("km/h", cx, cy + R * 0.36f, t)
+        c.drawText("%.0f".format(Units.spd(sSpd.toDouble())), cx, cy + R * 0.22f, t)
+        t.color = Color.parseColor("#8E9BAA"); t.textSize = R * 0.11f; c.drawText(Units.spdLabel, cx, cy + R * 0.36f, t)
         t.color = modeColor; t.textSize = R * 0.105f; c.drawText(modeText, cx, cy - R * 0.52f, t)
         t.color = Color.parseColor("#C8D3DE"); t.textSize = R * 0.115f; c.drawText("%.0f rpm".format(sRpm), cx, cy - R * 0.34f, t)
 

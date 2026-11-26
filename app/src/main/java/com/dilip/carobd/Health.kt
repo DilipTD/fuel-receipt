@@ -63,10 +63,10 @@ object Health {
         v[0x05]?.let { c ->
             val runTime = v[0x1F] ?: 0.0
             when {
-                c > 108 -> out.add(Finding(3, "Engine overheating (%.0f °C)".format(c), "Stop safely. Check coolant level, radiator fan and thermostat."))
-                c > 102 -> out.add(Finding(2, "Coolant hot (%.0f °C)".format(c), "Watch the temperature; check fan operation and coolant level."))
-                running && runTime > 900 && c < 70 -> out.add(Finding(2, "Engine not warming up (%.0f °C)".format(c), "After 15 min it should be 85–100 °C. Thermostat may be stuck open (P0128)."))
-                else -> out.add(Finding(0, "Coolant temperature %.0f °C".format(c), "Normal operating range 85–100 °C."))
+                c > 108 -> out.add(Finding(3, "Engine overheating (%s)".format(Units.tStr(c)), "Stop safely. Check coolant level, radiator fan and thermostat."))
+                c > 102 -> out.add(Finding(2, "Coolant hot (%s)".format(Units.tStr(c)), "Watch the temperature; check fan operation and coolant level."))
+                running && runTime > 900 && c < 70 -> out.add(Finding(2, "Engine not warming up (%s)".format(Units.tStr(c)), "After 15 min it should be 85–100 °C. Thermostat may be stuck open (P0128)."))
+                else -> out.add(Finding(0, "Coolant temperature %s".format(Units.tStr(c)), "Normal operating range 85–100 °C."))
             }
         }
 
@@ -89,7 +89,7 @@ object Health {
         val iat = v[0x0F]
         val amb = v[0x46]
         if (iat != null && amb != null && running && iat - amb > 35) {
-            out.add(Finding(1, "High intake temperature (%.0f °C vs %.0f °C ambient)".format(iat, amb), "Turbo heat-soak in traffic. Power will be reduced; check intercooler if it persists while moving."))
+            out.add(Finding(1, "High intake temperature (%s vs %s ambient)".format(Units.tStr(iat), Units.tStr(amb)), "Turbo heat-soak in traffic. Power will be reduced; check intercooler if it persists while moving."))
         }
 
         val timing = v[0x0E]
@@ -98,7 +98,7 @@ object Health {
             out.add(Finding(1, "Ignition retard under load (%.1f°)".format(timing), "ECU is pulling timing — likely knock. Use good quality fuel; check plugs."))
         }
 
-        v[0x3C]?.let { if (it > 900) out.add(Finding(2, "Catalyst very hot (%.0f °C)".format(it), "Possible misfire or rich running.")) }
+        v[0x3C]?.let { if (it > 900) out.add(Finding(2, "Catalyst very hot (%s)".format(Units.tStr(it)), "Possible misfire or rich running.")) }
 
         val map = v[0x0B]
         val baro = v[0x33]

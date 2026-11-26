@@ -52,6 +52,11 @@ object Units {
     }
     fun label(unit: String) = conv(unit, 0.0).second
 
+    /** Ready-made strings in the user's units (input always km, km/h, °C). */
+    fun tStr(c: Double) = "%.0f%s".format(temp(c), tempLabel)
+    fun sStr(kmh: Double) = "%.0f %s".format(spd(kmh), spdLabel)
+    fun dStr(km: Double, dec: Int = 0) = "%.${dec}f %s".format(this.km(km), distLabel)
+
     fun fmt(v: Double, dec: Int, unit: String = "") = "%.${dec}f%s".format(Locale.US, v, unit)
 
     /** km per litre → text in the chosen economy unit. */

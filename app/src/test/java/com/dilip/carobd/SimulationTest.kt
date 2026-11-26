@@ -329,11 +329,19 @@ class SimulationTest : SimBase() {
         }
         val vv = Db.activeVehicle(); vv.fuel = "Petrol"; Db.saveVehicle(vv); ObdManager.reloadVehicle()
         Report.head("9. Car health is remembered after a restart")
+        Prefs.healthSnap = ""
+        setState(ObdManager.State.CONNECTED); ObdManager.engineOn = true
+        ObdManager.values[0x05] = 112.0; ObdManager.values[0x2F] = 7.0; ObdManager.values[0x0F] = 40.0; ObdManager.batteryV = 12.0
+        val live = HealthScore.compute()
+        Report.info("Live: score ${live.score}, " + live.items.joinToString { "${it.name}=${it.status}" })
+        setState(ObdManager.State.DISCONNECTED); ObdManager.engineOn = false
+        ObdManager.values.clear(); ObdManager.batteryV = null; ObdManager.monitorRaw = null
         relaunch()
         val hs2 = HealthScore.compute()
         val kept = hs2.items.filter { it.detail.endsWith("last reading") }
-        if (kept.isNotEmpty()) Report.ok("Restored after restart: " + kept.joinToString { "${it.name} (${it.detail})" } + ", score ${hs2.score}")
-        else Report.bad("No health readings were restored after restart: " + hs2.items.joinToString { "${it.name}=${it.status}" })
+        if (kept.any { it.name == "Cooling" && it.status == 2 } && hs2.score == live.score) Report.ok("Restored after restart: " + kept.joinToString { "${it.name} (${it.detail})" } + ", score ${hs2.score}")
+        else Report.bad("Health after restart differs: score ${hs2.score} vs ${live.score}; " + hs2.items.joinToString { "${it.name}=${it.status}" })
+        showPage("Health"); monkey("Health", 10)
         Report.flush("Full application (phone portrait)")
     }
 

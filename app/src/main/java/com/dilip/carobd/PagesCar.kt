@@ -62,6 +62,13 @@ class CarDashPage(a: MainActivity) : Page(a) {
         speed = ui.tv("--", 96f, Ui.WHITE, true).apply { gravity = Gravity.CENTER }
         unitTv = ui.tv("km/h", 16f, Ui.DIM).apply { gravity = Gravity.CENTER }
         val mid = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; addView(speed); addView(unitTv) }
+        speed.includeFontPadding = false
+        // shrink the big speed number on short screens so the unit label always fits underneath
+        mid.addOnLayoutChangeListener { _, _, t, _, b, _, _, _, _ ->
+            val hDp = (b - t) / a.resources.displayMetrics.density
+            val want = ((hDp - 26f) / 1.2f).coerceIn(40f, 96f)
+            if (hDp > 0 && kotlin.math.abs(speed.textSize / a.resources.displayMetrics.scaledDensity - want) > 1f) mid.post { speed.textSize = want }
+        }
         coolant = RingGauge(a, "Coolant", "°C", 40f, 120f, 0) { v -> if (v >= Prefs.coolantMax) 2 else if (v >= Prefs.coolantMax - 5) 1 else 0 }.apply { icon = Ic.THERM }
         fuel = RingGauge(a, "Fuel", "%", 0f, 100f) { v -> if (v <= Prefs.lowFuelPct) 2 else if (v <= 25) 1 else 0 }.apply { icon = Ic.FUEL }
         val rightBox = LinearLayout(a).apply { addView(coolant, LinearLayout.LayoutParams(0, Ui.MATCH, 1f)); addView(fuel, LinearLayout.LayoutParams(0, Ui.MATCH, 1f)) }

@@ -228,7 +228,7 @@ class TripsPage(a: MainActivity) : Page(a) {
                 addView(LinearLayout(a).apply {
                     gravity = android.view.Gravity.BOTTOM
                     addView(ui.tv("%.2f".format(tr.distanceKm), 30f, Ui.ACC, true))
-                    addView(ui.tv(" km", 20f, Ui.DIM, true), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { bottomMargin = ui.dp(2) })
+                    addView(ui.tv(" " + Units.distLabel, 20f, Ui.DIM, true), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { bottomMargin = ui.dp(2) })
                     addView(View(a), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(ui.tv(ui.econ(tr.kmpl) + " · " + ui.money(tr.cost), 12.5f, Ui.DIM))
                 })
@@ -438,7 +438,7 @@ class TripDetailPage(a: MainActivity) : Page(a) {
         }, ui.lp(6))
 
         val spdChart = LineChart(a)
-        spdChart.set(track.map { it.speed.toFloat() }.toFloatArray(), "Speed", " km/h", Color.parseColor("#4FC3F7"))
+        spdChart.set(track.map { Units.spd(it.speed).toFloat() }.toFloatArray(), "Speed", " " + Units.spdLabel, Color.parseColor("#4FC3F7"))
         box.addView(spdChart, ui.lp(10))
         val rpmChart = LineChart(a)
         rpmChart.set(track.map { it.rpm.toFloat() }.toFloatArray(), "RPM", "", Color.parseColor("#FFB300"))

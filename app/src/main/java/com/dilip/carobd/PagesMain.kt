@@ -189,7 +189,7 @@ class LivePage(a: MainActivity) : Page(a) {
         val cool = v[0x05]; val run = v[0x1F]
         if (cool != null) {
             val s = when { cool >= Prefs.coolantMax -> 2; run != null && run > 900 && cool < 70 -> 1; cool >= Prefs.coolantMax - 8 -> 1; else -> 0 }
-            out += Insight(Ic.THERM, s, "Coolant %.0f °C".format(cool),
+            out += Insight(Ic.THERM, s, "Coolant %s".format(Units.tStr(cool)),
                 when (s) { 2 -> "Overheating"; 1 -> if (cool < 70) "Slow warm-up – thermostat stuck open?" else "Running hot"; else -> if (cool < 70) "Warming up" else "Normal operating temperature" })
         }
         val rpm = v[0x0C]; val maf = v[0x10]
@@ -198,8 +198,8 @@ class LivePage(a: MainActivity) : Page(a) {
             out += Insight(Ic.WIND, 0, "Volumetric efficiency ≈ %.0f %%".format(ve), "Air %.1f g/s at %.0f rpm".format(maf, rpm))
         }
         val iat = v[0x0F]; val amb = v[0x46]
-        if (iat != null) out += Insight(Ic.WIND, if (iat > 65) 1 else 0, "Intake air %.0f °C".format(iat),
-            if (iat > 65) "Heat soak – power and economy drop" else if (amb != null) "%.0f °C above ambient".format(iat - amb) else "Normal")
+        if (iat != null) out += Insight(Ic.WIND, if (iat > 65) 1 else 0, "Intake air %s".format(Units.tStr(iat)),
+            if (iat > 65) "Heat soak – power and economy drop" else if (amb != null) "%.0f° above ambient".format(if (Units.tempF) (iat - amb) * 1.8 else iat - amb) else "Normal")
         val bv = m.batteryV ?: v[0x42]
         if (bv != null) {
             val s = if (m.engineOn) (if (bv < Prefs.chargeMinV || bv > Prefs.chargeMaxV) 2 else 0) else (if (bv < 11.8) 2 else if (bv < 12.3) 1 else 0)

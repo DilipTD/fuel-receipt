@@ -53,9 +53,9 @@ object HealthScore {
         val cool = v[0x05]
         items += when {
             cool == null -> Item("Cooling", Ic.THERM, -1, "No live data")
-            cool >= Prefs.coolantMax -> Item("Cooling", Ic.THERM, 2, "%.0f °C – overheating".format(cool))
-            cool >= Prefs.coolantMax - 8 -> Item("Cooling", Ic.THERM, 1, "%.0f °C – running hot".format(cool))
-            else -> Item("Cooling", Ic.THERM, 0, "%.0f °C".format(cool))
+            cool >= Prefs.coolantMax -> Item("Cooling", Ic.THERM, 2, "%s – overheating".format(Units.tStr(cool)))
+            cool >= Prefs.coolantMax - 8 -> Item("Cooling", Ic.THERM, 1, "%s – running hot".format(Units.tStr(cool)))
+            else -> Item("Cooling", Ic.THERM, 0, "%s".format(Units.tStr(cool)))
         }
 
         val bv = m.batteryV ?: v[0x42]
@@ -81,9 +81,9 @@ object HealthScore {
         val cat = v[0x3C]
         items += when {
             cat == null -> Item("Catalyst", Ic.WIND, -1, "No live data")
-            cat > 950 -> Item("Catalyst", Ic.WIND, 2, "%.0f °C – too hot".format(cat))
-            cat > 850 -> Item("Catalyst", Ic.WIND, 1, "%.0f °C – hot".format(cat))
-            else -> Item("Catalyst", Ic.WIND, 0, "%.0f °C".format(cat))
+            cat > 950 -> Item("Catalyst", Ic.WIND, 2, "%s – too hot".format(Units.tStr(cat)))
+            cat > 850 -> Item("Catalyst", Ic.WIND, 1, "%s – hot".format(Units.tStr(cat)))
+            else -> Item("Catalyst", Ic.WIND, 0, "%s".format(Units.tStr(cat)))
         }
 
         val raw = m.monitorRaw
@@ -117,8 +117,8 @@ object HealthScore {
         val intake = v[0x0F]
         items += when {
             intake == null -> Item("Intake air", Ic.WIND, -1, "No live data")
-            intake > 65 -> Item("Intake air", Ic.WIND, 1, "%.0f °C – heat soak".format(intake))
-            else -> Item("Intake air", Ic.WIND, 0, "%.0f °C".format(intake))
+            intake > 65 -> Item("Intake air", Ic.WIND, 1, "%s – heat soak".format(Units.tStr(intake)))
+            else -> Item("Intake air", Ic.WIND, 0, "%s".format(Units.tStr(intake)))
         }
 
         val week = Db.trips(veh.id, System.currentTimeMillis() - 7 * 86_400_000L)
@@ -428,8 +428,8 @@ object PdfReport {
 
         // KPI cards
         val kp = listOf(
-            "Distance" to "%.0f km".format(km), "Trips" to "${trips.size}",
-            "Economy" to (if (fuel > 0.01) "%.1f km/$u".format(km / fuel) else "--"), "Fuel cost" to "${Prefs.currency}%.0f".format(cost)
+            "Distance" to Units.dStr(km), "Trips" to "${trips.size}",
+            "Economy" to (if (fuel > 0.01) Units.econ(km / fuel, u) else "--"), "Fuel cost" to "${Prefs.currency}%.0f".format(cost)
         )
         var x = 32f
         for ((k, vv) in kp) {
@@ -456,10 +456,10 @@ object PdfReport {
         val lines = listOf(
             "Driving time: %.1f h (idle %.0f %%)".format(hrs, idleP),
             "Fuel used: %.1f $u".format(fuel),
-            "Average speed: %.0f km/h".format(km / max(hrs, 0.01)),
-            "Max speed: %.0f km/h".format(trips.maxOfOrNull { it.maxSpeed } ?: 0.0),
+            "Average speed: " + Units.sStr(km / max(hrs, 0.01)),
+            "Max speed: " + Units.sStr(trips.maxOfOrNull { it.maxSpeed } ?: 0.0),
             "CO2: %.1f kg".format(trips.sumOf { it.co2Kg }),
-            "Odometer: %.0f km".format(v.odoKm)
+            "Odometer: " + Units.dStr(v.odoKm)
         )
         for (l in lines) { c.drawText(l, 220f, y, p); y += 22f }
 
