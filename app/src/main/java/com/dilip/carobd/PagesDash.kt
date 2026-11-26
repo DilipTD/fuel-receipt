@@ -11,7 +11,9 @@ import android.widget.TextView
 @SuppressLint("SetTextI18n")
 class DashPage(a: MainActivity) : Page(a) {
     override val parent = "Home"
-    private lateinit var cluster: ClusterView
+    private lateinit var rSpd: TextView
+    private lateinit var rRpm: TextView
+    private lateinit var rLim: TextView
     private lateinit var rCool: RingGauge
     private lateinit var rFuel: RingGauge
     private lateinit var rBatt: RingGauge
@@ -83,9 +85,12 @@ class DashPage(a: MainActivity) : Page(a) {
 
         led = LedBarView(a)
         c.addView(led, ui.lp(8))
-        cluster = ClusterView(a)
-        cluster.setOnLongClickListener { SmartLive.resetGears(); ui.toast("Gear learning reset"); true }
-        c.addView(cluster, ui.lp(0))
+        val (q1, u1) = ui.stat(Ic.GAUGE, "Speed", Ui.ACC); rSpd = u1
+        val (q2, u2) = ui.stat(Ic.ENGINE, "RPM", Ui.ORANGE); rRpm = u2
+        val (q3, u3) = ui.stat(Ic.FLAG, "Road limit", Ui.GOOD); rLim = u3
+        val rdRow = ui.row(q1, q2, q3)
+        rdRow.setOnLongClickListener { SmartLive.resetGears(); ui.toast("Gear learning reset"); true }
+        c.addView(rdRow, ui.lp(8))
 
         adviceBox = ui.vbox()
         c.addView(adviceBox, ui.lp(6))
@@ -155,16 +160,13 @@ class DashPage(a: MainActivity) : Page(a) {
             ui.btn("Performance", Ui.CARD) { a.show("Perf") },
             ui.btn("New trip", Ui.CARD) { ObdManager.stopTrip(); ObdManager.startTrip() }
         ), ui.lp(12))
-        c.addView(ui.tv("Long-press the cluster to reset learned gears · long-press a gauge to reset its peak.", 11f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(8))
+        c.addView(ui.tv("Long-press the speed / RPM row to reset learned gears.", 11f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(8))
         return ui.scroll(c)
     }
 
     override fun onShow() {
         val veh = ObdManager.vehicle
         val diesel = veh.fuel.contains("Diesel", true)
-        cluster.maxRpm = if (diesel) 6000f else 8000f
-        cluster.redRpm = if (diesel) 4500f else minOf(veh.rpmLimit.toFloat(), 7000f).coerceAtLeast(4000f)
-        cluster.fuelLabel = if (veh.isEv) "SOC" else "FUEL"
         rFuel.label = if (veh.isEv) "Battery SoC" else "Fuel"
         rBatt.label = if (veh.isEv) "12 V aux" else "Battery"
         adviceSig = ""
@@ -176,18 +178,13 @@ class DashPage(a: MainActivity) : Page(a) {
         val spd = v[0x0D]
         val ri = RoadAssist.info
         val lim = ri?.limit ?: veh.speedLimit
-        cluster.rpm = v[0x0C]?.toFloat(); cluster.speed = spd?.toFloat()
-        cluster.limit = ri?.limit; cluster.limitEstimated = ri?.estimated == true
-        cluster.overSpeed = spd != null && spd > lim + (if (ri?.limit != null) Prefs.speedMargin else 0)
-        cluster.coolant = v[0x05]?.toFloat(); cluster.fuel = v[0x2F]?.toFloat()
-        cluster.gearText = if (SmartLive.gear > 0) "D${SmartLive.gear}" else if (m.engineOn && (spd ?: 0.0) > 1) "D" else "N"
-        cluster.shift = SmartLive.shiftHint()
+        rSpd.text = ui.f(spd, 0, " km/h"); rSpd.setTextColor(if (spd != null && spd > lim + (if (ri?.limit != null) Prefs.speedMargin else 0)) Ui.BAD else Ui.WHITE)
+        rRpm.text = ui.f(v[0x0C], 0)
+        rLim.text = ri?.limit?.let { "$it" + if (ri.estimated) " (est.)" else "" } ?: "--"
         val (mt, mc) = SmartLive.mode()
-        cluster.modeText = mt; cluster.modeColor = mc
         modeTv.text = mt; modeTv.background = ui.rounded(Ui.alpha(mc, 50), 14); modeTv.setTextColor(Ui.lighten(mc, 1.3f))
         val st = SmartLive.status()
         val sc = when (st.overall) { 2 -> Ui.BAD; 1 -> Ui.WARN; else -> Ui.GOOD }
-        cluster.aiColor = sc
         headTv.text = st.headline
         headDot.background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(sc) }
         led.frac = ((v[0x0C] ?: 0.0) / veh.rpmLimit.toDouble().coerceAtLeast(1000.0)).toFloat().let { if (it < 0.45f) 0f else (it - 0.45f) / 0.55f }

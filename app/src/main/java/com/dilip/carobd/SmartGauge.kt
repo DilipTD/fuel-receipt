@@ -204,28 +204,15 @@ class ClusterView(ctx: Context) : View(ctx) {
             k++
         }
 
-        // speed ring (inner)
-        val R2 = R * 0.70f; val sw2 = R * 0.05f
-        val r2 = RectF(cx - R2, cy - R2, cx + R2, cy + R2)
-        arc(c, r2, 0f, maxSpeed, maxSpeed, Color.parseColor("#1C2733"), sw2)
-        val sv = sSpd.coerceIn(0f, maxSpeed)
-        arc(c, r2, 0f, sv, maxSpeed, if (overSpeed) Color.parseColor("#FF3B4E") else Color.parseColor("#2FA8FF"), sw2)
-        limit?.let { l ->
-            val a = Math.toRadians((135f + 270f * l / maxSpeed).toDouble())
-            p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f * d; p.color = Color.parseColor("#FF3B4E")
-            c.drawLine(cx + ((R2 - sw2) * cos(a)).toFloat(), cy + ((R2 - sw2) * sin(a)).toFloat(), cx + ((R2 + sw2) * cos(a)).toFloat(), cy + ((R2 + sw2) * sin(a)).toFloat(), p)
-        }
-
-        // digital speed
-        t.color = if (overSpeed) Color.parseColor("#FF3B4E") else Color.WHITE; t.textSize = R * 0.58f
-        c.drawText("%.0f".format(sSpd), cx, cy + R * 0.16f, t)
-        t.color = Color.parseColor("#8E9BAA"); t.textSize = R * 0.11f; c.drawText("km/h", cx, cy + R * 0.30f, t)
-        t.color = modeColor; t.textSize = R * 0.105f; c.drawText(modeText, cx, cy - R * 0.36f, t)
-        // rpm digital
-        t.color = Color.parseColor("#C8D3DE"); t.textSize = R * 0.12f; c.drawText("%.0f rpm".format(sRpm), cx, cy - R * 0.2f, t)
+        // digital speed (single gauge – the RPM ring; no nested ring)
+        t.color = if (overSpeed) Color.parseColor("#FF3B4E") else Color.WHITE; t.textSize = R * 0.56f
+        c.drawText("%.0f".format(sSpd), cx, cy + R * 0.22f, t)
+        t.color = Color.parseColor("#8E9BAA"); t.textSize = R * 0.11f; c.drawText("km/h", cx, cy + R * 0.36f, t)
+        t.color = modeColor; t.textSize = R * 0.105f; c.drawText(modeText, cx, cy - R * 0.52f, t)
+        t.color = Color.parseColor("#C8D3DE"); t.textSize = R * 0.115f; c.drawText("%.0f rpm".format(sRpm), cx, cy - R * 0.34f, t)
 
         // gear pill + shift hint
-        val gw = R * 0.5f; val gh = R * 0.24f; val gy = cy + R * 0.42f
+        val gw = R * 0.5f; val gh = R * 0.24f; val gy = cy + R * 0.46f
         p.style = Paint.Style.FILL; p.color = Color.parseColor("#1C2733")
         c.drawRoundRect(RectF(cx - gw / 2, gy, cx + gw / 2, gy + gh), gh / 2, gh / 2, p)
         t.color = Color.WHITE; t.textSize = R * 0.15f; c.drawText(gearText, cx, gy + gh * 0.7f, t)

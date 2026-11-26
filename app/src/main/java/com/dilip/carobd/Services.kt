@@ -229,6 +229,8 @@ object Maint {
 
     fun checkAndNotify(ctx: Context) {
         for (v in Db.vehicles()) {
+            val dd = Docs.due(v.id)
+            if (dd.isNotEmpty()) Alerts.notify(ctx, 3500 + v.id.toInt(), "Document renewal – ${v.name}", dd.take(6).joinToString("\n") { "• ${it.title.ifBlank { it.type }}: ${Docs.status(it).first}" })
             val list = dueList(v).filter { it.overdue || it.soon }
             if (list.isEmpty()) continue
             val text = list.take(6).joinToString("\n") { "• ${it.item.name}: ${it.text}" }

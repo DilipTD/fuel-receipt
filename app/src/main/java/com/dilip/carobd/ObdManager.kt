@@ -125,6 +125,35 @@ object ObdManager {
         transport?.close()
     }
 
+    private val vinRe = Regex("[A-HJ-NPR-Z0-9]{17}")
+
+    /** Looks for the 17-character VIN: Mode 09 PID 02, then (deep) other ECU addresses and UDS F190. */
+    fun readVin(e: Elm327, deep: Boolean): String? {
+        fun pick(s: String) = vinRe.find(s.replace(" ", "").uppercase())?.value
+        try { pick(e.info09(0x02))?.let { return it } } catch (_: Exception) {}
+        if (!deep) return null
+        try {
+            if (e.isCan) {
+                for (h in listOf("7E0", "7E1", "7E2", "7E3")) try { pick(e.info09(0x02, h))?.let { return it } } catch (_: Exception) {}
+                for (h in listOf("7E0", "7E1", "7E2", "7E3", "7E4")) try { pick(e.udsVin(h))?.let { return it } } catch (_: Exception) {}
+            } else try { pick(e.info09(0x02))?.let { return it } } catch (_: Exception) {}
+        } finally { try { e.setHeader(null) } catch (_: Exception) {} }
+        return null
+    }
+
+    /** Searches the car for its VIN and stores it on the active vehicle. Callback runs on the main thread. */
+    fun fetchVin(cb: (String?, String) -> Unit) {
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        if (state != State.CONNECTED) { cb(null, "Connect to the car first (ignition ON), then try again."); return }
+        jobs.add { e ->
+            val v = readVin(e, deep = true)
+            if (v != null) {
+                vin = v; vehicle.vin = v; Db.saveVehicle(vehicle)
+                main.post { cb(v, "VIN read from the car's ECU") }
+            } else main.post { cb(null, "This car did not share its VIN over OBD (common on some models). Enter it from the RC book or the windscreen plate.") }
+        }
+    }
+
     fun runDiag(title: String, block: (Elm327) -> String) {
         if (state != State.CONNECTED) {
             diagText = "Not connected."
@@ -205,9 +234,10 @@ object ObdManager {
         protocol = elm.protocol
         supported = elm.supportedPids()
         try {
-            vin = elm.info09(0x02)
-            if (vin.length >= 11 && vehicle.vin.isEmpty()) {
-                vehicle.vin = vin; Db.saveVehicle(vehicle)
+            val found = readVin(elm, deep = false)
+            vin = found ?: ""
+            if (found != null && vehicle.vin.isEmpty()) {
+                vehicle.vin = found; Db.saveVehicle(vehicle)
             }
         } catch (_: Exception) {
         }

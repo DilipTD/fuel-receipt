@@ -10,11 +10,15 @@ Last updated: 26 November 2026.
 
 ## Information the app handles
 
-• Vehicle data from your OBD adapter: speed, RPM, temperatures, fuel level, fault codes, battery voltage and similar readings; vehicle name, VIN if the car reports it, odometer and service details you enter.
+• Vehicle data from your OBD adapter: speed, RPM, temperatures, fuel level, fault codes, battery voltage and similar readings; vehicle name, VIN (read from the car or typed by you), registration number, insurance policy details, odometer and service details you enter.
+
+• Vehicle documents you choose to add: photos or PDFs of papers such as the registration certificate, insurance policy, PUC certificate or licence, with their numbers and expiry dates. They are kept only in the app's private storage on your phone and included in backups you make.
 
 • Precise location (GPS): used for trip routes, speed, the road assistant (speed limit, direction, hazards), weather, parking position and the petrol-station location of a fill-up.
 
 • Fuel and receipt data you enter: litres, price, station name, notes and an optional receipt photo.
+
+• Vehicle identity and documents you add: VIN (read from the car or typed), registration number, insurance details and photos/PDFs of papers such as the RC, insurance policy and PUC. They are kept only in the app's private storage and are included in backups you create.
 
 • Bluetooth / Wi-Fi adapter details: the name and address of the OBD adapter you choose, so the app can reconnect.
 
@@ -54,7 +58,7 @@ These services have their own privacy policies. Their data is open data and may 
 
 ## Backups and cloud
 
-• Backup & cloud lets you save one backup file (trips, routes, fuel log, receipts, service, alerts, settings) to a location you pick – on the phone or in your own Google Drive, OneDrive, Dropbox or similar. The file goes directly to the provider you choose under your account; the developer never sees it. Anyone with access to that file or account can read it, so protect it.
+• Backup & cloud lets you save one backup file (trips, routes, fuel log, receipts, documents, service, alerts, settings) to a location you pick – on the phone or in your own Google Drive, OneDrive, Dropbox or similar. The file goes directly to the provider you choose under your account; the developer never sees it. Anyone with access to that file or account can read it, so protect it.
 
 • Android automatic backup may copy app data to your Google account if you have Google backup turned on in Android settings. That is controlled by Google and your phone settings.
 
@@ -64,7 +68,7 @@ We do not sell or share your data. Data leaves the app only when you choose to: 
 
 ## Retention and deletion
 
-Data stays on your phone until you delete it. You can delete individual drives, fill-ups, service records and alerts by swiping them left, or delete everything with More → Privacy & legal → Delete all my data. Uninstalling the app removes its local data. Backup files you saved elsewhere must be deleted by you in that location.
+Data stays on your phone until you delete it. You can delete individual drives, fill-ups, service records, documents and alerts by swiping them left, or delete everything with More → Privacy & legal → Delete all my data. Uninstalling the app removes its local data. Backup files you saved elsewhere must be deleted by you in that location.
 
 ## Security
 

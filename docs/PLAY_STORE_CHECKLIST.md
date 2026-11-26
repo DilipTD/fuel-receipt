@@ -1,6 +1,6 @@
 # Car OBD Pro – Google Play submission checklist
 
-## Done in the app (v4.1.0)
+## Done in the app (v4.2.0)
 - In-app Privacy Policy, Terms of Use, Data-safety summary, Permissions explained, Credits (More → Privacy & legal; Settings → Data).
 - First-launch prominent disclosure + consent before any permission is requested (covers location, background use, Bluetooth, internet).
 - User data controls: export (Backup), swipe-to-delete per record, "Delete all my data", "Stop location use".

@@ -223,9 +223,21 @@ class Elm327(private val t: ObdTransport, private val log: (String) -> Unit, pri
         return r.data.copyOfRange(3, r.data.size)
     }
 
+    /** UDS ReadDataByIdentifier F190 (VIN) from one ECU address. */
+    fun udsVin(header: String): String {
+        val rs = request("22F190", header, timeout = 4000)
+        val sb = StringBuilder()
+        for (r in rs) {
+            val d = r.data
+            if (d.size < 4 || d[0] != 0x62 || d[1] != 0xF1 || d[2] != 0x90) continue
+            for (k in 3 until d.size) if (d[k] in 0x20..0x7E) sb.append(d[k].toChar())
+        }
+        return sb.toString().trim()
+    }
+
     /** Mode 09 text info: 02 = VIN, 0A = ECU name, 04 = calibration ID. */
-    fun info09(pid: Int): String {
-        val rs = request("09%02X".format(pid), timeout = 5000)
+    fun info09(pid: Int, header: String? = null): String {
+        val rs = request("09%02X".format(pid), header, timeout = 5000)
         val sb = StringBuilder()
         for (r in rs) {
             val d = r.data

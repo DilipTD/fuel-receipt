@@ -39,7 +39,7 @@ class MorePage(a: MainActivity) : Page(a) {
         val h = CarHeroView(a, true)
         hero = h
         h.title = v.title
-        h.subtitle = "${v.fuel} · ${v.dispL} L\nOdometer ${ui.f(v.odoKm, 0, " km")}" + (if (v.vin.isNotEmpty()) "\nVIN ${v.vin}" else "")
+        h.subtitle = "${v.fuel} · ${v.dispL} L\nOdometer ${ui.f(v.odoKm, 0, " km")}" + (if (v.regNo.isNotEmpty()) "\nReg. ${v.regNo}" else "") + (if (v.vin.isNotEmpty()) "\nVIN ${v.vin}" else "")
         h.linkIc = when (Prefs.lastType) { 1 -> Ic.BLE; 2 -> Ic.WIFI; else -> Ic.BLUETOOTH }
         box.addView(h, ui.lp(4))
 
@@ -48,6 +48,14 @@ class MorePage(a: MainActivity) : Page(a) {
             box.addView(ui.iconCard(Ic.WRENCH, if (due.any { it.overdue }) Ui.BAD else Ui.WARN, "Maintenance attention",
                 due.take(4).joinToString("\n") { "${it.item.name}: ${it.text}" },
                 if (due.any { it.overdue }) Color.parseColor("#3A1A1D") else Color.parseColor("#3A2C0A")) { a.show("Maint") }, ui.lp(10))
+        }
+
+        val dueDocs = Docs.due(v.id)
+        if (dueDocs.isNotEmpty()) {
+            val bad = dueDocs.any { (Docs.days(it) ?: 0) < 0 }
+            box.addView(ui.iconCard(Ic.DOC, if (bad) Ui.BAD else Ui.WARN, "Documents need renewal",
+                dueDocs.take(4).joinToString("\n") { "${it.title.ifBlank { it.type }}: ${Docs.status(it).first}" },
+                if (bad) Color.parseColor("#3A1A1D") else Color.parseColor("#3A2C0A")) { a.show("Docs") }, ui.lp(10))
         }
 
         val cal = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }
@@ -77,6 +85,7 @@ class MorePage(a: MainActivity) : Page(a) {
         menu("Tools", Ic.GRID,
             Triple("Live data", Ui.ACC) { a.show("Live") },
             Triple("Road assistant", Ui.GOOD) { a.show("Road") },
+            Triple("Documents", Ui.CYAN) { a.show("Docs") },
             Triple("Backup & cloud", Ui.VIOLET) { a.show("Backup") },
             Triple("Diagnosis", Ui.PINK) { a.show("Diag") },
             Triple("Drive mode", Ui.CYAN) { a.show("Car") },
@@ -112,7 +121,7 @@ class MorePage(a: MainActivity) : Page(a) {
         l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
-        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD
+        l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Documents") -> Ic.DOC
         l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
         l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
         else -> Ic.GRID
@@ -156,6 +165,7 @@ class GaragePage(a: MainActivity) : Page(a) {
                 ui.btn("Delete", Ui.BAD) {
                     AlertDialog.Builder(a).setTitle("Delete ${v.name} and all its trips, fuel and service history?")
                         .setPositiveButton("Delete") { _, _ ->
+                            Docs.purge(a, v.id)
                             Db.deleteVehicle(v.id)
                             if (v.id == Prefs.activeVehicle) { Prefs.activeVehicle = 0; ObdManager.reloadVehicle() }
                             onShow()
@@ -185,11 +195,14 @@ class GaragePage(a: MainActivity) : Page(a) {
         val odo = ui.edit("km", "%.0f".format(Locale.US, v.odoKm), true)
         val spd = ui.edit("km/h", v.speedLimit.toString(), true)
         val rpm = ui.edit("rpm", v.rpmLimit.toString(), true)
+        val vinE = ui.edit("17 characters (or Documents → Fetch VIN)", v.vin)
+        val regE = ui.edit("e.g. KA01AB1234", v.regNo)
         formDialog(if (v.id == 0L) "Add vehicle" else "Edit ${v.name}", listOf(
             "Name" to name, "Make" to make, "Model" to model, "Year" to year, "Fuel type" to fuel,
             "Engine displacement (L)" to disp, "Tank (L / kg) or battery (kWh)" to tank, "Volumetric efficiency" to ve,
             "Fuel price" to price, "Fuel correction factor" to corr, "Odometer (km)" to odo,
-            "Overspeed alert (km/h)" to spd, "Over-rev alert (rpm)" to rpm
+            "Overspeed alert (km/h)" to spd, "Over-rev alert (rpm)" to rpm,
+            "VIN" to vinE, "Registration number" to regE
         )) {
             val isNew = v.id == 0L
             v.name = name.text.toString().ifBlank { "My car" }
@@ -199,6 +212,7 @@ class GaragePage(a: MainActivity) : Page(a) {
             disp.num()?.let { v.dispL = it }; tank.num()?.let { v.tankL = it }; ve.num()?.let { v.ve = it }
             price.num()?.let { v.fuelPrice = it }; corr.num()?.let { v.fuelCorr = it }; odo.num()?.let { v.odoKm = it }
             spd.num()?.let { v.speedLimit = it.toInt() }; rpm.num()?.let { v.rpmLimit = it.toInt() }
+            v.vin = vinE.text.toString().trim().uppercase().replace(" ", ""); v.regNo = regE.text.toString().trim().uppercase()
             Db.saveVehicle(v)
             if (isNew) {
                 Maint.loadDefaults(v)

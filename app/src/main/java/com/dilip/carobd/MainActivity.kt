@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Legal" to "Privacy & legal", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
     )
     private lateinit var content: FrameLayout
     private lateinit var nav: FrameLayout
@@ -173,6 +173,7 @@ class MainActivity : Activity() {
         pages["Battery"] = BatteryPage(this)
         pages["About"] = AboutPage(this)
         pages["Legal"] = LegalPage(this)
+        pages["Docs"] = DocsPage(this)
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
         pages["FuelAdd"] = FuelAddPage(this)
@@ -245,6 +246,9 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == FuelAddPage.REQ_CAM || requestCode == FuelAddPage.REQ_PICK) {
             (pages["FuelAdd"] as FuelAddPage).photoResult(requestCode, resultCode == RESULT_OK, data?.data); return
+        }
+        if (requestCode == DocsPage.REQ_CAM || requestCode == DocsPage.REQ_PICK) {
+            (pages["Docs"] as DocsPage).fileResult(requestCode, resultCode == RESULT_OK, data?.data); return
         }
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return

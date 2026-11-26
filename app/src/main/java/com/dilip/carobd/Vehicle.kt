@@ -41,6 +41,10 @@ class Vehicle(var id: Long = 0) {
     var speedLimit = 90
     var rpmLimit = 4500
     var vin = ""
+    var regNo = ""
+    var insurer = ""
+    var policyNo = ""
+    var policyExpiry = 0L
 
     val isEv: Boolean get() = fuel.startsWith("Electric")
     val spec: FuelSpec get() = Fuels.get(fuel)
@@ -51,6 +55,7 @@ class Vehicle(var id: Long = 0) {
         put("name", name); put("make", make); put("model", model); put("year", year); put("fuel", fuel)
         put("disp", dispL); put("tank", tankL); put("ve", ve); put("price", fuelPrice); put("corr", fuelCorr)
         put("odo", odoKm); put("spd", speedLimit); put("rpm", rpmLimit); put("vin", vin)
+        put("reg", regNo); put("ins", insurer); put("pol", policyNo); put("polExp", policyExpiry)
     }.toString()
 
     companion object {
@@ -62,6 +67,7 @@ class Vehicle(var id: Long = 0) {
                 tankL = o.optDouble("tank", tankL); ve = o.optDouble("ve", ve); fuelPrice = o.optDouble("price", fuelPrice)
                 fuelCorr = o.optDouble("corr", 1.0); odoKm = o.optDouble("odo", 0.0)
                 speedLimit = o.optInt("spd", 90); rpmLimit = o.optInt("rpm", 4500); vin = o.optString("vin")
+                regNo = o.optString("reg"); insurer = o.optString("ins"); policyNo = o.optString("pol"); policyExpiry = o.optLong("polExp")
             }
         }
     }

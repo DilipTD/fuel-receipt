@@ -145,7 +145,7 @@ object Db {
     private const val NAME = "carobd.db"
     private lateinit var helper: Helper
 
-    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 3) {
+    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 4) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE vehicles(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)")
             db.execSQL("CREATE TABLE trips(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, start INTEGER, data TEXT)")
@@ -160,6 +160,11 @@ object Db {
             db.execSQL("CREATE TABLE dtc(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, t INTEGER, code TEXT, ecu TEXT, kind TEXT)")
             createV2(db)
             addFuelExtras(db)
+            createDocs(db)
+        }
+
+        private fun createDocs(db: SQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS docs(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, type TEXT, title TEXT, number TEXT, issuer TEXT, issued INTEGER, expiry INTEGER, note TEXT, file TEXT, mime TEXT, added INTEGER)")
         }
 
         private fun addFuelExtras(db: SQLiteDatabase) {
@@ -174,6 +179,7 @@ object Db {
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
             if (oldVersion < 2) createV2(db)
             if (oldVersion < 3) addFuelExtras(db)
+            if (oldVersion < 4) createDocs(db)
         }
     }
 
@@ -232,7 +238,23 @@ object Db {
         db.delete("maint", "vid=?", a)
         db.delete("maint_rec", "vid=?", a)
         db.delete("dtc", "vid=?", a)
+        db.delete("docs", "vid=?", a)
     }
+
+    fun docs(vid: Long): List<VDoc> =
+        query("SELECT id, vid, type, title, number, issuer, issued, expiry, note, file, mime, added FROM docs WHERE vid=? ORDER BY added DESC", arrayOf(vid.toString())) {
+            VDoc(it.getLong(0), it.getLong(1), it.getString(2) ?: "", it.getString(3) ?: "", it.getString(4) ?: "", it.getString(5) ?: "", it.getLong(6), it.getLong(7), it.getString(8) ?: "", it.getString(9) ?: "", it.getString(10) ?: "", it.getLong(11))
+        }
+
+    fun saveDoc(d: VDoc) {
+        val cv = ContentValues().apply {
+            put("vid", d.vid); put("type", d.type); put("title", d.title); put("number", d.number); put("issuer", d.issuer)
+            put("issued", d.issued); put("expiry", d.expiry); put("note", d.note); put("file", d.file); put("mime", d.mime); put("added", d.added)
+        }
+        if (d.id == 0L) d.id = db.insert("docs", null, cv) else db.update("docs", cv, "id=?", arrayOf(d.id.toString()))
+    }
+
+    fun deleteDoc(id: Long) { db.delete("docs", "id=?", arrayOf(id.toString())) }
 
     /** The active vehicle, creating a default one (with a default service schedule) if needed. */
     @Synchronized
