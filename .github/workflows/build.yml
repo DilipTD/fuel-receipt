@@ -1,0 +1,36 @@
+name: Build Car OBD APK
+
+on:
+  push:
+    branches: [car-obd-app]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Publish APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/*.apk CarOBD-v2.0.apk
+          TAG="car-obd-build-${{ github.run_number }}"
+          gh release create "$TAG" CarOBD-v2.0.apk --target "${{ github.sha }}" \
+            --title "Car OBD v2.0 (build ${{ github.run_number }})" --notes "Universal ELM327 OBD app APK." --prerelease
