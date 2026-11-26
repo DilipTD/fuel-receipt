@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.TextView
 
 class DiagPage(a: MainActivity) : Page(a) {
+    override val parent = "More"
     private lateinit var out: TextView
 
     override fun build(): View {

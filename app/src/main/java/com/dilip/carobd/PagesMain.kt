@@ -26,6 +26,7 @@ import javax.net.SocketFactory
 
 @SuppressLint("SetTextI18n")
 class DashPage(a: MainActivity) : Page(a) {
+    override val parent = "Home"
     private lateinit var gRpm: GaugeView
     private lateinit var gSpd: GaugeView
     private lateinit var rCool: RingGauge

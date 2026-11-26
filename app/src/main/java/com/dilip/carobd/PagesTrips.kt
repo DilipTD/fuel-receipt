@@ -3,6 +3,8 @@ package com.dilip.carobd
 import android.app.AlertDialog
 import android.graphics.Color
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.util.Calendar
@@ -25,6 +27,29 @@ object Geo {
             if (r != null) ends[tripId] = r
             main.post { cb(r) }
         }
+    }
+
+    class Route(val pts: List<Pair<Double, Double>>, val speeds: List<Double>)
+    private val routes = java.util.concurrent.ConcurrentHashMap<Long, Route>()
+
+    /** GPS route of a trip (loaded off the UI thread, cached). */
+    fun route(tripId: Long, cb: (Route?) -> Unit) {
+        routes[tripId]?.let { cb(it); return }
+        ex.execute {
+            val g = try { Db.track(tripId).filter { it.lat != null && it.lon != null } } catch (_: Exception) { emptyList() }
+            val r = if (g.size >= 2) Route(g.map { it.lat!! to it.lon!! }, g.map { it.speed }) else null
+            if (r != null) { routes[tripId] = r; ends[tripId] = r.pts.first() to r.pts.last() }
+            main.post { cb(r) }
+        }
+    }
+
+    /** Synchronous variant for background threads. */
+    fun endpointsNow(tripId: Long): Pair<Pair<Double, Double>, Pair<Double, Double>>? {
+        ends[tripId]?.let { return it }
+        val g = try { Db.track(tripId).filter { it.lat != null && it.lon != null } } catch (_: Exception) { return null }
+        if (g.size < 2) return null
+        val r = (g.first().lat!! to g.first().lon!!) to (g.last().lat!! to g.last().lon!!)
+        ends[tripId] = r; return r
     }
 
     fun name(ctx: android.content.Context, lat: Double, lon: Double, cb: (String) -> Unit) {
@@ -100,7 +125,48 @@ class TripsPage(a: MainActivity) : Page(a) {
         ), ui.lp(8))
         hist = ui.vbox()
         c.addView(hist)
-        return ui.scroll(c)
+        val sv = ui.scroll(c)
+        fun fab(ic: Ic, size: Int, bg: Int, fg: Int, onClick: () -> Unit) = ImageView(a).apply {
+            setImageDrawable(ui.icon(ic, fg, size / 2)); scaleType = ImageView.ScaleType.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(bg) }
+            elevation = ui.dp(6).toFloat(); setOnClickListener { onClick() }
+        }
+        val up = fab(Ic.CHEV, 44, Color.parseColor("#2A3441"), Ui.WHITE) { sv.smoothScrollTo(0, 0) }.apply { rotation = -90f }
+        val add = fab(Ic.PLUS, 56, Ui.ACC, Ui.WHITE) { manualTrip() }
+        val fabs = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
+            addView(up, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { bottomMargin = ui.dp(12) })
+            addView(add, LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)))
+        }
+        return FrameLayout(a).apply {
+            addView(sv, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+            addView(fabs, FrameLayout.LayoutParams(Ui.WRAP, Ui.WRAP, android.view.Gravity.END or android.view.Gravity.BOTTOM).apply { rightMargin = ui.dp(18); bottomMargin = ui.dp(104) })
+        }
+    }
+
+    private fun manualTrip() {
+        val v = ObdManager.vehicle
+        val now = System.currentTimeMillis()
+        val date = ui.edit("Date (yyyy-MM-dd)", ui.date(now, "yyyy-MM-dd"))
+        val time = ui.edit("Start time (HH:mm)", ui.date(now, "HH:mm"))
+        val dist = ui.edit("Distance (km)", "", true)
+        val dur = ui.edit("Duration (minutes)", "", true)
+        val l = ui.vbox().apply {
+            setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0)
+            addView(date); addView(time); addView(dist); addView(dur)
+        }
+        AlertDialog.Builder(a).setTitle("Add a drive manually").setView(l)
+            .setPositiveButton("Save") { _, _ ->
+                val km = dist.text.toString().toDoubleOrNull(); val mins = dur.text.toString().toDoubleOrNull() ?: 0.0
+                val st = try { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).parse(date.text.toString() + " " + time.text.toString())?.time } catch (_: Exception) { null }
+                if (km == null || km <= 0 || st == null) { ui.toast("Enter a valid date, time and distance"); return@setPositiveButton }
+                val t = Trip(st, v.id).apply {
+                    end = st + (mins * 60_000).toLong(); distanceKm = km; movingS = mins * 60.0; odoStart = v.odoKm
+                    fuelPrice = v.fuelPrice; co2PerUnit = v.spec.co2PerUnit
+                    val e = ObdManager.longTermKmpl(); if (e != null && e > 0) fuel = km / e
+                }
+                Db.insertTrip(t); histSig = ""; refresh(); ui.toast("Drive added")
+            }.setNegativeButton("Cancel", null).show()
     }
 
     override fun onShow() { histSig = "" }
@@ -154,6 +220,9 @@ class TripsPage(a: MainActivity) : Page(a) {
                 orientation = LinearLayout.VERTICAL
                 background = ui.rounded(Ui.CARD, 20)
                 setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+                addView(TileMapView(a, true).apply {
+                    lazyLoader = { mv -> Geo.route(tr.id) { r -> if (r != null) mv.setRoute(r.pts, r.speeds) else mv.post { mv.visibility = View.GONE } } }
+                }, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(130)).apply { bottomMargin = ui.dp(10) })
                 addView(LinearLayout(a).apply {
                     gravity = android.view.Gravity.BOTTOM
                     addView(ui.tv("%.2f".format(tr.distanceKm), 30f, Ui.ACC, true))
@@ -230,20 +299,43 @@ class TripDetailPage(a: MainActivity) : Page(a) {
 
         box.addView(ui.tv(ui.date(t.start, "EEE/MMM/dd"), 28f, Ui.WHITE, true), ui.lp(6))
 
-        box.addView(ui.section("Driving replay", Ic.ROUTE))
-        val route = RouteView(a)
         val gpsTrack = track.filter { it.lat != null && it.lon != null }
-        route.setSpeeds(gpsTrack.map { it.speed })
-        route.set(
-            gpsTrack.map { it.lat!! to it.lon!! },
-            events.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.eventColor(it.type)) }
-        )
-        box.addView(route, ui.lp(4))
+        if (gpsTrack.size < 2) box.addView(ui.iconCard(Ic.ROUTE, Ui.WARN, "No GPS route", "Enable GPS in Settings to record the route of your drives"), ui.lp(6))
+        else {
+            val map = TileMapView(a)
+            map.setRoute(gpsTrack.map { it.lat!! to it.lon!! }, gpsTrack.map { it.speed },
+                events.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.eventColor(it.type)) },
+                "Dep. " + ui.date(t.start, "HH:mm"), "Arr. " + ui.date(if (t.end > 0) t.end else t.start, "HH:mm"))
+            val fl = FrameLayout(a)
+            fl.addView(map, FrameLayout.LayoutParams(Ui.MATCH, ui.dp(300)))
+            fl.addView(ImageView(a).apply {
+                setImageDrawable(ui.icon(Ic.SHARE, Ui.WHITE, 18)); scaleType = ImageView.ScaleType.CENTER
+                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.parseColor("#CC10161F")) }
+                setOnClickListener { share(t, gpsTrack.first(), gpsTrack.last()) }
+            }, FrameLayout.LayoutParams(ui.dp(40), ui.dp(40), android.view.Gravity.TOP or android.view.Gravity.END).apply { topMargin = ui.dp(10); rightMargin = ui.dp(10) })
+            fl.addView(LinearLayout(a).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = ui.rounded(Color.parseColor("#E610161F"), 24); setPadding(ui.dp(16), ui.dp(10), ui.dp(12), ui.dp(10))
+                addView(ui.tv("Want to see precise data?  ", 12.5f, Ui.WHITE))
+                addView(ui.tv("Driving Replay", 12.5f, Ui.ACC, true))
+                addView(ui.iconView(Ic.CHEV, Ui.ACC, 14))
+                setOnClickListener { a.show("TripReplay") }
+                ui.pressAnim(this)
+            }, FrameLayout.LayoutParams(Ui.WRAP, Ui.WRAP, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = ui.dp(16) })
+            map.setOnClickListener { a.show("TripReplay") }
+            box.addView(fl, ui.lp(6))
+        }
 
         // driving record card
         val tagTxt = when { t.score >= 85 -> "Smooth" to Ui.GOOD; t.score >= 65 -> "Normal" to Ui.ACC; else -> "Aggressive" to Ui.BAD }
         val depTv = ui.tv("…", 14f, Ui.DIM); val arrTv = ui.tv("…", 14f, Ui.DIM)
-        box.addView(ui.section("Driving records", Ic.DOC))
+        box.addView(LinearLayout(a).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, ui.dp(20), 0, ui.dp(8))
+            addView(ui.badge(Ic.DOC, Ui.ACC, 28), LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)).apply { rightMargin = ui.dp(10) })
+            addView(ui.tv("Driving records", 16f, Ui.WHITE, true), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            addView(ui.tv("Edit ›", 15f, Ui.ACC, true).apply { setPadding(ui.dp(10), ui.dp(4), 0, ui.dp(4)); setOnClickListener { editTrip(t) } })
+        })
         box.addView(LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(10))
@@ -265,6 +357,7 @@ class TripDetailPage(a: MainActivity) : Page(a) {
             addView(ui.dotRow("Dist.", ui.f(t.distanceKm, 2, " km"), Ic.CAR))
             addView(ui.dotRow("Odometer on Dep.", if (t.odoStart > 0) ui.f(t.odoStart, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
             addView(ui.dotRow("Odometer on Arr.", if (t.odoStart > 0) ui.f(t.odoStart + t.distanceKm, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
+            addView(ui.tv("You can write the total distance with edit function.", 12f, Ui.DIM), ui.lp(8))
         }, ui.lp(6))
         Geo.endpoints(t.id) { ep ->
             if (ep == null) { depTv.text = "No GPS data"; arrTv.text = "No GPS data" }
@@ -328,6 +421,26 @@ class TripDetailPage(a: MainActivity) : Page(a) {
                 .setPositiveButton("Delete") { _, _ -> Db.deleteTrip(t.id); a.show("Trips") }
                 .setNegativeButton("Cancel", null).show()
         }, ui.lp(10))
+    }
+
+    private fun editTrip(t: Trip) {
+        val dist = ui.edit("Total distance (km)", "%.2f".format(Locale.US, t.distanceKm), true)
+        val odo = ui.edit("Odometer on departure (km)", if (t.odoStart > 0) "%.0f".format(Locale.US, t.odoStart) else "", true)
+        val l = ui.vbox().apply { setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0); addView(dist); addView(odo) }
+        AlertDialog.Builder(a).setTitle("Edit driving record").setView(l)
+            .setPositiveButton("Save") { _, _ ->
+                dist.text.toString().toDoubleOrNull()?.takeIf { it >= 0 }?.let { t.distanceKm = it }
+                odo.text.toString().toDoubleOrNull()?.takeIf { it >= 0 }?.let { t.odoStart = it }
+                Db.updateTrip(t); onShow(); ui.toast("Saved")
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun share(t: Trip, s: TrackPoint, e: TrackPoint) {
+        val txt = "Drive ${ui.date(t.start, "EEE dd MMM yyyy")}\n${ui.date(t.start, "HH:mm")} → ${ui.date(if (t.end > 0) t.end else t.start, "HH:mm")} · " +
+                "${ui.f(t.distanceKm, 2, " km")} · ${(t.durationS / 60).toInt()} min\n" +
+                "https://www.google.com/maps/dir/?api=1&origin=${s.lat},${s.lon}&destination=${e.lat},${e.lon}\n— ${AppInfo.NAME}"
+        a.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
+            .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, txt), "Share drive"))
     }
 
     private fun export(t: Trip, track: List<TrackPoint>, events: List<DriveEvent>, kind: String) {

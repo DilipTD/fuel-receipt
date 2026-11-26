@@ -17,7 +17,7 @@ enum class Ic {
     BLUETOOTH, BLE, WIFI, PLUG, GAUGE, CHART, ROUTE, ENGINE, GRID, FUEL, WRENCH, BELL, BATTERY, TIMER, CAR,
     GEAR, INFO, PIN, PULSE, THERM, DOC, TRASH, DOWNLOAD, UPLOAD, SCAN, CHECK, WARN, LEAF, TERMINAL, SAVE,
     REFRESH, MONITOR, POWER, PLUS, SHARE, SLIDERS, VOICE, BOLT, CALENDAR, DROP, WIND, DATABASE, EDIT, CLOCK,
-    SHIELD, PLAY, STOP, BACK, CODE, USER, SEARCH, FLAG, CHEV
+    SHIELD, PLAY, STOP, BACK, CODE, USER, SEARCH, FLAG, CHEV, HOME, SUN, CLOUD, RAIN, NAV
 }
 
 /** Outline icon on a 24×24 grid, tinted with [color]. */
@@ -198,6 +198,11 @@ class IconDrawable(private val ic: Ic, color: Int, private val sizePx: Int) : Dr
             Ic.SEARCH -> { circ(10.5f, 10.5f, 6.5f); ln(15.5f, 15.5f, 21f, 21f) }
             Ic.FLAG -> { ln(5f, 3f, 5f, 21f); poly(5f, 4f, 18f, 4f, 15f, 8.5f, 18f, 13f, 5f, 13f) }
             Ic.CHEV -> poly(9f, 5f, 16f, 12f, 9f, 19f)
+            Ic.HOME -> { poly(3f, 11f, 12f, 3f, 21f, 11f); poly(5.5f, 9.5f, 5.5f, 20.5f, 18.5f, 20.5f, 18.5f, 9.5f); poly(10f, 20.5f, 10f, 14f, 14f, 14f, 14f, 20.5f) }
+            Ic.SUN -> { circ(12f, 12f, 4.2f); ln(12f, 2.5f, 12f, 5f); ln(12f, 19f, 12f, 21.5f); ln(2.5f, 12f, 5f, 12f); ln(19f, 12f, 21.5f, 12f); ln(5.3f, 5.3f, 7f, 7f); ln(17f, 17f, 18.7f, 18.7f); ln(5.3f, 18.7f, 7f, 17f); ln(17f, 7f, 18.7f, 5.3f) }
+            Ic.CLOUD -> { poly(6.5f, 18.5f, 17.5f, 18.5f, 20.5f, 15.5f, 18.5f, 11.5f, 15f, 11f, 12.5f, 7.5f, 8.5f, 8.5f, 7.5f, 12f, 4f, 13.5f, 3.5f, 16.5f) }
+            Ic.RAIN -> { poly(6.5f, 14f, 17.5f, 14f, 20.5f, 11f, 18.5f, 7.5f, 15f, 7f, 12.5f, 4f, 8.5f, 5f, 7.5f, 8.5f, 4f, 9.5f, 3.5f, 12f); ln(8f, 17f, 7f, 20f); ln(12f, 17f, 11f, 20f); ln(16f, 17f, 15f, 20f) }
+            Ic.NAV -> poly(12f, 2.5f, 20f, 21f, 12f, 16.5f, 4f, 21f)
         }
     }
 }

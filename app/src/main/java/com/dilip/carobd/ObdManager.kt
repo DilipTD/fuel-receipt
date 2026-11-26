@@ -67,7 +67,8 @@ object ObdManager {
     @Volatile private var transport: ObdTransport? = null
     @Volatile private var userStopped = false
     @Volatile private var odoFromEcu = false
-    private lateinit var app: Context
+    lateinit var app: Context
+        private set
 
     private val FAST = listOf(0x0C, 0x0D, 0x10, 0x0B, 0x11, 0x04, 0x5E, 0x44, 0x05)
 

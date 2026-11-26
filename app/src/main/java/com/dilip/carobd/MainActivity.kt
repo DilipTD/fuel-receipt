@@ -35,7 +35,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Dash" to "Dashboard", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
@@ -47,13 +47,13 @@ class MainActivity : Activity() {
     private lateinit var navInd: View
     val pages = LinkedHashMap<String, Page>()
     private val navButtons = HashMap<String, LinearLayout>()
-    var current = "Dash"
+    var current = "Home"
         private set
     private var lastState = ObdManager.State.DISCONNECTED
     var btAdapter: BluetoothAdapter? = null
     var selectedTripId = 0L
     var selectedFuelId = 0L
-    private val tabs = listOf("Dash", "Trips", "Fuel", "Diag", "More")
+    private val tabs = listOf("Home", "Trips", "Fuel", "Nav", "More")
     private val handler = Handler(Looper.getMainLooper())
 
     private val tick = object : Runnable {
@@ -123,8 +123,8 @@ class MainActivity : Activity() {
             setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(12))
             addView(nav, FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         }
-        val tabIcons = mapOf("Dash" to Ic.GAUGE, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Diag" to Ic.PULSE, "More" to Ic.GRID)
-        val tabNames = mapOf("Dash" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Diag" to "Diagnose", "More" to "More")
+        val tabIcons = mapOf("Home" to Ic.HOME, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Nav" to Ic.NAV, "More" to Ic.GRID)
+        val tabNames = mapOf("Home" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Nav" to "Navigate", "More" to "More")
         for (name in tabs) {
             val dr = IconDrawable(tabIcons[name] ?: Ic.GRID, Ui.DIM, ui.dp(24))
             val lbl = ui.tv(tabNames[name] ?: name, 10.5f, Ui.DIM).apply { gravity = Gravity.CENTER }
@@ -151,6 +151,9 @@ class MainActivity : Activity() {
         }, if (savedInstanceState == null) 1700L else 0L)
 
         pages["Connect"] = ConnectPage(this)
+        pages["Home"] = HomePage(this)
+        pages["Nav"] = NavPage(this)
+        pages["TripReplay"] = TripReplayPage(this)
         pages["Dash"] = DashPage(this)
         pages["Live"] = LivePage(this)
         pages["Trips"] = TripsPage(this)
@@ -175,7 +178,7 @@ class MainActivity : Activity() {
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         }
         val firstRun = Prefs.lastAddr.isEmpty() && Prefs.lastType != 2
-        show(if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Dash")
+        show(if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
         intent?.getStringExtra("open")?.let { show(it) }
         requestPerms()
         Maint.schedule(this)
@@ -351,7 +354,7 @@ class MainActivity : Activity() {
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (st == ObdManager.State.CONNECTED && current == "Connect") {
-                show("Dash"); return
+                show("Home"); return
             }
         }
         try {
