@@ -71,6 +71,28 @@ class Ui(val a: Activity) {
             else -> Color.parseColor("#90A4AE")
         }
 
+        /** Symbol for a driving event. */
+        fun eventIcon(type: String): Ic = when (type) {
+            DriveEvent.EV_OVERSPEED -> Ic.GAUGE
+            DriveEvent.EV_ACC -> Ic.BOLT
+            DriveEvent.EV_BRAKE -> Ic.STOP
+            DriveEvent.EV_SUDDEN -> Ic.WARN
+            DriveEvent.EV_CORNER -> Ic.NAV
+            DriveEvent.EV_OVERREV -> Ic.ENGINE
+            DriveEvent.EV_COLDREV -> Ic.THERM
+            DriveEvent.EV_IDLE -> Ic.TIMER
+            else -> Ic.FLAG
+        }
+        /** Plain-language name used next to the symbol. */
+        fun eventName(type: String): String = when (type) {
+            DriveEvent.EV_ACC -> "Rapid acceleration"
+            DriveEvent.EV_BRAKE -> "Rapid deceleration (hard braking)"
+            DriveEvent.EV_SUDDEN -> "Sudden braking"
+            else -> type
+        }
+        /** Green / yellow / red by speed in km/h. */
+        fun speedColor3(kmh: Double): Int = when { kmh < 50 -> Color.parseColor("#2EBD85"); kmh < 80 -> Color.parseColor("#FFB020"); else -> Color.parseColor("#E5383B") }
+
         fun lighten(c: Int, f: Float): Int {
             val h = FloatArray(3); Color.colorToHSV(c, h); h[2] = minOf(1f, h[2] * f); h[1] = h[1] * 0.95f
             return Color.HSVToColor(h)
@@ -126,7 +148,7 @@ class Ui(val a: Activity) {
     fun dp(v: Int) = (v * a.resources.displayMetrics.density).toInt()
 
     fun tv(t: String = "", size: Float = 14f, color: Int = WHITE, bold: Boolean = false) = TextView(a).apply {
-        text = t
+        text = Lang.t(t)
         textSize = size
         setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
@@ -196,7 +218,7 @@ class Ui(val a: Activity) {
 
     fun btn(t: String, color: Int = ACC, onClick: () -> Unit): Button = IconButton(a).apply {
         val ic = iconForButton(t)
-        text = clean(t).ifEmpty { t }
+        text = Lang.t(clean(t).ifEmpty { t })
         isAllCaps = false
         setTextColor(WHITE)
         textSize = 14f
@@ -280,7 +302,7 @@ class Ui(val a: Activity) {
     /** Toggle row (a Switch; same API as the old CheckBox: isChecked). */
     fun check(label: String, value: Boolean): Switch = Switch(a).apply {
         val ic = iconForTitle(label)
-        text = clean(label).ifEmpty { label }
+        text = Lang.t(clean(label).ifEmpty { label })
         isChecked = value
         setTextColor(WHITE)
         textSize = 14f
@@ -413,16 +435,26 @@ class Ui(val a: Activity) {
         return "%02d:%02d:%02d".format(t / 3600, (t % 3600) / 60, t % 60)
     }
 
-    fun date(t: Long, pattern: String = "dd MMM yy HH:mm") = SimpleDateFormat(pattern, Locale.getDefault()).format(Date(t))
-
-    /** Economy formatted per the user's unit choice (km/L or L/100km; kg for CNG). */
-    fun econ(kmpl: Double?, unit: String = ObdManager.vehicle.spec.unit): String {
-        if (kmpl == null || kmpl <= 0 || kmpl.isInfinite()) return "--"
-        return if (Prefs.economyUnit == "L/100km") "%.1f %s/100km".format(100.0 / kmpl, unit)
-        else "%.1f km/%s".format(kmpl, unit)
+    fun date(t: Long, pattern: String = "dd MMM yy HH:mm"): String {
+        var p = pattern
+        if (!Prefs.time24) p = p.replace("HH:mm:ss", "hh:mm:ss a").replace("HH:mm", "hh:mm a")
+        return SimpleDateFormat(p, Locale.getDefault()).format(Date(t))
     }
 
-    fun money(v: Double) = "₹%.0f".format(v)
+    /** Economy formatted per the user's unit choice (km/L, L/100km, MPG). */
+    fun econ(kmpl: Double?, unit: String = ObdManager.vehicle.spec.unit): String {
+        if (kmpl == null || kmpl <= 0 || kmpl.isInfinite()) return "--"
+        return Units.econ(kmpl, unit)
+    }
+
+    fun money(v: Double) = "${Prefs.currency}%.0f".format(v)
+
+    /* unit-aware helpers (values are always passed in km, km/h, L, °C, kPa) */
+    fun spd(v: Double?, dec: Int = 0) = if (v == null) "--" else f(Units.spd(v), dec, " " + Units.spdLabel)
+    fun dist(v: Double?, dec: Int = 1) = if (v == null) "--" else f(Units.km(v), dec, " " + Units.distLabel)
+    fun temp(v: Double?, dec: Int = 0) = if (v == null) "--" else f(Units.temp(v), dec, Units.tempLabel)
+    fun press(v: Double?) = if (v == null) "--" else f(Units.press(v), Units.pressDec, " " + Units.pressLabel)
+    fun vol(v: Double?, dec: Int = 1, spec: String = ObdManager.vehicle.spec.unit) = if (v == null) "--" else f(Units.vol(v, spec), dec, " " + Units.volLabel(spec))
 }
 
 /** A screen inside MainActivity. */

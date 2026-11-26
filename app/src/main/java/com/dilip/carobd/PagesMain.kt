@@ -110,10 +110,10 @@ class LivePage(a: MainActivity) : Page(a) {
         val u = m.vehicle.spec.unit
         if (e.pid != null) {
             val def = Pids.byId[e.pid]
-            return m.texts[e.pid] ?: m.values[e.pid]?.let { "%.${def?.decimals ?: 1}f".format(it) } ?: "…"
+            return m.texts[e.pid] ?: m.values[e.pid]?.let { val (cv, _) = Units.conv(e.unit, it); "%.${def?.decimals ?: 1}f".format(cv) } ?: "…"
         }
         return when (e.key) {
-            "calc:fuel" -> ui.f(m.fuelRate(), 2)
+            "calc:fuel" -> m.fuelRate()?.let { "%.2f".format(Units.vol(it, "L")) } ?: "--"
             "calc:econ" -> m.engine.instantKmpl?.let { "%.1f".format(it) } ?: "--"
             "calc:acc" -> "%+.2f".format(m.engine.liveAccelG)
             "calc:batt" -> ui.f(m.batteryV, 2)
@@ -143,7 +143,7 @@ class LivePage(a: MainActivity) : Page(a) {
 
     private fun makeCell(e: Entry): View {
         val value = ui.tv("…", 21f, Ui.WHITE, true)
-        val unit = ui.tv(e.unit, 11.5f, Ui.DIM)
+        val unit = ui.tv(Units.label(e.unit), 11.5f, Ui.DIM)
         val trend = ui.tv("", 14f, Ui.DIM, true)
         val spark = SparkView(a).apply { color = catColor(e.cat) }
         val card = LinearLayout(a).apply {
@@ -374,7 +374,8 @@ class HudPage(a: MainActivity) : Page(a) {
         val ri = RoadAssist.info
         val lim = ri?.limit
         val over = m.engine.overspeedNow || (spd != null && lim != null && spd > lim + Prefs.speedMargin)
-        speed.text = spd?.let { "%.0f".format(it) } ?: "--"
+        speed.text = spd?.let { "%.0f".format(Units.spd(it)) } ?: "--"
+        unit.text = Units.spdLabel
         speed.setTextColor(if (over) Color.parseColor("#FF5252") else Color.parseColor("#4FC3F7"))
         clock.text = hm.format(java.util.Date())
         road.text = ri?.let { listOf(it.road, it.ref).filter { s -> s.isNotBlank() }.joinToString(" · ") } ?: ""
@@ -389,12 +390,12 @@ class HudPage(a: MainActivity) : Page(a) {
         cells["RPM"]?.text = v[0x0C]?.let { "%.0f".format(it) } ?: "--"
         cells["GEAR"]?.text = if (g > 0) "D$g" else if (m.engineOn && (spd ?: 0.0) > 1) "D" else "N"
         cells["THROTTLE"]?.text = ui.f(v[0x11] ?: v[0x45], 0, "%")
-        cells["COOLANT"]?.text = ui.f(cool, 0, "°C"); cells["COOLANT"]?.setTextColor(if (cool != null && cool >= Prefs.coolantMax) Color.parseColor("#FF5252") else Color.parseColor("#FF8A65"))
+        cells["COOLANT"]?.text = ui.temp(cool, 0); cells["COOLANT"]?.setTextColor(if (cool != null && cool >= Prefs.coolantMax) Color.parseColor("#FF5252") else Color.parseColor("#FF8A65"))
         cells["FUEL"]?.text = ui.f(v[0x2F], 0, "%")
         val bv = m.batteryV ?: v[0x42]
         cells["BATTERY"]?.text = ui.f(bv, 1, " V")
-        cells["TRIP"]?.text = ui.f(t?.distanceKm, 1, " km")
-        cells["RANGE"]?.text = ui.f(m.rangeKm(), 0, " km")
+        cells["TRIP"]?.text = ui.dist(t?.distanceKm, 1)
+        cells["RANGE"]?.text = ui.dist(m.rangeKm(), 0)
         cells["ECONOMY"]?.text = ui.econ(m.engine.instantKmpl)
         cells["LOAD"]?.text = ui.f(v[0x04], 0, "%")
         cells["HEADING"]?.text = RoadAssist.heading?.let { "${compass(it)} %.0f°".format(it) } ?: "--"

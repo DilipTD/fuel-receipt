@@ -229,8 +229,8 @@ class DiagPage(a: MainActivity) : Page(a) {
         sb.append("Battery (adapter): ${ui.f(e.batteryVoltage(), 2, " V")}\n")
         e.pid01(0x1C)?.let { sb.append("OBD standard: ${Pids.byId[0x1C]?.text?.invoke(it)}\n") }
         e.pid01(0x51)?.let { sb.append("Fuel type (ECU): ${Pids.byId[0x51]?.text?.invoke(it)}\n") }
-        e.pid01(0xA6)?.let { sb.append("Odometer (ECU): ${ui.f(Pids.byId[0xA6]?.decode?.invoke(it), 1, " km")}\n") }
-        sb.append("Odometer (app): ${ui.f(m.vehicle.odoKm, 0, " km")}\n")
+        e.pid01(0xA6)?.let { sb.append("Odometer (ECU): ${ui.dist(Pids.byId[0xA6]?.decode?.invoke(it), 1)}\n") }
+        sb.append("Odometer (app): ${ui.dist(m.vehicle.odoKm, 0)}\n")
         sb.append("Supported mode-01 PIDs (${m.supported.size}): ")
         sb.append(m.supported.joinToString(" ") { "%02X".format(it) })
         sb.toString()

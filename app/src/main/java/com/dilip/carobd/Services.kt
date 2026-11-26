@@ -53,7 +53,7 @@ object Alerts : TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         ready = status == TextToSpeech.SUCCESS
         if (ready) try {
-            tts?.language = Locale.getDefault()
+            tts?.language = Lang.ttsLocale()
         } catch (_: Exception) {
         }
     }
@@ -199,6 +199,33 @@ object Maint {
         Triple("Emission (PUC) certificate", 0.0, 180),
         Triple("General service", 10000.0, 365)
     )
+
+    /** Symbol + colour for a service item, chosen from its name. */
+    fun iconFor(name: String): Pair<Ic, Int> {
+        val n = name.lowercase()
+        return when {
+            "oil" in n && "gear" !in n && "transmission" !in n -> Ic.DROP to Ui.ORANGE
+            "gearbox" in n || "transmission" in n -> Ic.GEAR to Ui.VIOLET
+            "cabin" in n || "ac " in n || n.endsWith(" ac") || "a/c" in n -> Ic.WIND to Ui.CYAN
+            "air filter" in n || "filter" in n && "fuel" !in n -> Ic.WIND to Ui.ACC
+            "spark" in n || "plug" in n -> Ic.BOLT to Ui.WARN
+            "fuel" in n -> Ic.FUEL to Ui.ORANGE
+            "coolant" in n || "radiator" in n -> Ic.THERM to Ui.CYAN
+            "brake" in n -> Ic.STOP to Ui.BAD
+            "tyre" in n || "tire" in n || "wheel" in n || "alignment" in n -> Ic.GAUGE to Ui.VIOLET
+            "battery" in n -> Ic.BATTERY to Ui.GOOD
+            "wiper" in n -> Ic.RAIN to Ui.CYAN
+            "belt" in n || "chain" in n -> Ic.REFRESH to Ui.PINK
+            "insurance" in n || "policy" in n -> Ic.SHIELD to Ui.GOOD
+            "puc" in n || "emission" in n || "pollution" in n -> Ic.LEAF to Ui.GOOD
+            "fastag" in n || "toll" in n -> Ic.ROUTE to Ui.ACC
+            "light" in n || "bulb" in n || "lamp" in n -> Ic.SUN to Ui.WARN
+            "suspension" in n || "shock" in n -> Ic.SLIDERS to Ui.PINK
+            "clutch" in n -> Ic.PLUG to Ui.ORANGE
+            "general" in n || "service" in n -> Ic.WRENCH to Ui.ACC
+            else -> Ic.WRENCH to Ui.ACC
+        }
+    }
 
     fun loadDefaults(v: Vehicle) {
         val now = System.currentTimeMillis()

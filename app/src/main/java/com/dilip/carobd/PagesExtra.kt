@@ -306,13 +306,13 @@ class PerformancePage(a: MainActivity) : Page(a) {
             PerfMeter.Mode.ARMED_LAUNCH, PerfMeter.Mode.ARMED_BRAKE -> Color.parseColor("#00E676")
             else -> Color.parseColor("#00E5FF")
         })
-        speed.text = "${ui.f(ObdManager.values[0x0D], 0, " km/h")} · ${ui.f(pm.liveDist, 0, " m")}"
+        speed.text = "${ui.spd(ObdManager.values[0x0D], 0)} · ${ui.f(pm.liveDist, 0, " m")}"
         val v = ObdManager.values; val g = ObdManager.engine.liveAccelG
         val sp = v[0x0D] ?: 0.0
         if (g > peakG) peakG = g; if (sp > peakSpd) peakSpd = sp
-        lSpd.text = ui.f(v[0x0D], 0, " km/h"); lRpm.text = ui.f(v[0x0C], 0); lThr.text = ui.f(v[0x11] ?: v[0x45], 0, "%")
+        lSpd.text = ui.spd(v[0x0D], 0); lRpm.text = ui.f(v[0x0C], 0); lThr.text = ui.f(v[0x11] ?: v[0x45], 0, "%")
         lLoad.text = ui.f(v[0x04], 0, "%"); lG.text = "%.2f g".format(g); lPeak.text = "%.2f g · %.0f".format(peakG, peakSpd)
-        lCool.text = ui.f(v[0x05], 0, "°C"); lIat.text = ui.f(v[0x0F], 0, "°C")
+        lCool.text = ui.temp(v[0x05], 0); lIat.text = ui.temp(v[0x0F], 0)
         val map = v[0x0B]; lBoost.text = if (map != null) ui.f((map - (v[0x33] ?: 100.0)) / 100.0, 2, " bar") else "--"
         statusTv.text = if (ObdManager.state != ObdManager.State.CONNECTED) "Connect to the car first." else pm.status
         splitsTv.text = if (pm.splits.isEmpty()) "Splits appear here: 0-60, 0-100, 60-100, ¼ mile, 100-0." else

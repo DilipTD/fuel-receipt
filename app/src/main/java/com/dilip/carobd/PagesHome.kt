@@ -65,7 +65,7 @@ class HomePage(a: MainActivity) : Page(a) {
             addView(ui.vbox().apply {
                 addView(ui.tv(v.name, 17f, Ui.WHITE, true))
                 addView(statusTv)
-                addView(ui.tv(ui.f(v.odoKm, 0, " km") + " · " + v.fuel, 12f, Ui.DIM))
+                addView(ui.tv(ui.dist(v.odoKm, 0) + " · " + v.fuel, 12f, Ui.DIM))
             }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             addView(roundBtn(Ic.GAUGE) { a.show("Dash") }, LinearLayout.LayoutParams(ui.dp(40), ui.dp(40)))
             setOnClickListener { a.show("Dash") }
@@ -184,7 +184,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val trips = Db.trips(v.id, month, 400)
         val km = trips.sumOf { it.distanceKm }; val fuel = trips.sumOf { it.fuel }; val spend = trips.sumOf { it.cost }
         box.addView(ui.section("Overview · this month", Ic.CHART))
-        val (s1, t1) = ui.stat(Ic.ROUTE, "Distance", Ui.ACC); t1.text = ui.f(km, 0, " km")
+        val (s1, t1) = ui.stat(Ic.ROUTE, "Distance", Ui.ACC); t1.text = ui.dist(km, 0)
         val (s2, t2) = ui.stat(Ic.CAR, "Drives", Ui.CYAN); t2.text = trips.size.toString()
         val (s3, t3) = ui.stat(Ic.LEAF, "Economy", Ui.GOOD); t3.text = ui.econ(if (fuel > 0) km / fuel else null)
         val (s4, t4) = ui.stat(Ic.DATABASE, "Fuel spend", Ui.VIOLET); t4.text = ui.money(spend)
@@ -201,7 +201,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val fl = m.values[0x2F]
         val (c1, d1) = ui.stat(Ic.SHIELD, "Health", Ui.GOOD); d1.text = if (hs >= 0) "$hs / 100" else "--"
         val (c2, d2) = ui.stat(if (v.isEv) Ic.BATTERY else Ic.FUEL, if (v.isEv) "Charge" else "Fuel", Ui.ORANGE); d2.text = ui.f(fl, 0, " %")
-        val (c3, d3) = ui.stat(Ic.ROUTE, "Range", Ui.CYAN); d3.text = ui.f(range, 0, " km")
+        val (c3, d3) = ui.stat(Ic.ROUTE, "Range", Ui.CYAN); d3.text = ui.dist(range, 0)
         val (c4, d4) = ui.stat(Ic.WRENCH, "Next service", Ui.WARN); d4.text = due?.let { if (it.kmLeft != null) "%.0f km".format(it.kmLeft) else "${it.daysLeft} d" } ?: "--"
         val (c5, d5) = ui.stat(Ic.BELL, "Alerts · 7d", Ui.PINK); d5.text = alertN.toString()
         val (c6, d6) = ui.stat(Ic.BATTERY, "Battery", Ui.ACC); d6.text = if (m.state == ObdManager.State.CONNECTED) ui.f(m.batteryV, 1, " V") else "--"
@@ -439,7 +439,8 @@ class TripReplayPage(a: MainActivity) : Page(a) {
         if (pts.size < 2) { box.addView(ui.iconCard(Ic.ROUTE, Ui.WARN, "No GPS route", "Enable GPS in Settings to record routes"), ui.lp(12)); return }
         totalMs = (pts.size * 120f).coerceIn(15_000f, 60_000f)
         map = TileMapView(a)
-        map.setRoute(pts.map { it.lat!! to it.lon!! }, pts.map { it.speed }, emptyList(), "Start", "End")
+        val evs = Db.events(t.id)
+        map.setRoute(pts.map { it.lat!! to it.lon!! }, pts.map { it.speed }, evs.filter { it.lat != null && it.lon != null }.map { Triple(it.lat!!, it.lon!!, Ui.speedColor3(it.speed)) }, "Start", "End")
         map.setProgress(0f)
         box.addView(map, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(360)).apply { topMargin = ui.dp(10) })
         val (s1, t1) = ui.stat(Ic.GAUGE, "Speed km/h", Ui.ACC); spdTv = t1
@@ -460,7 +461,28 @@ class TripReplayPage(a: MainActivity) : Page(a) {
             else { if (frac >= 1f) frac = 0f; playing = true; playBtn.text = "Pause"; h.post(tick) }
         }
         box.addView(playBtn, ui.lp(8))
-        box.addView(ui.tv("Route colours: green slow · yellow medium · red fast", 11.5f, Ui.DIM), ui.lp(8))
+        box.addView(LinearLayout(a).apply {
+            gravity = android.view.Gravity.CENTER
+            for ((c, l) in listOf(Ui.speedColor3(0.0) to "Below 50 km/h", Ui.speedColor3(60.0) to "50–80 km/h", Ui.speedColor3(100.0) to "Above 80 km/h")) {
+                addView(View(a).apply { background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(c) } }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)).apply { rightMargin = ui.dp(5) })
+                addView(ui.tv(l, 11.5f, Ui.DIM), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = ui.dp(14) })
+            }
+        }, ui.lp(8))
+        box.addView(ui.section("Events on this drive (${evs.size})", Ic.FLAG))
+        if (evs.isEmpty()) box.addView(ui.iconCard(Ic.CHECK, Ui.GOOD, "Smooth drive", "No over-speed, harsh braking or rapid acceleration events.", Ui.CARD), ui.lp(4))
+        else {
+            box.addView(ui.tv("Tap an event to jump to it in the replay. Symbol colour shows the speed at that moment.", 11.5f, Ui.DIM), ui.lp(2))
+            for (e in evs) {
+                val sc = Ui.speedColor3(e.speed)
+                box.addView(ui.iconCard(Ui.eventIcon(e.type), sc, Ui.eventName(e.type),
+                    "${ui.date(e.t, "HH:mm:ss")} · ${"%.0f".format(e.speed)} km/h · ${e.label.substringAfter(e.type).trim()}", Ui.CARD) {
+                    if (pts.isNotEmpty()) {
+                        val i = pts.indexOfFirst { it.t >= e.t }.let { if (it < 0) pts.size - 1 else it }
+                        frac = i.toFloat() / (pts.size - 1).coerceAtLeast(1); playing = false; playBtn.text = "Play"; apply()
+                    }
+                }, ui.lp(4))
+            }
+        }
         apply()
     }
 }

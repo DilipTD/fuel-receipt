@@ -106,7 +106,12 @@ class TripEngine {
         val r = rpm ?: 0.0
         val running = r > 300
 
-        t.distanceKm += spd * dt / 3600.0
+        var dSpd = spd
+        if (Prefs.distMethod == "GPS") {
+            val g = Gps.last
+            if (g != null && g.hasSpeed() && g.accuracy < 25f && System.currentTimeMillis() - g.time < 4000) dSpd = g.speed * 3.6
+        }
+        t.distanceKm += dSpd * dt / 3600.0
         if (running && rate != null) t.fuel += rate * dt / 3600.0
         if (spd < 1 && running) {
             t.idleS += dt

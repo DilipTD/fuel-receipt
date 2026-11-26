@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD"
+        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Faq" to "Help & FAQ", "Calc" to "Calculator"
     )
     private lateinit var content: FrameLayout
     private lateinit var nav: FrameLayout
@@ -146,6 +146,7 @@ class MainActivity : Activity() {
         val splash = buildSplash()
         frame.addView(splash, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         setContentView(frame)
+        Theme.applyRoot(this, root)
         handler.postDelayed({
             splash.animate().alpha(0f).setDuration(450).withEndAction { splash.visibility = View.GONE }.start()
         }, if (savedInstanceState == null) 1700L else 0L)
@@ -178,6 +179,8 @@ class MainActivity : Activity() {
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
         pages["FuelAdd"] = FuelAddPage(this)
+        pages["Faq"] = FaqPage(this)
+        pages["Calc"] = CalcPage(this)
         for (p in pages.values) {
             p.view = p.build()
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
@@ -327,7 +330,8 @@ class MainActivity : Activity() {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(380).setInterpolator(android.view.animation.OvershootInterpolator(3.5f)).start()
             }
         }
-        titleTv.text = titles[name] ?: name
+        titleTv.text = Lang.t(titles[name] ?: name)
+        Theme.counter(this, content)
         val hasBack = pages[name]?.parent != null
         backBtn.visibility = if (hasBack) View.VISIBLE else View.GONE
         logo.visibility = if (hasBack) View.GONE else View.VISIBLE

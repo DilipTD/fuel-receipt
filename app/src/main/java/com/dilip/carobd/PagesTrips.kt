@@ -193,8 +193,8 @@ class TripsPage(a: MainActivity) : Page(a) {
         val u = m.vehicle.spec.unit
         if (t == null) cur.visibility = View.GONE else {
             cur.visibility = View.VISIBLE
-            cur.text = "● Recording   ${ui.f(t.distanceKm, 2, " km")} · ${ui.hms(t.durationS)} · ${ui.econ(t.kmpl)}\n" +
-                    "${ui.f(t.fuel, 2, " $u")} · ${ui.money(t.cost)} · max ${ui.f(t.maxSpeed, 0, " km/h")} · score ${t.score}"
+            cur.text = "● Recording   ${ui.dist(t.distanceKm, 2)} · ${ui.hms(t.durationS)} · ${ui.econ(t.kmpl)}\n" +
+                    "${ui.vol(t.fuel, 2)} · ${ui.money(t.cost)} · max ${ui.spd(t.maxSpeed, 0)} · score ${t.score}"
         }
         val now = System.currentTimeMillis()
         val (since, until) = TripFilter.range(filter, m.vehicle.id)
@@ -397,9 +397,9 @@ class TripDetailPage(a: MainActivity) : Page(a) {
             }, ui.lp(12))
             addView(View(a).apply { setBackgroundColor(Ui.STROKE) }, LinearLayout.LayoutParams(Ui.MATCH, 1).apply { topMargin = ui.dp(12); bottomMargin = ui.dp(4) })
             addView(ui.dotRow("Time", "${(t.durationS / 60).toInt()}m", Ic.CLOCK))
-            addView(ui.dotRow("Dist.", ui.f(t.distanceKm, 2, " km"), Ic.CAR))
-            addView(ui.dotRow("Odometer on Dep.", if (t.odoStart > 0) ui.f(t.odoStart, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
-            addView(ui.dotRow("Odometer on Arr.", if (t.odoStart > 0) ui.f(t.odoStart + t.distanceKm, 0, " km") else "- km", Ic.CHECK, Ui.GOOD))
+            addView(ui.dotRow("Dist.", ui.dist(t.distanceKm, 2), Ic.CAR))
+            addView(ui.dotRow("Odometer on Dep.", if (t.odoStart > 0) ui.dist(t.odoStart, 0) else "- km", Ic.CHECK, Ui.GOOD))
+            addView(ui.dotRow("Odometer on Arr.", if (t.odoStart > 0) ui.dist(t.odoStart + t.distanceKm, 0) else "- km", Ic.CHECK, Ui.GOOD))
             addView(ui.tv("You can write the total distance with edit function.", 12f, Ui.DIM), ui.lp(8))
         }, ui.lp(6))
         Geo.endpoints(t.id) { ep ->
@@ -421,15 +421,15 @@ class TripDetailPage(a: MainActivity) : Page(a) {
             addView(ui.dotRow("Safety score", "${t.score} P", Ic.SHIELD, tagTxt.second))
             addView(ui.dotRow("Economic score", "%.0f P".format(eco), Ic.LEAF, Ui.GOOD))
             addView(ui.dotRow("Fuel efficiency", ui.econ(t.kmpl, u), Ic.CHART))
-            addView(ui.dotRow("Fuel consumed", ui.f(t.fuel, 2, " $u"), Ic.FUEL))
+            addView(ui.dotRow("Fuel consumed", ui.vol(t.fuel, 2), Ic.FUEL))
             addView(ui.dotRow("Carbon emissions", ui.f(t.co2Kg, 2, " kg CO₂"), Ic.WIND))
             addView(ui.dotRow("Fuel cost (₹)", "%.2f".format(t.cost), Ic.DATABASE))
             addView(ui.dotRow("Rapid decel.", "${t.hardBrake + t.suddenBrake} times", Ic.WARN))
             addView(ui.dotRow("Rapid acc.", "${t.rapidAcc} times", Ic.BOLT))
             addView(ui.dotRow("Speeding", "${t.overspeed} times", Ic.GAUGE))
             addView(ui.dotRow("Harsh cornering", "${t.corner} times", Ic.ROUTE))
-            addView(ui.dotRow("Avg. speed", ui.f(t.avgSpeed, 0, " km/h"), Ic.GAUGE))
-            addView(ui.dotRow("Max speed", ui.f(t.maxSpeed, 0, " km/h"), Ic.GAUGE))
+            addView(ui.dotRow("Avg. speed", ui.spd(t.avgSpeed, 0), Ic.GAUGE))
+            addView(ui.dotRow("Max speed", ui.spd(t.maxSpeed, 0), Ic.GAUGE))
             addView(ui.dotRow("Avg. RPM", if (rpms.isEmpty()) "-" else "%.0f RPM".format(rpms.average()), Ic.ENGINE))
             addView(ui.dotRow("Max RPM", ui.f(t.maxRpm, 0, " RPM"), Ic.ENGINE))
             addView(ui.dotRow("Max coolant temp", ui.f(t.maxCoolant, 0, " °C"), Ic.THERM))
@@ -447,10 +447,8 @@ class TripDetailPage(a: MainActivity) : Page(a) {
         box.addView(ui.section("Driving events (${events.size})"))
         if (events.isEmpty()) box.addView(ui.tv("No harsh events – smooth drive 👍", 13f, Ui.DIM))
         for (e in events) {
-            box.addView(ui.card("${ui.date(e.t, "HH:mm:ss")}  ${e.label}" +
-                    (if (e.lat != null) "\n%.5f, %.5f".format(e.lat, e.lon) else ""), 13f, Ui.WHITE).apply {
-                background = ui.rounded(Ui.eventColor(e.type) and 0x66FFFFFF, 6)
-            }, ui.lp(4))
+            box.addView(ui.iconCard(Ui.eventIcon(e.type), Ui.speedColor3(e.speed), Ui.eventName(e.type),
+                "${ui.date(e.t, "HH:mm:ss")} · ${e.label.substringAfter(e.type).trim()}" + (if (e.lat != null) "\n%.5f, %.5f".format(e.lat, e.lon) else ""), Ui.CARD), ui.lp(4))
         }
 
         box.addView(ui.section("Export / manage"))
@@ -480,7 +478,7 @@ class TripDetailPage(a: MainActivity) : Page(a) {
 
     private fun share(t: Trip, s: TrackPoint, e: TrackPoint) {
         val txt = "Drive ${ui.date(t.start, "EEE dd MMM yyyy")}\n${ui.date(t.start, "HH:mm")} → ${ui.date(if (t.end > 0) t.end else t.start, "HH:mm")} · " +
-                "${ui.f(t.distanceKm, 2, " km")} · ${(t.durationS / 60).toInt()} min\n" +
+                "${ui.dist(t.distanceKm, 2)} · ${(t.durationS / 60).toInt()} min\n" +
                 "https://www.google.com/maps/dir/?api=1&origin=${s.lat},${s.lon}&destination=${e.lat},${e.lon}\n— ${AppInfo.NAME}"
         a.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
             .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, txt), "Share drive"))

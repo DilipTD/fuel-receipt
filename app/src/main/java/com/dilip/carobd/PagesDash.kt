@@ -178,7 +178,7 @@ class DashPage(a: MainActivity) : Page(a) {
         val spd = v[0x0D]
         val ri = RoadAssist.info
         val lim = ri?.limit ?: veh.speedLimit
-        rSpd.text = ui.f(spd, 0, " km/h"); rSpd.setTextColor(if (spd != null && spd > lim + (if (ri?.limit != null) Prefs.speedMargin else 0)) Ui.BAD else Ui.WHITE)
+        rSpd.text = ui.spd(spd, 0); rSpd.setTextColor(if (spd != null && spd > lim + (if (ri?.limit != null) Prefs.speedMargin else 0)) Ui.BAD else Ui.WHITE)
         rRpm.text = ui.f(v[0x0C], 0)
         rLim.text = ri?.limit?.let { "$it" + if (ri.estimated) " (est.)" else "" } ?: "--"
         val (mt, mc) = SmartLive.mode()
@@ -199,7 +199,7 @@ class DashPage(a: MainActivity) : Page(a) {
 
         // forecasts
         rEco.value = SmartLive.eco
-        fRange.text = ui.f(m.rangeKm(), 0, " km")
+        fRange.text = ui.dist(m.rangeKm(), 0)
         val sl = SmartLive.coolantSlope()
         fCool.text = sl?.let { if (kotlin.math.abs(it) < 0.6) "Steady" else "%+.1f °/min".format(it) } ?: "--"
         fCool.setTextColor(if (sl != null && sl > 4) Ui.BAD else Ui.WHITE)
@@ -234,9 +234,9 @@ class DashPage(a: MainActivity) : Page(a) {
         val baro = v[0x33] ?: 100.0
         val s = mapOf(
             "Load" to ui.f(v[0x04], 0, "%"), "Boost" to ui.f(map?.let { (it - baro) / 100.0 }, 2, " bar"),
-            "MAP" to ui.f(map, 0, " kPa"), "MAF" to ui.f(v[0x10], 1, " g/s"), "Intake air" to ui.f(v[0x0F], 0, "°C"),
-            "Oil temp" to ui.f(v[0x5C], 0, "°C"), "Timing" to ui.f(v[0x0E], 1, "°"), "STFT" to ui.f(v[0x06], 1, "%"),
-            "LTFT" to ui.f(v[0x07], 1, "%"), "Ambient" to ui.f(v[0x46], 0, "°C"),
+            "MAP" to ui.press(map), "MAF" to ui.f(v[0x10], 1, " g/s"), "Intake air" to ui.temp(v[0x0F], 0),
+            "Oil temp" to ui.temp(v[0x5C], 0), "Timing" to ui.f(v[0x0E], 1, "°"), "STFT" to ui.f(v[0x06], 1, "%"),
+            "LTFT" to ui.f(v[0x07], 1, "%"), "Ambient" to ui.temp(v[0x46], 0),
             "Fuel rate" to ui.f(m.fuelRate(), 2, " $u/h"), "Trip km" to ui.f(t?.distanceKm, 1)
         )
         for ((k, x) in s) vals[k]?.text = x
@@ -245,7 +245,7 @@ class DashPage(a: MainActivity) : Page(a) {
 
         driveTv.text = if (t == null) "🚗 No trip running – starts automatically when the engine runs." else
             "🚗 Trip %s · %s · score %d · %s\nRapid acc %d · Hard brake %d · Sudden %d · Corner %d · Overspeed %d · Over-rev %d".format(
-                ui.hms(t.durationS), ui.f(t.distanceKm, 1, " km"), t.score, ui.money(t.cost), t.rapidAcc, t.hardBrake, t.suddenBrake,
+                ui.hms(t.durationS), ui.dist(t.distanceKm, 1), t.score, ui.money(t.cost), t.rapidAcc, t.hardBrake, t.suddenBrake,
                 t.corner, t.overspeed, t.overRev)
         driveTv.background = ui.rounded(if (t == null) Ui.CARD else Color.parseColor("#14324D"), 10)
 

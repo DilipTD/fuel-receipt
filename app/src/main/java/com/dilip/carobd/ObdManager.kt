@@ -276,6 +276,7 @@ object ObdManager {
 
         val slow = supported.filter { !Pids.isBitmap(it) && it !in FAST }.toMutableList()
         if (0x01 !in slow) slow.add(0, 0x01)
+        if (Prefs.voltMethod == "ECU" && 0x42 in supported && 0x42 !in slow) slow.add(0x42)
         var slowIdx = 0
         var customIdx = 0
         var cycle = 0
@@ -479,7 +480,8 @@ object ObdManager {
         return ltKmpl
     }
 
-    private fun recordVolt(v: Double) {
+    private fun recordVolt(v: Double, fromEcu: Boolean = false) {
+        if (!fromEcu && Prefs.voltMethod == "ECU" && (values[0x42] != null)) return
         batteryV = v
         battHist.add(v.toFloat())
         val now = System.currentTimeMillis()
@@ -604,7 +606,9 @@ object ObdManager {
                 return true
             }
             def.decode?.let {
-                val v = it(d)
+                var v = it(d)
+                if (p == 0x0D) v *= 1.0 + Prefs.speedCorrPct / 100.0
+                if (p == 0x42 && Prefs.voltMethod == "ECU") recordVolt(v, true)
                 values[p] = v
                 if (p == 0x5B && vehicle.isEv) values[0x2F] = v
                 history.getOrPut(p) { Ring() }.add(v.toFloat())

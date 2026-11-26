@@ -39,7 +39,7 @@ class MorePage(a: MainActivity) : Page(a) {
         val h = CarHeroView(a, true)
         hero = h
         h.title = v.title
-        h.subtitle = "${v.fuel} · ${v.dispL} L\nOdometer ${ui.f(v.odoKm, 0, " km")}" + (if (v.regNo.isNotEmpty()) "\nReg. ${v.regNo}" else "") + (if (v.vin.isNotEmpty()) "\nVIN ${v.vin}" else "")
+        h.subtitle = "${v.fuel} · ${v.dispL} L\nOdometer ${ui.dist(v.odoKm, 0)}" + (if (v.regNo.isNotEmpty()) "\nReg. ${v.regNo}" else "") + (if (v.vin.isNotEmpty()) "\nVIN ${v.vin}" else "")
         h.linkIc = when (Prefs.lastType) { 1 -> Ic.BLE; 2 -> Ic.WIFI; else -> Ic.BLUETOOTH }
         box.addView(h, ui.lp(4))
 
@@ -64,7 +64,7 @@ class MorePage(a: MainActivity) : Page(a) {
         val fuel = trips.sumOf { it.fuel }
         val spend = Db.fuelLogs(v.id).filter { it.t >= cal.timeInMillis }.sumOf { it.cost }
         box.addView(ui.section("This month", Ic.CALENDAR))
-        val (s1, t1) = ui.stat(Ic.ROUTE, "Distance", Ui.GOOD); t1.text = ui.f(km, 0, " km")
+        val (s1, t1) = ui.stat(Ic.ROUTE, "Distance", Ui.GOOD); t1.text = ui.dist(km, 0)
         val (s2, t2) = ui.stat(Ic.CAR, "Trips", Ui.ACC); t2.text = trips.size.toString()
         val (s3, t3) = ui.stat(Ic.LEAF, "Economy", Ui.GOOD); t3.text = ui.econ(if (fuel > 0) km / fuel else null)
         val (s4, t4) = ui.stat(Ic.FUEL, "Fuel used", Ui.ORANGE); t4.text = ui.f(fuel, 1, " ${v.spec.unit}")
@@ -87,7 +87,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Road assistant", Ui.GOOD) { a.show("Road") },
             Triple("Documents", Ui.CYAN) { a.show("Docs") },
             Triple("Backup & cloud", Ui.VIOLET) { a.show("Backup") },
-            Triple("Home Assistant", Ui.CYAN) { (a.pages["Settings"] as? SettingsPage)?.openTab(5); a.show("Settings") },
+            Triple("Home Assistant", Ui.CYAN) { (a.pages["Settings"] as? SettingsPage)?.openTab(7); a.show("Settings") },
             Triple("Diagnosis", Ui.PINK) { a.show("Diag") },
             Triple("Drive mode", Ui.CYAN) { a.show("Car") },
             Triple("Car health", Ui.GOOD) { a.show("Health") },
@@ -100,6 +100,8 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("HUD", Ui.ACC) { a.show("HUD") },
             Triple("Parking", Ui.ORANGE) { openParking() },
             Triple("Connect", Ui.GOOD) { a.show("Connect") },
+            Triple("Calculator", Ui.GOOD) { a.show("Calc") },
+            Triple("Help & FAQ", Ui.CYAN) { a.show("Faq") },
             Triple("Settings", Color.parseColor("#90A4AE")) { a.show("Settings") },
             Triple("Permissions", Ui.ORANGE) { a.show("Perms") },
             Triple("Privacy & legal", Ui.GOOD) { a.show("Legal") },
@@ -116,6 +118,7 @@ class MorePage(a: MainActivity) : Page(a) {
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
         l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Permissions") -> Ic.SLIDERS; l.startsWith("Home Assistant") -> Ic.HOME; l.startsWith("Documents") -> Ic.DOC
+        l.startsWith("Calc") -> Ic.CHART; l.startsWith("Help") -> Ic.INFO
         l.startsWith("Petrol") -> Ic.FUEL; l.startsWith("Service") -> Ic.WRENCH; l.startsWith("Find") -> Ic.PIN
         l.startsWith("EV") -> Ic.BOLT; l.startsWith("Tyre") -> Ic.WIND; l.startsWith("Car wash") -> Ic.DROP
         else -> Ic.GRID
@@ -148,7 +151,7 @@ class GaragePage(a: MainActivity) : Page(a) {
         box.addView(ui.section("Vehicles"))
         val active = ObdManager.vehicle.id
         for (v in Db.vehicles()) {
-            box.addView(ui.card((if (v.id == active) "✔ " else "") + "${v.title}\n${v.fuel} · ${v.dispL} L · odo ${ui.f(v.odoKm, 0, " km")}" +
+            box.addView(ui.card((if (v.id == active) "✔ " else "") + "${v.title}\n${v.fuel} · ${v.dispL} L · odo ${ui.dist(v.odoKm, 0)}" +
                     (if (v.year > 0) " · ${v.year}" else ""), 14f, Ui.WHITE, if (v.id == active) Ui.SEL else Ui.CARD), ui.lp(8))
             box.addView(ui.row(
                 ui.btn("Use", Ui.GOOD) {
@@ -255,9 +258,9 @@ class MaintPage(a: MainActivity) : Page(a) {
                 if (item.intervalKm > 0) "every ${ui.f(item.intervalKm, 0)} km" else null,
                 if (item.intervalDays > 0) "every ${item.intervalDays} days" else null
             ).joinToString(" / ")
-            box.addView(ui.card("${item.name}\n${d.text}\n$interval · last ${ui.date(item.lastT, "dd MMM yy")} @ ${ui.f(item.lastKm, 0, " km")}", 13f, Ui.WHITE, bg).apply {
-                setOnClickListener { itemMenu(item) }
-            }, ui.lp(5))
+            val (mic, mcol) = Maint.iconFor(item.name)
+            box.addView(ui.iconCard(mic, if (d.overdue) Color.WHITE else mcol, item.name,
+                "${d.text}\n$interval · last ${ui.date(item.lastT, "dd MMM yy")} @ ${ui.dist(item.lastKm, 0)}", bg) { itemMenu(item) }, ui.lp(5))
         }
 
         box.addView(ui.section("Add custom item"))
@@ -277,8 +280,9 @@ class MaintPage(a: MainActivity) : Page(a) {
         if (recs.isNotEmpty()) box.addView(ui.tv("Swipe a record to the left to delete it", 11.5f, Ui.DIM))
         if (recs.isEmpty()) box.addView(ui.tv("No service records yet.", 13f, Ui.DIM))
         for (r in recs) {
-            box.addView(ui.swipeDelete(ui.card("${ui.date(r.t, "dd MMM yyyy")} · ${ui.f(r.odo, 0, " km")} · ${ui.money(r.cost)}\n${r.name}" +
-                    (if (r.note.isNotEmpty()) "\n${r.note}" else ""), 12f),
+            val (ric, rcol) = Maint.iconFor(r.name)
+            box.addView(ui.swipeDelete(ui.iconCard(ric, rcol, r.name, "${ui.date(r.t, "dd MMM yyyy")} · ${ui.dist(r.odo, 0)} · ${ui.money(r.cost)}" +
+                    (if (r.note.isNotEmpty()) "\n${r.note}" else ""), Ui.CARD),
                 "Delete this service record?", r.name) { Db.deleteRecord(r.id); onShow() }, ui.lp(4))
         }
         box.addView(ui.btn("Export service history CSV", Ui.CARD) {

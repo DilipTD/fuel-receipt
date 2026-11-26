@@ -53,14 +53,14 @@ class AnalysisPage(a: MainActivity) : Page(a) {
 
         box.addView(ui.facts(buildString {
             append("Trips          ${trips.size}\n")
-            append("Distance       ${ui.f(km, 1, " km")}\n")
+            append("Distance       ${ui.dist(km, 1)}\n")
             append("Driving time   ${ui.f(hours, 1, " h")}  (idle ${ui.f(idle / maxOf(hours, 0.01) * 100, 0, "%")})\n")
-            append("Fuel used      ${ui.f(fuel, 1, " $u")} (idle ${ui.f(idleFuel, 2, " $u")})\n")
+            append("Fuel used      ${ui.vol(fuel, 1)} (idle ${ui.vol(idleFuel, 2)})\n")
             append("Economy        ${ui.econ(if (fuel > 0) km / fuel else null, u)}\n")
             append("Fuel cost      ${ui.money(cost)}  (${ui.f(if (km > 0) cost / km else null, 2, " ₹/km")})\n")
             append("CO2            ${ui.f(co2, 1, " kg")}\n")
-            append("Avg speed      ${ui.f(km / maxOf(hours, 0.01), 1, " km/h")}\n")
-            append("Max speed      ${ui.f(trips.maxOf { it.maxSpeed }, 0, " km/h")}\n")
+            append("Avg speed      ${ui.spd(km / maxOf(hours, 0.01), 1)}\n")
+            append("Max speed      ${ui.spd(trips.maxOf { it.maxSpeed }, 0)}\n")
             append("Driver score   ${score.toInt()}/100 (distance-weighted)\n")
             if (b60 != null) append("Best 0-60      ${ui.f(b60, 1, " s")}\n")
             if (b100 != null) append("Best 0-100     ${ui.f(b100, 1, " s")}\n")
@@ -164,7 +164,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
 
         // Suggestions
         val tips = mutableListOf<String>()
-        if (idle / maxOf(hours, 0.01) > 0.15) tips += "Idle time is ${ui.f(idle / hours * 100, 0, "%")} of driving – switch off during long waits (saved ≈ ${ui.f(idleFuel, 1, " $u")})."
+        if (idle / maxOf(hours, 0.01) > 0.15) tips += "Idle time is ${ui.f(idle / hours * 100, 0, "%")} of driving – switch off during long waits (saved ≈ ${ui.vol(idleFuel, 1)})."
         if ((hb + sb) * per100 > 3) tips += "Frequent hard braking – keep a larger following distance and anticipate signals."
         if (ra * per100 > 3) tips += "Frequent rapid acceleration – smoother throttle can improve economy 10–20 %."
         if (osS > 600) tips += "Spent ${ui.hms(osS)} above ${v.speedLimit} km/h – fuel use rises sharply above ~90 km/h."
@@ -181,7 +181,7 @@ class AnalysisPage(a: MainActivity) : Page(a) {
         val logs = Db.fuelLogs(v.id).filter { it.t >= since }
         if (logs.isNotEmpty()) {
             box.addView(ui.section("Fuel purchases"))
-            box.addView(ui.card("${logs.size} refuels · ${ui.f(logs.sumOf { it.qty }, 1, " $u")} · ${ui.money(logs.sumOf { it.cost })}\n" +
+            box.addView(ui.card("${logs.size} refuels · ${ui.vol(logs.sumOf { it.qty }, 1)} · ${ui.money(logs.sumOf { it.cost })}\n" +
                     "Avg price ${ui.f(logs.sumOf { it.cost } / maxOf(logs.sumOf { it.qty }, 0.01), 2, " ₹/$u")}"), ui.lp())
         }
     }

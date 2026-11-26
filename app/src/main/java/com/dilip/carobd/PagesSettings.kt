@@ -36,7 +36,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
     private var tab = 0
 
     private val tabDefs = listOf(
-        Ic.PLUG to "Connection", Ic.ROUTE to "Trips", Ic.BELL to "Alerts", Ic.PULSE to "Driving",
+        Ic.PLUG to "Connection", Ic.SUN to "Display & units", Ic.SLIDERS to "Corrections", Ic.ROUTE to "Trips", Ic.BELL to "Alerts", Ic.PULSE to "Driving",
         Ic.BOLT to "Auto", Ic.HOME to "Home Assistant", Ic.SLIDERS to "Custom PIDs", Ic.DATABASE to "Data", Ic.INFO to "About"
     )
 
@@ -66,6 +66,56 @@ class SettingsPage(a: MainActivity) : Page(a) {
 
     private fun applySaves() {
         try { saves.forEach { it() } } catch (e: Exception) { ui.toast("Could not save: ${e.message}") }
+        if (Theme.applied != Prefs.theme + Prefs.language) a.recreate()
+    }
+
+    private fun pick(label: String, items: List<String>, cur: String, onSave: (String) -> Unit): View =
+        spinner(label, items, items.indexOf(cur).coerceAtLeast(0)) { onSave(items[it]) }
+
+    private fun display() {
+        body.addView(ui.section("Language & theme", Ic.SUN))
+        body.addView(ui.row(
+            spinner("Language", Lang.options.map { it.second }, Lang.options.indexOfFirst { it.first == Prefs.language }) { Prefs.language = Lang.options[it].first },
+            spinner("Theme", Theme.options.map { it.second }, Theme.options.indexOfFirst { it.first == Prefs.theme }) { Prefs.theme = Theme.options[it].first }
+        ), ui.lp(8))
+        hint("Hindi covers the main menus and labels; longer texts stay in English. Theme and language apply after saving.")
+        body.addView(ui.section("Units", Ic.GAUGE))
+        body.addView(ui.row(
+            pick("Distance & speed", Units.distances, Prefs.unitDist) { Prefs.unitDist = it },
+            pick("Fuel volume", Units.fuels, Prefs.unitFuel) { Prefs.unitFuel = it }
+        ), ui.lp(8))
+        body.addView(ui.row(
+            pick("Economy unit", Units.economies, Prefs.economyUnit) { Prefs.economyUnit = it },
+            pick("Currency", Units.currencies, Prefs.currency) { Prefs.currency = it }
+        ), ui.lp(10))
+        body.addView(ui.row(
+            pick("Temperature", Units.temps, Prefs.unitTemp) { Prefs.unitTemp = it },
+            pick("Pressure", Units.pressures, Prefs.unitPress) { Prefs.unitPress = it }
+        ), ui.lp(10))
+        body.addView(ui.row(
+            pick("Torque", Units.torques, Prefs.unitTorque) { Prefs.unitTorque = it },
+            spinner("Time format", listOf("24-hour", "12-hour (AM/PM)"), if (Prefs.time24) 0 else 1) { Prefs.time24 = it == 0 }
+        ), ui.lp(10))
+        hint("Data is stored in km, litres and °C; only the display changes.")
+    }
+
+    private fun corrections() {
+        body.addView(ui.section("Corrections", Ic.SLIDERS))
+        body.addView(num("Speed correction (%)", "%.1f".format(java.util.Locale.US, Prefs.speedCorrPct)) { Prefs.speedCorrPct = it.coerceIn(-30.0, 30.0) }, ui.lp(8))
+        hint("Scales the ECU speed. Use a positive value if the car shows less than the true (GPS) speed, e.g. with larger tyres.")
+        body.addView(spinner("Distance measurement", listOf("ECU speed (vehicle speed PID)", "GPS speed"), if (Prefs.distMethod == "GPS") 1 else 0) {
+            Prefs.distMethod = if (it == 1) "GPS" else "ECU"
+        }, ui.lp(12))
+        hint("GPS needs location permission and falls back to ECU speed when there is no fix.")
+        body.addView(spinner("Battery voltage measurement", listOf("Adapter (OBD socket, ATRV)", "ECU (PID 0x42)"), if (Prefs.voltMethod == "ECU") 1 else 0) {
+            Prefs.voltMethod = if (it == 1) "ECU" else "ADAPTER"
+        }, ui.lp(12))
+        hint("ECU voltage is used only if the car supports PID 0x42; otherwise the adapter reading is kept.")
+        val v = ObdManager.vehicle
+        body.addView(num("Fuel efficiency correction (%)", "%.1f".format(java.util.Locale.US, (v.fuelCorr - 1.0) * 100.0)) {
+            v.fuelCorr = (1.0 + it / 100.0).coerceIn(0.3, 3.0); Db.saveVehicle(v); ObdManager.reloadVehicle()
+        }, ui.lp(12))
+        hint("Positive = the car uses more fuel than estimated. Matches the calibration in the fuel log (stored as a factor).")
     }
 
     private fun populate() {
@@ -85,16 +135,18 @@ class SettingsPage(a: MainActivity) : Page(a) {
         saves.clear()
         when (tab) {
             0 -> connection()
-            1 -> trips()
-            2 -> alerts()
-            3 -> driving()
-            4 -> automation()
-            5 -> homeAssistant()
-            6 -> pids()
-            7 -> data()
+            1 -> display()
+            2 -> corrections()
+            3 -> trips()
+            4 -> alerts()
+            5 -> driving()
+            6 -> automation()
+            7 -> homeAssistant()
+            8 -> pids()
+            9 -> data()
             else -> about()
         }
-        saveBar.visibility = if (tab in listOf(0, 1, 2, 3, 4, 5)) View.VISIBLE else View.GONE
+        saveBar.visibility = if (tab in 0..7) View.VISIBLE else View.GONE
     }
 
     /* ---------- field helpers ---------- */
@@ -189,12 +241,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
         toggle("Notification with trip summary", { Prefs.tripNotify }) { Prefs.tripNotify = it }
         toggle("Scan fault codes automatically on connect", { Prefs.autoDtc }) { Prefs.autoDtc = it }
         toggle("Log live data to CSV (Downloads/CarOBD)", { Prefs.csvLogging }) { Prefs.csvLogging = it }
-        body.addView(ui.row(
-            num("Merge stops shorter than (min)", Prefs.tripMergeMin.toString()) { Prefs.tripMergeMin = it.toInt().coerceIn(0, 60) },
-            spinner("Economy unit", listOf("km/L", "L/100km"), if (Prefs.economyUnit == "L/100km") 1 else 0) {
-                Prefs.economyUnit = if (it == 1) "L/100km" else "km/L"
-            }
-        ), ui.lp(10))
+        body.addView(num("Merge stops shorter than (min)", Prefs.tripMergeMin.toString()) { Prefs.tripMergeMin = it.toInt().coerceIn(0, 60) }, ui.lp(10))
         hint("Stops shorter than the merge time (fuel stop, traffic light) continue the same trip.")
     }
 

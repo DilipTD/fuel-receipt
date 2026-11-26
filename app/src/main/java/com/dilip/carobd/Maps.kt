@@ -132,10 +132,7 @@ class TileMapView(ctx: Context, private val compact: Boolean = false) : View(ctx
 
     private fun px(lat: Double, lon: Double) = (wx(lon, zoom) - cx + width / 2.0).toFloat() to (wy(lat, zoom) - cy + height / 2.0).toFloat()
 
-    private fun speedColor(v: Double) = when {
-        v < 30 -> Color.parseColor("#2EBD85"); v < 60 -> Color.parseColor("#7ED321"); v < 80 -> Color.parseColor("#FFB020")
-        v < 100 -> Color.parseColor("#FF7A2F"); else -> Color.parseColor("#E5383B")
-    }
+    private fun speedColor(v: Double) = Ui.speedColor3(v)
 
     override fun onDraw(c: Canvas) {
         if (!loaded) { lazyLoader?.let { l -> lazyLoader = null; l(this) } }
