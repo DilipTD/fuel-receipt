@@ -39,6 +39,14 @@ class ConnectPage(a: MainActivity) : Page(a) {
     private var scanning = false
     private val h = Handler(Looper.getMainLooper())
 
+    // name, host, port – WiCAN ELM327 mode listens on 3333; most clones use 192.168.0.10:35000
+    private val presets = listOf(
+        Triple("WiCAN", "192.168.80.1", 3333),
+        Triple("WiCAN LAN", "wican.local", 3333),
+        Triple("vLinker/Clone", "192.168.0.10", 35000),
+        Triple("OBDLink", "192.168.0.10", 35000)
+    )
+
     private val typeInfo = listOf(
         Triple(Ic.BLUETOOTH, "Bluetooth", "Classic SPP"),
         Triple(Ic.BLE, "BLE 4.0", "Low energy"),
@@ -83,7 +91,13 @@ class ConnectPage(a: MainActivity) : Page(a) {
         portEt = ui.edit("Port", Prefs.wifiPort.toString(), true)
         wifiBox = ui.vbox().apply {
             addView(ui.iconCard(Ic.WIFI, Ui.CYAN, "Join the adapter's WiFi first",
-                "Phone settings → WiFi → WiFi_OBDII / V-LINK. Common address 192.168.0.10 : 35000 (or 192.168.0.123)."))
+                "Phone settings → WiFi → WiCAN_xxxx / WiFi_OBDII / V-LINK, then pick a preset below. WiCAN must be set to ELM327 protocol in its web page."))
+            val chips = LinearLayout(a)
+            presets.forEachIndexed { i, (nm, hh, pp) ->
+                chips.addView(ui.btn(nm, Ui.CARD) { hostEt.setText(hh); portEt.setText(pp.toString()) },
+                    LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (i > 0) leftMargin = ui.dp(6) })
+            }
+            addView(chips, ui.lp(10))
             addView(ui.row(ui.labeled("IP address", hostEt), ui.labeled("Port", portEt)), ui.lp(10))
         }
         c.addView(wifiBox, ui.lp())
@@ -181,7 +195,7 @@ class ConnectPage(a: MainActivity) : Page(a) {
 
     private fun looksObd(n: String?): Boolean {
         val u = n?.uppercase() ?: return false
-        return listOf("OBD", "ELM", "V-LINK", "VLINK", "VGATE", "ICAR", "KONNWEI", "VEEPEAK", "CAN", "CARISTA", "LELINK", "VIECAR", "KIWI")
+        return listOf("OBD", "ELM", "V-LINK", "VLINK", "VGATE", "ICAR", "KONNWEI", "VEEPEAK", "CAN", "CARISTA", "LELINK", "VIECAR", "KIWI", "WICAN", "MEATPI", "OBDLINK", "STN", "IOS-VLINK", "UNICARSCAN", "FIXD", "BAFX")
             .any { u.contains(it) }
     }
 

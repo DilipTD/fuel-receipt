@@ -175,7 +175,16 @@ class WifiTransport(
 
     override fun open() {
         val s = factory?.createSocket() ?: Socket()
-        s.connect(InetSocketAddress(host, port), 6000)
+        val addr = InetSocketAddress(host, port)
+        if (addr.isUnresolved) {
+            throw IOException("Cannot find '$host'. For WiCAN join its WiFi and use 192.168.80.1 (mDNS .local names often don't work on Android – use the IP shown in WiCAN's Status tab).")
+        }
+        try {
+            s.connect(addr, 6000)
+        } catch (e: IOException) {
+            throw IOException("WiFi connect failed to $host:$port (WiCAN = port 3333, clones = 35000; check you joined the adapter's WiFi): ${e.message}")
+        }
+        s.keepAlive = true
         s.tcpNoDelay = true
         sock = s
         input = s.getInputStream()
@@ -203,6 +212,8 @@ class BleTransport(private val ctx: Context, private val device: BluetoothDevice
     private val descLatch = CountDownLatch(1)
     @Volatile private var writeLatch: CountDownLatch? = null
     @Volatile private var linkUp = false
+    private val mtuLatch = CountDownLatch(1)
+    @Volatile private var chunk = 20
 
     private val cb = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
@@ -218,6 +229,11 @@ class BleTransport(private val ctx: Context, private val device: BluetoothDevice
                 writeLatch?.countDown()
                 signalLost()
             }
+        }
+
+        override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && mtu > 23) chunk = mtu - 3
+            mtuLatch.countDown()
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
@@ -251,6 +267,7 @@ class BleTransport(private val ctx: Context, private val device: BluetoothDevice
         if (!connectLatch.await(15, TimeUnit.SECONDS) || !linkUp) fail("BLE connect timeout")
         if (!servicesLatch.await(15, TimeUnit.SECONDS) || !linkUp) fail("BLE service discovery failed")
         val g = gatt ?: fail("No GATT")
+        if (Build.VERSION.SDK_INT >= 21 && g.requestMtu(247)) mtuLatch.await(3, TimeUnit.SECONDS)
 
         var notify: BluetoothGattCharacteristic? = null
         var write: BluetoothGattCharacteristic? = null
@@ -304,11 +321,11 @@ class BleTransport(private val ctx: Context, private val device: BluetoothDevice
         else BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         var i = 0
         while (i < data.size) {
-            val chunk = data.copyOfRange(i, minOf(i + 20, data.size))
-            i += chunk.size
+            val part = data.copyOfRange(i, minOf(i + chunk, data.size))
+            i += part.size
             val l = CountDownLatch(1)
             writeLatch = l
-            ch.value = chunk
+            ch.value = part
             var ok = g.writeCharacteristic(ch)
             if (!ok) {
                 Thread.sleep(30)
