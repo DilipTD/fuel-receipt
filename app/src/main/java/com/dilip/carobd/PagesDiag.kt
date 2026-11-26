@@ -14,27 +14,44 @@ class DiagPage(a: MainActivity) : Page(a) {
     private var reports: List<SmartAi.Report> = emptyList()
     private val manual = LinkedHashSet<String>()
 
+    private lateinit var sumBox: android.widget.LinearLayout
+    private lateinit var resBox: android.widget.LinearLayout
+    private lateinit var progTv: TextView
+    private var renderedVer = -1
+
     override fun build(): View {
         val c = ui.col()
-        c.addView(ui.btn("AI diagnosis · scan all codes", Ui.VIOLET) { aiScan() }, ui.lp(10))
-        c.addView(ui.row(ui.btn("Analyze a code", Ui.CARD) { askCode() }, ui.btn("Share AI report", Ui.CARD) { shareAi() }), ui.lp(8))
+        c.addView(ui.btn("Full AI scan · all tests", Ui.VIOLET) { runSuite(DiagSuite.tests.map { it.id }) }, ui.lp(10))
+        progTv = ui.tv("", 13f, Ui.ACC, true).apply { visibility = View.GONE }
+        c.addView(progTv, ui.lp(6))
+        c.addView(ui.tv("Best result: engine warm and idling, car stationary.", 11.5f, Ui.DIM), ui.lp(4))
+        sumBox = ui.vbox()
+        c.addView(sumBox, ui.lp(10))
+        c.addView(ui.section("Run a single test", Ic.SCAN))
+        val cols = listOf(Ui.WARN, Ui.GOOD, Ui.ORANGE, Ui.CYAN, Ui.ACC, Ui.VIOLET, Ui.GOOD, Ui.PINK, Ui.ACC)
+        DiagSuite.tests.chunked(3).forEachIndexed { ri, row ->
+            val views = row.mapIndexed { i, t -> ui.menuTile(t.ic, t.name, cols[ri * 3 + i]) { runSuite(listOf(t.id)) } }.toMutableList<View>()
+            while (views.size < 3) views.add(View(a))
+            c.addView(ui.grid(*views.toTypedArray()), ui.lp(8))
+        }
+        resBox = ui.vbox()
+        c.addView(resBox, ui.lp(10))
+        c.addView(ui.section("Fault code root-cause analysis", Ic.SHIELD))
         aiBox = ui.vbox()
         c.addView(aiBox, ui.lp(8))
-        c.addView(ui.row(ui.btn("Read DTCs") { readDtcs() }, ui.btn("Clear DTCs", Ui.BAD) { confirmClear() }), ui.lp(10))
+        c.addView(ui.section("More tools", Ic.WRENCH))
+        c.addView(ui.row(ui.btn("Analyze a code", Ui.CARD) { askCode() }, ui.btn("Code history", Ui.CARD) { history() }), ui.lp(8))
         c.addView(ui.row(ui.btn("Deep scan (UDS)") { udsScan() }, ui.btn("Freeze frame") { freezeFrame() }), ui.lp(8))
-        c.addView(ui.row(
-            ui.btn("Readiness") { ObdManager.runDiag("Reading readiness monitors") { e -> Health.readiness(e.pid01(0x01)) } },
-            ui.btn("Vehicle info") { vehicleInfo() }
-        ), ui.lp(8))
-        c.addView(ui.row(ui.btn("Health analysis", Ui.GOOD) { healthReport() }, ui.btn("Code history", Ui.CARD) { history() }), ui.lp(8))
-        c.addView(ui.btn("Share report", Ui.CARD) {
+        c.addView(ui.row(ui.btn("Health analysis", Ui.GOOD) { healthReport() }, ui.btn("Clear DTCs", Ui.BAD) { confirmClear() }), ui.lp(8))
+        c.addView(ui.row(ui.btn("Read DTCs") { readDtcs() }, ui.btn("Share raw output", Ui.CARD) {
             val i = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_SUBJECT, "${AppInfo.NAME} report – ${ObdManager.vehicle.title}")
                 putExtra(Intent.EXTRA_TEXT, ObdManager.diagText + AppInfo.footer)
             }
             a.startActivity(Intent.createChooser(i, "Share report"))
-        }, ui.lp(8))
+        }), ui.lp(8))
+        c.addView(ui.section("Raw output", Ic.TERMINAL))
         out = ui.tv("", 13f).apply {
             setTextIsSelectable(true)
             background = ui.rounded(Ui.CARD)
@@ -42,6 +59,100 @@ class DiagPage(a: MainActivity) : Page(a) {
         }
         c.addView(out, ui.lp(12))
         return ui.scroll(c)
+    }
+
+    private fun runSuite(ids: List<String>) {
+        if (ObdManager.busy) { ui.toast("A scan is already running"); return }
+        ObdManager.runDiag("Scanning") { e ->
+            val res = DiagSuite.run(e, ids) { ObdManager.diagText = it }
+            val s = DiagSuite.summarize()
+            "Done – ${res.size} test(s). ${s.verdict}."
+        }
+    }
+
+    private fun statusColor(s: Int) = when (s) { 2 -> Ui.BAD; 1 -> Ui.WARN; 0 -> Ui.GOOD; else -> Ui.DIM }
+    private fun statusWord(s: Int) = when (s) { 2 -> "Problem"; 1 -> "Attention"; 0 -> "OK"; else -> "N/A" }
+
+    private fun renderSuite() {
+        renderedVer = DiagSuite.version
+        sumBox.removeAllViews(); resBox.removeAllViews()
+        val res = DiagSuite.results
+        if (res.isEmpty()) {
+            sumBox.addView(ui.iconCard(Ic.SHIELD, Ui.VIOLET, "AI diagnosis",
+                "Runs fault codes, emission readiness, fuel trims, cooling, air & ignition, O2/catalyst, battery and idle tests, then explains what is wrong and how to fix it."))
+            return
+        }
+        val s = DiagSuite.summarize()
+        val col = when (s.level) { 2 -> Ui.BAD; 1 -> Ui.WARN; 0 -> Ui.GOOD; else -> Ui.DIM }
+        val card = ui.vbox().apply { background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(12)) }
+        card.addView(android.widget.LinearLayout(a).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(ui.badge(if (s.level == 0) Ic.CHECK else Ic.WARN, col, 44), android.widget.LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { rightMargin = ui.dp(12) })
+            addView(ui.vbox().apply {
+                addView(ui.tv(s.verdict, 16f, Ui.WHITE, true))
+                addView(ui.tv(s.headline, 12.5f, col))
+            }, android.widget.LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+        })
+        val ran = res.count { it.status >= 0 }
+        card.addView(ui.tv("$ran of ${res.size} tests ran · ${res.count { it.status == 0 }} OK · ${res.count { it.status == 1 }} attention · ${res.count { it.status == 2 }} problem · " +
+            ui.date(DiagSuite.time, "dd MMM HH:mm"), 11.5f, Ui.DIM), ui.lp(8))
+        if (s.actions.isNotEmpty()) {
+            card.addView(ui.tv("What to do", 13f, Ui.WHITE, true), ui.lp(12))
+            s.actions.forEachIndexed { i, (sev, title, fix) ->
+                card.addView(android.widget.LinearLayout(a).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    addView(android.widget.LinearLayout(a).apply {
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        addView(ui.chip(if (sev >= 2) "NOW" else "SOON", if (sev >= 2) Ui.BAD else Ui.WARN), android.widget.LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = ui.dp(8) })
+                        addView(ui.tv("${i + 1}. $title", 13f, Ui.WHITE, true), android.widget.LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                    })
+                    addView(ui.tv("Solution: $fix", 12.5f, Color.parseColor("#D5DEE8")), ui.lp(4))
+                }, ui.lp(10))
+            }
+        }
+        if (s.links.isNotEmpty()) {
+            card.addView(ui.tv("How the findings connect", 13f, Ui.VIOLET, true), ui.lp(14))
+            s.links.forEach { card.addView(ui.tv("• $it", 12.5f, Color.parseColor("#D5DEE8")), ui.lp(6)) }
+        }
+        card.addView(ui.row(ui.btn("Share report", Ui.VIOLET) {
+            a.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_SUBJECT, "AI diagnostic report – ${ObdManager.vehicle.title}").putExtra(Intent.EXTRA_TEXT, DiagSuite.toText()), "Share report"))
+        }, ui.btn("Save PDF", Ui.CARD) {
+            val p = Reports.diagnosis(a)
+            ui.toast(if (p == null) "Could not save – check storage permission" else "Saved to $p")
+        }), ui.lp(14))
+        card.addView(ui.tv("On-device expert rules and statistics on live ECU data. A guide – confirm with tests before replacing parts.", 11f, Ui.DIM), ui.lp(8))
+        sumBox.addView(card)
+
+        resBox.addView(ui.section("Test results", Ic.CHART))
+        for (t in res) {
+            val tc = statusColor(t.status)
+            val body = ui.vbox().apply {
+                visibility = if (t.status >= 1) View.VISIBLE else View.GONE
+                setPadding(ui.dp(4), ui.dp(8), 0, 0)
+                t.lines.forEach { addView(ui.tv(it, 12f, Ui.DIM), ui.lp(2)) }
+                t.findings.forEach { f ->
+                    addView(ui.tv("${if (f.sev >= 2) "🔴" else if (f.sev == 1) "🟠" else "ℹ️"} ${f.title}", 13f, Ui.WHITE, true), ui.lp(8))
+                    if (f.detail.isNotBlank()) addView(ui.tv(f.detail, 12f, Ui.DIM))
+                    if (f.fix.isNotBlank()) addView(ui.tv("Solution: ${f.fix}", 12f, Color.parseColor("#D5DEE8")), ui.lp(2))
+                }
+            }
+            val row = ui.vbox().apply {
+                background = ui.rounded(Ui.CARD, 16); setPadding(ui.dp(12), ui.dp(12), ui.dp(12), ui.dp(12))
+                addView(android.widget.LinearLayout(a).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    addView(ui.badge(t.ic, tc, 36), android.widget.LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)).apply { rightMargin = ui.dp(10) })
+                    addView(ui.vbox().apply {
+                        addView(ui.tv(t.name, 14f, Ui.WHITE, true))
+                        addView(ui.tv(t.summary.ifBlank { "—" }, 12f, Ui.DIM))
+                    }, android.widget.LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                    addView(ui.chip(statusWord(t.status), tc))
+                })
+                addView(body)
+                setOnClickListener { if (t.lines.isNotEmpty() || t.findings.isNotEmpty()) body.visibility = if (body.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+            }
+            resBox.addView(row, ui.lp(8))
+        }
     }
 
     /* ---------------- AI diagnosis ---------------- */
@@ -260,10 +371,14 @@ class DiagPage(a: MainActivity) : Page(a) {
             }
     }
 
-    override fun onShow() { renderedScan = -1; renderAi() }
+    override fun onShow() { renderedScan = -1; renderedVer = -1; renderSuite(); renderAi() }
 
     override fun refresh() {
-        if (!ObdManager.busy && SmartAi.scanId != renderedScan) renderAi()
-        out.text = ObdManager.diagText + if (ObdManager.busy) "\n\n⏳ working…" else ""
+        val busy = ObdManager.busy
+        if (!busy && (DiagSuite.version != renderedVer)) renderSuite()
+        if (!busy && SmartAi.scanId != renderedScan) renderAi()
+        progTv.visibility = if (busy) View.VISIBLE else View.GONE
+        if (busy) progTv.text = "⏳ " + ObdManager.diagText
+        out.text = ObdManager.diagText + if (busy) "\n\n⏳ working…" else ""
     }
 }

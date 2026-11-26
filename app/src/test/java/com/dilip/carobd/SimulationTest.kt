@@ -257,6 +257,15 @@ class SimulationTest : SimBase() {
         waitFor(8000) { !ObdManager.busy }
         val em2 = EmissionAi.analyse()
         if (em2.level == 1 && em2.incomplete >= 3) Report.ok("After clearing, readiness shows ${em2.incomplete} monitors pending") else Report.bad("After clearing expected pending monitors, got level ${em2.level} '${em2.headline}'")
+        ObdManager.runDiag("Full AI scan") { e -> DiagSuite.run(e, DiagSuite.tests.map { it.id }) { }; "scan done" }
+        if (!waitFor(60_000) { !ObdManager.busy }) Report.bad("Full AI scan still busy after 60 s")
+        val ds = DiagSuite.results
+        if (ds.size == DiagSuite.tests.size) Report.ok("Full AI scan produced ${ds.size} test results") else Report.bad("Full AI scan produced ${ds.size} results")
+        Report.info("AI scan: " + ds.joinToString { "${it.id}=${it.status}" })
+        val sm = DiagSuite.summarize()
+        if (sm.verdict.isNotBlank() && DiagSuite.toText().contains("VERDICT")) Report.ok("AI summary: ${sm.verdict}; ${sm.actions.size} action(s), ${sm.links.size} link(s)") else Report.bad("AI summary empty")
+        monkey("Diag", 20)
+        if (Reports.diagnosis(act) != null) Report.ok("AI diagnostic PDF created") else Report.bad("AI diagnostic PDF not created")
         for (k in listOf("Dash", "Health", "Live", "Car", "HUD", "Battery", "Perf")) monkey(k, 25)
 
         Report.head("4b. Corrections while cruising at 50 km/h")

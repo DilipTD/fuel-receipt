@@ -144,6 +144,26 @@ object Reports {
         return Exporter.writeText(ctx, nm("trip_log", "csv"), "text/csv", sb.toString())
     }
 
+    fun diagnosis(ctx: Context): String? {
+        if (DiagSuite.results.isEmpty()) return null
+        val s = DiagSuite.summarize()
+        val b = PdfBuilder("AI Diagnostic Report", vehLine() + "  ·  " + d(if (DiagSuite.time > 0) DiagSuite.time else System.currentTimeMillis()))
+        b.heading("Verdict")
+        b.text(s.verdict); b.text(s.headline)
+        if (s.actions.isNotEmpty()) {
+            b.heading("What to do")
+            s.actions.forEachIndexed { i, a -> b.text("${i + 1}. ${if (a.first >= 2) "NOW" else "SOON"} – ${a.second}\n    Solution: ${a.third}") }
+        }
+        if (s.links.isNotEmpty()) { b.heading("How the findings connect"); s.links.forEach { b.text("• $it") } }
+        b.heading("Test results")
+        b.table(listOf("Test", "Result", "Summary"), DiagSuite.results.map { t ->
+            listOf(t.name, when (t.status) { 2 -> "Problem"; 1 -> "Attention"; 0 -> "OK"; else -> "N/A" }, t.summary)
+        }, listOf(1.2f, 0.8f, 2.6f))
+        for (t in DiagSuite.results) if (t.lines.isNotEmpty()) { b.heading(t.name); t.lines.forEach { b.text(it) } }
+        b.text("On-device expert rules and statistics on live ECU data. A guide – confirm with tests before replacing parts.")
+        return b.save(ctx, nm("ai_diagnosis", "pdf"))
+    }
+
     fun seller(ctx: Context): String? {
         val v = ObdManager.vehicle; val u = v.spec.unit
         val b = PdfBuilder("Seller's Report", vehLine())
@@ -348,6 +368,7 @@ class ReportsPage(a: MainActivity) : Page(a) {
     override fun onShow() {
         box.removeAllViews()
         val rs = listOf(
+            R(Ic.PULSE, "AI Diagnostic Report", "Latest full scan: verdict, problems and solutions (run it in Diagnosis first).") { val p = Reports.diagnosis(a); if (p == null) ui.toast("Run a Full AI scan in Diagnosis first") else done(p) },
             R(Ic.CAR, "Seller's Report", "Full vehicle history, ideal for selling your car.") { done(Reports.seller(a)) },
             R(Ic.SLIDERS, "Custom Report", "Choose dates, categories and the level of detail.") { customDialog() },
             R(Ic.CHART, "Cost of Ownership", "Total cost, depreciation and cost efficiency.") { costDialog() },
