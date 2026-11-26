@@ -19,7 +19,8 @@ object Fuels {
         FuelSpec("E20 petrol", 14.0, 755.0, 2.20, 1.0, "L"),
         FuelSpec("CNG", 17.2, 1000.0, 2.75, 1.0, "kg"),
         FuelSpec("LPG", 15.5, 540.0, 1.51, 1.0, "L"),
-        FuelSpec("Hybrid (petrol)", 14.7, 745.0, 2.31, 1.0, "L")
+        FuelSpec("Hybrid (petrol)", 14.7, 745.0, 2.31, 1.0, "L"),
+        FuelSpec("Electric (EV)", 0.0, 0.0, 0.71, 1.0, "kWh")
     )
 
     fun get(n: String) = all.firstOrNull { it.name == n } ?: all[0]
@@ -41,6 +42,7 @@ class Vehicle(var id: Long = 0) {
     var rpmLimit = 4500
     var vin = ""
 
+    val isEv: Boolean get() = fuel.startsWith("Electric")
     val spec: FuelSpec get() = Fuels.get(fuel)
     val title: String get() = listOf(name, listOf(make, model).filter { it.isNotBlank() }.joinToString(" "))
         .filter { it.isNotBlank() }.distinct().joinToString(" · ")

@@ -43,11 +43,13 @@ object HealthScore {
         }
 
         val fuel = v[0x2F]
+        val fn = if (veh.isEv) "Fuel" else "Fuel"
+        val low = if (veh.isEv) "charge soon" else "refuel now"
         items += when {
-            fuel == null -> Item("Fuel", Ic.FUEL, -1, "No live data")
-            fuel <= Prefs.lowFuelPct -> Item("Fuel", Ic.FUEL, 2, "%.0f %% – refuel now".format(fuel))
-            fuel <= 25 -> Item("Fuel", Ic.FUEL, 1, "%.0f %% – getting low".format(fuel))
-            else -> Item("Fuel", Ic.FUEL, 0, "%.0f %%".format(fuel))
+            fuel == null -> Item(fn, if (veh.isEv) Ic.BATTERY else Ic.FUEL, -1, if (veh.isEv) "No SoC data (set a custom PID)" else "No live data")
+            fuel <= Prefs.lowFuelPct -> Item(fn, Ic.FUEL, 2, "%.0f %% – $low".format(fuel))
+            fuel <= 25 -> Item(fn, Ic.FUEL, 1, "%.0f %% – getting low".format(fuel))
+            else -> Item(fn, Ic.FUEL, 0, "%.0f %%".format(fuel))
         }
 
         val cat = v[0x3C]

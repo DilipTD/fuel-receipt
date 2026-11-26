@@ -98,6 +98,9 @@ class MorePage(a: MainActivity) : Page(a) {
         box.addView(ui.section("More tools", Ic.GEAR))
         box.addView(ui.grid(
             ui.tile(Ic.SHIELD, "Car health", "Status of every system", Ui.GOOD) { a.show("Health") },
+            ui.tile(Ic.CAR, "Drive mode", "Big in-car screen", Ui.CYAN) { a.show("Car") }
+        ), ui.lp(8))
+        box.addView(ui.grid(
             ui.tile(Ic.MONITOR, "HUD mode", "Windscreen mirror", Ui.ACC) { a.show("HUD") },
             ui.tile(Ic.GEAR, "Settings", "Connection & options", Color.parseColor("#90A4AE")) { a.show("Settings") }
         ), ui.lp(8))
@@ -167,7 +170,7 @@ class GaragePage(a: MainActivity) : Page(a) {
             setSelection(Fuels.all.indexOfFirst { it.name == v.fuel }.coerceAtLeast(0))
         }
         val disp = ui.edit("litres", v.dispL.toString(), true)
-        val tank = ui.edit("litres / kg", v.tankL.toString(), true)
+        val tank = ui.edit("litres / kg / kWh", v.tankL.toString(), true)
         val ve = ui.edit("0.80–0.90", v.ve.toString(), true)
         val price = ui.edit("₹ per unit", v.fuelPrice.toString(), true)
         val corr = ui.edit("1.00", "%.3f".format(Locale.US, v.fuelCorr), true)
@@ -176,7 +179,7 @@ class GaragePage(a: MainActivity) : Page(a) {
         val rpm = ui.edit("rpm", v.rpmLimit.toString(), true)
         formDialog(if (v.id == 0L) "Add vehicle" else "Edit ${v.name}", listOf(
             "Name" to name, "Make" to make, "Model" to model, "Year" to year, "Fuel type" to fuel,
-            "Engine displacement (L)" to disp, "Tank capacity" to tank, "Volumetric efficiency" to ve,
+            "Engine displacement (L)" to disp, "Tank (L / kg) or battery (kWh)" to tank, "Volumetric efficiency" to ve,
             "Fuel price" to price, "Fuel correction factor" to corr, "Odometer (km)" to odo,
             "Overspeed alert (km/h)" to spd, "Over-rev alert (rpm)" to rpm
         )) {

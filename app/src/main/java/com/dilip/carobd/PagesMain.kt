@@ -111,7 +111,8 @@ class DashPage(a: MainActivity) : Page(a) {
             c.addView(ui.row(*tiles.toTypedArray()), ui.lp(8))
         }
         c.addView(ui.row(
-            ui.btn("HUD") { a.show("HUD") },
+            ui.btn("Drive mode") { a.show("Car") },
+            ui.btn("HUD", Ui.CARD) { a.show("HUD") },
             ui.btn("Performance", Ui.CARD) { a.show("Perf") },
             ui.btn("New trip", Ui.CARD) { ObdManager.stopTrip(); ObdManager.startTrip() }
         ), ui.lp(12))
@@ -125,6 +126,8 @@ class DashPage(a: MainActivity) : Page(a) {
         gRpm.max = if (diesel) 6000f else 8000f
         gRpm.redFrom = if (diesel) 4500f else 6500f
         gSpd.redFrom = veh.speedLimit.toFloat()
+        rFuel.label = if (veh.isEv) "Battery SoC" else "Fuel"
+        rBatt.label = if (veh.isEv) "12 V aux" else "Battery"
     }
 
     override fun refresh() {

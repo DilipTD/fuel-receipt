@@ -149,6 +149,7 @@ class SettingsPage(a: MainActivity) : Page(a) {
         val saved = if (Prefs.lastAddr.isEmpty()) "No adapter chosen yet – pick one on the Connect screen"
         else Prefs.lastAddr
         body.addView(ui.iconCard(Ic.BLUETOOTH, Ui.ACC, "Saved Bluetooth adapter", saved) { a.show("Connect") }, ui.lp(10))
+        body.addView(ui.iconCard(Ic.PLUG, Ui.GOOD, "Connect / disconnect now", "Pick the adapter once – the app reconnects by itself afterwards") { a.show("Connect") }, ui.lp(8))
 
         body.addView(ui.section("WiFi adapter address", Ic.WIFI))
         val host = ui.edit("192.168.0.10", Prefs.wifiHost)

@@ -279,7 +279,7 @@ object ObdManager {
                     AlertCenter.check(app)
                     if (waitTick % 3 == 0) updateNotification()
                     val woke = if (!ecuReady) prepareEcu(elm)
-                    else elm.pid01(0x0C) != null || ((charging || waitTick % 6 == 0) && prepareEcu(elm))
+                    else (elm.pid01(0x0C) ?: (if (vehicle.isEv) elm.pid01(0x0D) else null)) != null || ((charging || waitTick % 6 == 0) && prepareEcu(elm))
                     if (woke) {
                         engineOn = true; lastOk = System.currentTimeMillis(); status = "Connected"
                         preCrank = true; preCrankUntil = System.currentTimeMillis() + 45_000
@@ -339,7 +339,11 @@ object ObdManager {
 
                 val rpm = values[0x0C]
                 val spd = values[0x0D]
-                val running = (rpm ?: 0.0) > 400
+                val running = if (vehicle.isEv) (spd ?: 0.0) > 0.5 else (rpm ?: 0.0) > 400
+                if (vehicle.isEv) engine.current?.let { tc ->
+                    val soc = values[0x2F]
+                    if (soc != null && tc.fuelStartPct >= 0 && soc <= tc.fuelStartPct) tc.fuel = (tc.fuelStartPct - soc) / 100.0 * vehicle.tankL
+                }
                 if (spd != null && spd < 1 && running) {
                     synchronized(idleRpm) {
                         idleRpm.addLast(rpm!!)
@@ -566,6 +570,7 @@ object ObdManager {
             def.decode?.let {
                 val v = it(d)
                 values[p] = v
+                if (p == 0x5B && vehicle.isEv) values[0x2F] = v
                 history.getOrPut(p) { Ring() }.add(v.toFloat())
                 if (p == 0x0D) PerfMeter.onSpeed(System.currentTimeMillis(), v)
             }
@@ -601,6 +606,7 @@ object ObdManager {
     fun fuelRate(): Double? {
         val v = vehicle
         val spec = v.spec
+        if (v.isEv) return null
         val corr = v.fuelCorr
         values[0x5E]?.let { return it * corr }
         val rpm = values[0x0C] ?: return null

@@ -95,6 +95,7 @@ object Pids {
         PidDef(0x56, "Long term O2 trim B1 (sec.)", "%", 1, ::trim),
         PidDef(0x59, "Fuel rail absolute pressure", "kPa", 0, { ab(it) * 10.0 }),
         PidDef(0x5A, "Relative accelerator pedal", "%", 1, ::pct),
+        PidDef(0x5B, "Hybrid/EV battery remaining (SoC)", "%", 1, ::pct),
         PidDef(0x5C, "Engine oil temperature", "°C", 0, ::temp),
         PidDef(0x5D, "Fuel injection timing", "°", 2, { ab(it) / 128.0 - 210.0 }),
         PidDef(0x5E, "Engine fuel rate", "L/h", 2, { ab(it) / 20.0 }),

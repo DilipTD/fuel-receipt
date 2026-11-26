@@ -22,6 +22,7 @@ import android.widget.TextView
 
 @SuppressLint("MissingPermission", "SetTextI18n")
 class ConnectPage(a: MainActivity) : Page(a) {
+    override val parent = "Settings"
     private lateinit var hero: CarHeroView
     private lateinit var deviceBox: LinearLayout
     private lateinit var wifiBox: LinearLayout

@@ -76,7 +76,7 @@ object Prefs {
         set(v) = putB("beep", v)
     var eventAlerts: Boolean get() = b("eventAlerts", true)
         set(v) = putB("eventAlerts", v)
-    var autoConnect: Boolean get() = b("autoConnect", false)
+    var autoConnect: Boolean get() = b("autoConnect", true)
         set(v) = putB("autoConnect", v)
     var autoReconnect: Boolean get() = b("autoReconnect", true)
         set(v) = putB("autoReconnect", v)

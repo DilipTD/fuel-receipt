@@ -208,7 +208,7 @@ class GaugeView(
 /** Compact ring gauge for a single value with green/amber/red zones. */
 class RingGauge(
     ctx: Context,
-    private val label: String,
+    var label: String,
     private val unit: String,
     private val min: Float,
     private val max: Float,
