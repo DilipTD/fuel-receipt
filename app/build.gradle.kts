@@ -11,8 +11,8 @@ android {
         applicationId = "com.dilip.carobd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "4.6.0"
+        versionCode = 20
+        versionName = "4.7.0"
     }
 
     buildTypes {
@@ -36,4 +36,7 @@ android {
     }
 }
 
-// No external libraries: pure Android framework + Kotlin stdlib.
+dependencies {
+    // Android Auto (Car App Library) – the only external library
+    implementation("androidx.car.app:app:1.4.0")
+}

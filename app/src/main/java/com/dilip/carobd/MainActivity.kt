@@ -41,6 +41,7 @@ class MainActivity : Activity() {
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator"
     )
     private lateinit var content: FrameLayout
+    private lateinit var rootRef: View
     private lateinit var nav: FrameLayout
     private lateinit var navRow: LinearLayout
     private lateinit var navWrap: FrameLayout
@@ -147,6 +148,7 @@ class MainActivity : Activity() {
         frame.addView(splash, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         setContentView(frame)
         Theme.applyRoot(this, root)
+        rootRef = root
         handler.postDelayed({
             splash.animate().alpha(0f).setDuration(450).withEndAction { splash.visibility = View.GONE }.start()
         }, if (savedInstanceState == null) 1700L else 0L)
@@ -340,6 +342,7 @@ class MainActivity : Activity() {
         requestedOrientation = if (name == "Car") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (name != "Perf" && PerfMeter.mode != PerfMeter.Mode.IDLE) PerfMeter.cancel()
+        goFullScreen(full)
         navWrap.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()
@@ -349,6 +352,32 @@ class MainActivity : Activity() {
             ui.staggerIn(pv)
         }
         refresh()
+    }
+
+    /** Real full-screen for Drive mode / HUD: hides status and navigation bars and draws under the display cut-out. */
+    @Suppress("DEPRECATION")
+    private fun goFullScreen(on: Boolean) {
+        val d = window.decorView
+        if (on) {
+            d.systemUiVisibility = View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            d.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            }
+            if (!(ObdManager.state == ObdManager.State.CONNECTED && Prefs.keepScreenOn)) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            Theme.applyRoot(this, rootRef)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && (current == "Car" || current == "HUD")) goFullScreen(true)
     }
 
     private fun refresh() {

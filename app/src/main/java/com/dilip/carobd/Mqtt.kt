@@ -177,7 +177,7 @@ object Mqtt {
     private fun discovery(c: MqttClient) {
         val veh = ObdManager.vehicle; val id = deviceId(); val b = base(); val disc = Prefs.mqttDisc.trim().trim('/').ifEmpty { "homeassistant" }
         val dev = JSONObject().put("identifiers", JSONArray().put(id)).put("name", veh.name.ifBlank { "Car" })
-            .put("manufacturer", veh.make.ifBlank { "Car OBD Pro" }).put("model", veh.model.ifBlank { "OBD-II vehicle" }).put("sw_version", AppInfo.VERSION)
+            .put("manufacturer", veh.make.ifBlank { "Dr. Vittu OBDII Pro" }).put("model", veh.model.ifBlank { "OBD-II vehicle" }).put("sw_version", AppInfo.VERSION)
         for (e in ents) {
             val o = JSONObject().put("name", e.name).put("unique_id", "${id}_${e.key}").put("object_id", "${id}_${e.key}").put("has_entity_name", true)
                 .put("state_topic", "$b/${e.key}").put("availability_topic", "$b/availability").put("device", dev)

@@ -1,4 +1,4 @@
-# Car OBD Pro – Google Play submission checklist
+# Dr. Vittu OBDII Pro – Google Play submission checklist
 
 ## Done in the app (v4.2.0)
 - In-app Privacy Policy, Terms of Use, Data-safety summary, Permissions explained, Credits (More → Privacy & legal; Settings → Data).
@@ -32,10 +32,10 @@
 - **Financial / health / news / government / COVID declarations:** None.
 
 ## Store listing text (copy/paste)
-**Title:** Car OBD Pro – ELM327 Scanner
+**Title:** Dr. Vittu OBDII Pro – ELM327 Scanner
 **Short description (≤80):** OBD-II car scanner: live gauges, trips, fuel log, fault codes & road assistant.
 **Full description:**
-Car OBD Pro works with ELM327 Bluetooth, BLE and Wi-Fi adapters on almost any petrol or diesel car.
+Dr. Vittu OBDII Pro works with ELM327 Bluetooth, BLE and Wi-Fi adapters on almost any petrol or diesel car.
 • Live gauges: RPM, speed, temperatures, load, fuel trims, battery voltage
 • Smart gauge cluster with on-device AI tips, eco score and trends
 • Trip log with map routes, driving score and replay

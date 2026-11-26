@@ -1,8 +1,8 @@
-# Car OBD Pro – Terms of Use
+# Dr. Vittu OBDII Pro – Terms of Use
 
 ## Acceptance
 
-By installing or using Car OBD Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 26 November 2026.
+By installing or using Dr. Vittu OBDII Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 26 November 2026.
 
 ## Licence
 

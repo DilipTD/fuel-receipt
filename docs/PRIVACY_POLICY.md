@@ -1,8 +1,8 @@
-# Car OBD Pro – Privacy Policy
+# Dr. Vittu OBDII Pro – Privacy Policy
 
 ## Overview
 
-Car OBD Pro ("the app") is developed by Dilip Kumar TD ("the developer", "we"). The app connects to an ELM327 OBD-II adapter in your car and shows live data, trips, fuel and service logs, fault-code diagnosis and road assistance.
+Dr. Vittu OBDII Pro ("the app") is developed by Dilip Kumar TD ("the developer", "we"). The app connects to an ELM327 OBD-II adapter in your car and shows live data, trips, fuel and service logs, fault-code diagnosis and road assistance.
 
 The short version: your data stays on your phone. The app has no user accounts, no advertising, no analytics and no tracking SDKs. The developer does not receive, collect or sell your personal data.
 

@@ -30,7 +30,7 @@ object Legal {
 
     /** Prominent disclosure shown before any permission is requested. */
     fun consent(a: MainActivity, onDone: () -> Unit) {
-        val msg = "Car OBD Pro connects to your OBD adapter and records your drives.\n\n" +
+        val msg = "Dr. Vittu OBDII Pro connects to your OBD adapter and records your drives.\n\n" +
             "• Location: your precise location is used for trip routes, speed, road speed-limit announcements, weather and fuel-station positions – including in the background while the road assistant or trip recording is running (a notification is always shown).\n" +
             "• Bluetooth / Wi-Fi: to find and talk to your OBD adapter.\n" +
             "• Internet: map tiles, weather and road data are fetched from OpenStreetMap, Open-Meteo and Overpass using your coordinates.\n\n" +
@@ -82,7 +82,7 @@ class LegalPage(a: MainActivity) : Page(a) {
         c.addView(ui.iconCard(Ic.SLIDERS, Ui.ORANGE, "Permissions & features", "See and change every permission and feature switch", Ui.CARD) { a.show("Perms") }, ui.lp(6))
         c.addView(ui.iconCard(Ic.TRASH, Ui.BAD, "Delete all my data", "Erase everything stored by the app and close it", Ui.CARD) { Legal.deleteAll(a) }, ui.lp(6))
         c.addView(ui.btn("Share privacy policy text", Ui.CARD) {
-            val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Car OBD Pro – Privacy Policy\n\n" + Legal.render(LegalText.privacy)) }
+            val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Dr. Vittu OBDII Pro – Privacy Policy\n\n" + Legal.render(LegalText.privacy)) }
             a.startActivity(Intent.createChooser(i, "Share"))
         }, ui.lp(12))
         c.addView(ui.tv(Legal.contact() + "\n© 2026 ${AppInfo.DEVELOPER}", 11f, Ui.DIM).apply { gravity = android.view.Gravity.CENTER }, ui.lp(12))

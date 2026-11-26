@@ -23,17 +23,22 @@ class CarDashPage(a: MainActivity) : Page(a) {
     private lateinit var leftBox: FrameLayout
 
     private fun statBlock(ic: Ic, cap: String, col: Int): LinearLayout {
-        val v = ui.tv("--", 17f, Ui.WHITE, true).apply { gravity = Gravity.CENTER; maxLines = 1 }
+        val v = ui.tv("--", 15f, Ui.WHITE, true).apply { maxLines = 1 }
         stats[cap] = v
         return LinearLayout(a).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            background = ui.rounded(Ui.CARD, 14)
-            setPadding(ui.dp(4), ui.dp(5), ui.dp(4), ui.dp(5))
-            addView(ui.iconView(ic, col, 16))
-            addView(v)
-            addView(ui.tv(cap, 10f, Ui.DIM).apply { gravity = Gravity.CENTER; maxLines = 1 })
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.rounded(Ui.CARD, 12)
+            setPadding(ui.dp(8), ui.dp(5), ui.dp(6), ui.dp(5))
+            addView(ui.iconView(ic, col, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(6) })
+            addView(LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(v)
+                addView(ui.tv(cap, 9.5f, Ui.DIM).apply { maxLines = 1 })
+            }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
         }
     }
+
+    private var statRow2: LinearLayout? = null
 
     override fun build(): View {
         val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#06090D")); setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8)) }
@@ -61,6 +66,7 @@ class CarDashPage(a: MainActivity) : Page(a) {
         fuel = RingGauge(a, "Fuel", "%", 0f, 100f) { v -> if (v <= Prefs.lowFuelPct) 2 else if (v <= 25) 1 else 0 }.apply { icon = Ic.FUEL }
         val rightBox = LinearLayout(a).apply { addView(coolant, LinearLayout.LayoutParams(0, Ui.MATCH, 1f)); addView(fuel, LinearLayout.LayoutParams(0, Ui.MATCH, 1f)) }
         root.addView(LinearLayout(a).apply {
+            minimumHeight = ui.dp(130)
             gravity = Gravity.CENTER_VERTICAL
             addView(leftBox, LinearLayout.LayoutParams(0, Ui.MATCH, 1.1f))
             addView(mid, LinearLayout.LayoutParams(0, Ui.MATCH, 1f))
@@ -74,9 +80,19 @@ class CarDashPage(a: MainActivity) : Page(a) {
             listOf(statBlock(Ic.GAUGE, "Avg speed", Ui.CYAN), statBlock(Ic.BOLT, "Max speed", Ui.CYAN), statBlock(Ic.BATTERY, "12 V", Ui.WARN),
                 statBlock(Ic.ENGINE, "Engine load", Ui.VIOLET), statBlock(Ic.WIND, "Intake air", Ui.VIOLET), statBlock(Ic.USER, "Drive score", Ui.GOOD))
         )
-        for (r in rows) root.addView(LinearLayout(a).apply {
-            r.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (i > 0) leftMargin = ui.dp(6) }) }
-        }, ui.lp(4))
+        rows.forEachIndexed { ri, r ->
+            val row = LinearLayout(a).apply {
+                r.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (i > 0) leftMargin = ui.dp(5) }) }
+            }
+            if (ri == 1) statRow2 = row
+            root.addView(row, ui.lp(4))
+        }
+        // very short screens: keep the gauges visible, drop the second row of readings
+        root.addOnLayoutChangeListener { _, _, t, _, bt, _, _, _, _ ->
+            val hDp = (bt - t) / a.resources.displayMetrics.density
+            val want = if (hDp < 330f) View.GONE else View.VISIBLE
+            if (statRow2?.visibility != want) statRow2?.visibility = want
+        }
         return root
     }
 
