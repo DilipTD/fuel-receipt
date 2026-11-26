@@ -265,16 +265,12 @@ class MaintPage(a: MainActivity) : Page(a) {
 
         val recs = Db.records(v.id)
         box.addView(ui.section("Service history · total ${ui.money(recs.sumOf { it.cost })}"))
+        if (recs.isNotEmpty()) box.addView(ui.tv("Swipe a record to the left to delete it", 11.5f, Ui.DIM))
         if (recs.isEmpty()) box.addView(ui.tv("No service records yet.", 13f, Ui.DIM))
         for (r in recs) {
-            box.addView(ui.card("${ui.date(r.t, "dd MMM yyyy")} · ${ui.f(r.odo, 0, " km")} · ${ui.money(r.cost)}\n${r.name}" +
-                    (if (r.note.isNotEmpty()) "\n${r.note}" else ""), 12f).apply {
-                setOnLongClickListener {
-                    AlertDialog.Builder(a).setTitle("Delete this record?")
-                        .setPositiveButton("Delete") { _, _ -> Db.deleteRecord(r.id); onShow() }
-                        .setNegativeButton("Cancel", null).show(); true
-                }
-            }, ui.lp(4))
+            box.addView(ui.swipeDelete(ui.card("${ui.date(r.t, "dd MMM yyyy")} · ${ui.f(r.odo, 0, " km")} · ${ui.money(r.cost)}\n${r.name}" +
+                    (if (r.note.isNotEmpty()) "\n${r.note}" else ""), 12f),
+                "Delete this service record?", r.name) { Db.deleteRecord(r.id); onShow() }, ui.lp(4))
         }
         box.addView(ui.btn("Export service history CSV", Ui.CARD) {
             val sb = StringBuilder("date,odometer_km,item,cost,note\n")

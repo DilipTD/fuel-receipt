@@ -123,7 +123,8 @@ class TrackPoint(val t: Long, val lat: Double?, val lon: Double?, val speed: Dou
 
 class FuelLog(
     var id: Long = 0, var vehicleId: Long = 0, var t: Long = System.currentTimeMillis(),
-    var odo: Double = 0.0, var qty: Double = 0.0, var cost: Double = 0.0, var full: Boolean = true, var note: String = ""
+    var odo: Double = 0.0, var qty: Double = 0.0, var cost: Double = 0.0, var full: Boolean = true, var note: String = "",
+    var station: String = "", var lat: Double? = null, var lon: Double? = null, var receipt: String = ""
 )
 
 class MaintItem(
@@ -144,7 +145,7 @@ object Db {
     private const val NAME = "carobd.db"
     private lateinit var helper: Helper
 
-    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 2) {
+    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 3) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE vehicles(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)")
             db.execSQL("CREATE TABLE trips(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, start INTEGER, data TEXT)")
@@ -158,6 +159,11 @@ object Db {
             db.execSQL("CREATE TABLE maint_rec(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, item INTEGER, name TEXT, t INTEGER, odo REAL, cost REAL, note TEXT)")
             db.execSQL("CREATE TABLE dtc(id INTEGER PRIMARY KEY AUTOINCREMENT, vid INTEGER, t INTEGER, code TEXT, ecu TEXT, kind TEXT)")
             createV2(db)
+            addFuelExtras(db)
+        }
+
+        private fun addFuelExtras(db: SQLiteDatabase) {
+            for (c in listOf("station TEXT", "slat REAL", "slon REAL", "receipt TEXT")) try { db.execSQL("ALTER TABLE fuel ADD COLUMN $c") } catch (_: Exception) {}
         }
 
         private fun createV2(db: SQLiteDatabase) {
@@ -167,6 +173,7 @@ object Db {
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
             if (oldVersion < 2) createV2(db)
+            if (oldVersion < 3) addFuelExtras(db)
         }
     }
 
@@ -317,14 +324,15 @@ object Db {
         val cv = ContentValues().apply {
             put("vid", f.vehicleId); put("t", f.t); put("odo", f.odo); put("qty", f.qty); put("cost", f.cost)
             put("full", if (f.full) 1 else 0); put("note", f.note)
+            put("station", f.station); put("slat", f.lat); put("slon", f.lon); put("receipt", f.receipt)
         }
         if (f.id == 0L) f.id = db.insert("fuel", null, cv) else db.update("fuel", cv, "id=?", arrayOf(f.id.toString()))
     }
 
     fun fuelLogs(vid: Long): List<FuelLog> =
-        query("SELECT id, vid, t, odo, qty, cost, full, note FROM fuel WHERE vid=? ORDER BY t DESC", arrayOf(vid.toString())) {
+        query("SELECT id, vid, t, odo, qty, cost, full, note, station, slat, slon, receipt FROM fuel WHERE vid=? ORDER BY t DESC", arrayOf(vid.toString())) {
             FuelLog(it.getLong(0), it.getLong(1), it.getLong(2), it.getDouble(3), it.getDouble(4), it.getDouble(5),
-                it.getInt(6) == 1, it.getString(7) ?: "")
+                it.getInt(6) == 1, it.getString(7) ?: "", it.getString(8) ?: "", it.dOrNull(9), it.dOrNull(10), it.getString(11) ?: "")
         }
 
     @Synchronized
@@ -404,6 +412,11 @@ object Db {
 
     fun alertCountSince(t: Long): Int =
         query("SELECT COUNT(*) FROM alerts WHERE t>=? AND level>=1", arrayOf(t.toString())) { it.getInt(0) }.firstOrNull() ?: 0
+
+    @Synchronized
+    fun deleteAlert(id: Long) {
+        db.delete("alerts", "id=?", arrayOf(id.toString()))
+    }
 
     @Synchronized
     fun clearAlerts() {

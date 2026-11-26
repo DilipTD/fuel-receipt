@@ -354,7 +354,7 @@ class AlertsPage(a: MainActivity) : Page(a) {
             ui.btn(l, if (f == filter) Ui.ACC else Ui.CARD) { filter = f; onShow() }
         }.toTypedArray()), ui.lp(4))
         val list = Db.alerts().filter { it.level >= filter }
-        if (list.isEmpty()) box.addView(ui.tv("No alerts. 👍", 14f, Ui.DIM), ui.lp(10))
+        if (list.isEmpty()) box.addView(ui.tv("No alerts. 👍", 14f, Ui.DIM), ui.lp(10)) else box.addView(ui.tv("Swipe an alert to the left to delete it", 11.5f, Ui.DIM), ui.lp(6))
         for (al in list.take(200)) {
             val row = LinearLayout(a).apply {
                 background = ui.rounded(Ui.CARD, 8)
@@ -368,7 +368,7 @@ class AlertsPage(a: MainActivity) : Page(a) {
                 }
                 addView(txt, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             }
-            box.addView(row, ui.lp(6))
+            box.addView(ui.swipeDelete(row, "Delete this alert?", al.title) { Db.deleteAlert(al.id); onShow() }, ui.lp(6))
         }
         box.addView(ui.row(
             ui.btn("Test notification", Ui.CARD) {
@@ -376,7 +376,9 @@ class AlertsPage(a: MainActivity) : Page(a) {
                     "Notifications are working. ${AppInfo.credit}", 0L, "This is a test alert")
                 onShow()
             },
-            ui.btn("Clear all", Ui.BAD) { Db.clearAlerts(); onShow() }
+            ui.btn("Clear all", Ui.BAD) {
+                AlertDialog.Builder(a).setTitle("Clear all alerts?").setPositiveButton("Clear") { _, _ -> Db.clearAlerts(); onShow() }.setNegativeButton("Cancel", null).show()
+            }
         ), ui.lp(14))
         box.addView(ui.tv("Thresholds and notification options: More → Settings → Alerts.", 12f, Ui.DIM), ui.lp())
     }

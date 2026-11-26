@@ -242,6 +242,9 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FuelAddPage.REQ_CAM || requestCode == FuelAddPage.REQ_PICK) {
+            (pages["FuelAdd"] as FuelAddPage).photoResult(requestCode, resultCode == RESULT_OK, data?.data); return
+        }
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         val bp = pages["Backup"] as BackupPage

@@ -132,11 +132,19 @@ class FuelPage(a: MainActivity) : Page(a) {
                     addView(ui.iconView(Ic.DATABASE, Ui.VIOLET, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { leftMargin = ui.dp(16); rightMargin = ui.dp(8) })
                     addView(ui.tv(if (f.sinceKm > 0 && l.cost > 0) "₹%.3f/km".format(Locale.US, l.cost / f.sinceKm) else "--", 15f, Ui.DIM))
                 }, ui.lp(8))
+                if (l.station.isNotEmpty() || l.lat != null) addView(infoRow(Ic.PIN, Ui.ORANGE, l.station.ifEmpty { "Location saved" }, Ui.WHITE), ui.lp(8))
+                if (l.receipt.isNotEmpty()) addView(LinearLayout(a).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(ui.chip("Receipt attached", Ui.GOOD, Ic.DOC))
+                }, ui.lp(8))
                 if (f.tripN > 0) addView(infoRow(Ic.ROUTE, Ui.CYAN, "OBD trips ${f.tripN} · %.1f %s · ₹%.0f".format(Locale.US, f.tripFuel, u, f.tripCost), Ui.CYAN), ui.lp(8))
             }
             card.setOnClickListener { a.selectedFuelId = l.id; a.show("FuelAdd") }
             ui.pressAnim(card)
-            box.addView(card, ui.lp(8))
+            box.addView(ui.swipeDelete(card, "Delete this fill-up?", "${ui.date(l.t, "dd MMM yyyy")} · ${ui.money(l.cost)}" + if (l.receipt.isNotEmpty()) " (the attached receipt is removed too)" else "") {
+                Receipts.delete(a, l.receipt)
+                Db.deleteFuel(l.id); FuelMath.repriceTrips(ObdManager.vehicle.id); onShow()
+            }, ui.lp(8))
         }
     }
 
@@ -222,6 +230,12 @@ class FuelAddPage(a: MainActivity) : Page(a) {
     private var tripMeter = false
     private var fields: Array<Any>? = null
     private val cal: Calendar = Calendar.getInstance()
+    private var station = ""; private var sLat: Double? = null; private var sLon: Double? = null; private var receipt = ""
+    private lateinit var stationEt: EditText
+    private lateinit var placeBox: LinearLayout
+    private lateinit var receiptBox: LinearLayout
+    private var camUri: android.net.Uri? = null
+    companion object { const val REQ_CAM = 91; const val REQ_PICK = 92 }
 
     override fun build(): View { box = ui.col(); return ui.scroll(box) }
 
@@ -235,9 +249,11 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         val lastOdo = others.maxOfOrNull { it.odo } ?: v.odoKm
         cal.timeInMillis = existing?.t ?: System.currentTimeMillis()
         tripMeter = false
+        station = existing?.station ?: ""; sLat = existing?.lat; sLon = existing?.lon; receipt = existing?.receipt ?: ""
+        if (existing == null) Weather.here(a, false)?.let { sLat = it.first; sLon = it.second }
 
         box.addView(ui.row(
-            ui.btn("Cancel", Ui.CARD) { a.show("Fuel") },
+            ui.btn("Cancel", Ui.CARD) { if (receipt != existing?.receipt) Receipts.delete(a, receipt); a.show("Fuel") },
             ui.btn(if (existing == null) "Save" else "Update", Ui.GOOD) { save(existing, lastOdo) }
         ), ui.lp(2))
         box.addView(ui.tv(if (existing == null) "New fill-up" else "Edit fill-up", 26f, Ui.WHITE, true), ui.lp(10))
@@ -305,17 +321,135 @@ class FuelAddPage(a: MainActivity) : Page(a) {
 
         val full = ui.check("Full tank", existing?.full ?: true)
         val missed = ui.check("Missed previous fill-up", existing?.note?.contains(MISSED) == true)
-        val note = ui.edit("Station / note", existing?.note?.replace(MISSED, "")?.trim() ?: "")
+        val note = ui.edit("Note", existing?.note?.replace(MISSED, "")?.trim() ?: "")
         box.addView(LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL; background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10))
             addView(full); addView(missed, ui.lp(8)); addView(note, ui.lp(10))
         }, ui.lp(14))
         fields = arrayOf(odo, qty, price, cost, full, missed, note)
+        stationUi(existing)
+        receiptUi(existing)
         if (existing != null) box.addView(ui.btn("Delete fill-up", Ui.BAD) {
             AlertDialog.Builder(a).setTitle("Delete this fill-up?")
-                .setPositiveButton("Delete") { _, _ -> Db.deleteFuel(existing.id); FuelMath.repriceTrips(v.id); a.show("Fuel") }
+                .setPositiveButton("Delete") { _, _ -> Receipts.delete(a, existing.receipt); Db.deleteFuel(existing.id); FuelMath.repriceTrips(v.id); a.show("Fuel") }
                 .setNegativeButton("Cancel", null).show()
         }, ui.lp(12))
+    }
+
+    /* ---------- station (GPS) ---------- */
+
+    private fun stationUi(existing: FuelLog?) {
+        stationEt = ui.edit("Petrol station name", station)
+        placeBox = ui.vbox()
+        val card = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12)) }
+        card.addView(LinearLayout(a).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ui.badge(Ic.PIN, Ui.ORANGE, 32), LinearLayout.LayoutParams(ui.dp(32), ui.dp(32)).apply { rightMargin = ui.dp(10) })
+            addView(ui.tv("Petrol station", 16f, Ui.WHITE, true))
+        })
+        card.addView(stationEt, ui.lp(10))
+        card.addView(ui.row(
+            ui.btn("Use my location", Ui.ORANGE) { captureLocation(true) },
+            ui.btn("Clear", Ui.CARD) { sLat = null; sLon = null; renderPlace() }
+        ), ui.lp(8))
+        card.addView(placeBox, ui.lp(8))
+        box.addView(ui.section("Location", Ic.PIN))
+        box.addView(card, ui.lp(2))
+        renderPlace()
+        if (existing == null && sLat != null && station.isEmpty()) lookupName()
+    }
+
+    private fun captureLocation(manual: Boolean) {
+        val h = Weather.here(a, false)
+        if (h == null) { ui.toast(if (Gps.hasPermission(a)) "No GPS fix yet – wait a few seconds outdoors" else "Allow location permission first"); return }
+        sLat = h.first; sLon = h.second; renderPlace(); if (manual || stationEt.text.isEmpty()) lookupName()
+    }
+
+    private fun lookupName() {
+        val la = sLat ?: return; val lo = sLon ?: return
+        Receipts.stationNear(la, lo) { n -> if (n != null && stationEt.text.isEmpty() && sLat == la) stationEt.setText(n) }
+    }
+
+    private fun renderPlace() {
+        placeBox.removeAllViews()
+        val la = sLat; val lo = sLon
+        if (la == null || lo == null) { placeBox.addView(ui.tv("No location attached – tap \"Use my location\" while at the station.", 12f, Ui.DIM)); return }
+        val map = TileMapView(a); map.setPlace(la, lo, 16)
+        placeBox.addView(map, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(140)))
+        val addr = ui.tv("%.5f, %.5f".format(Locale.US, la, lo), 12.5f, Ui.WHITE)
+        Geo.name(a, la, lo) { addr.text = it }
+        placeBox.addView(addr, ui.lp(8))
+        placeBox.addView(ui.btn("Navigate to this station", Ui.CARD) { Nav.drive(a, la, lo) }, ui.lp(6))
+    }
+
+    /* ---------- receipt photo ---------- */
+
+    private fun receiptUi(existing: FuelLog?) {
+        receiptBox = ui.vbox()
+        val card = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12)) }
+        card.addView(LinearLayout(a).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ui.badge(Ic.DOC, Ui.GOOD, 32), LinearLayout.LayoutParams(ui.dp(32), ui.dp(32)).apply { rightMargin = ui.dp(10) })
+            addView(ui.tv("Receipt", 16f, Ui.WHITE, true))
+        })
+        card.addView(ui.row(ui.btn("Take photo", Ui.GOOD) { takePhoto() }, ui.btn("Choose image", Ui.CARD) { pickImage() }), ui.lp(8))
+        card.addView(receiptBox, ui.lp(8))
+        box.addView(ui.section("Receipt", Ic.DOC))
+        box.addView(card, ui.lp(2))
+        renderReceipt()
+    }
+
+    private fun renderReceipt() {
+        receiptBox.removeAllViews()
+        if (receipt.isEmpty()) { receiptBox.addView(ui.tv("No receipt attached.", 12f, Ui.DIM)); return }
+        val bmp = Receipts.bitmap(a, receipt, 700)
+        if (bmp == null) { receiptBox.addView(ui.tv("Receipt file not found.", 12f, Ui.BAD)); return }
+        receiptBox.addView(android.widget.ImageView(a).apply {
+            setImageBitmap(bmp); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; adjustViewBounds = false
+            background = ui.rounded(Ui.SEL, 14); clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, ui.dp(14).toFloat()) } }
+            setOnClickListener { showFull() }
+        }, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(190)))
+        receiptBox.addView(ui.row(
+            ui.btn("View full size", Ui.CARD) { showFull() },
+            ui.btn("Remove", Ui.BAD) {
+                AlertDialog.Builder(a).setTitle("Remove this receipt?").setPositiveButton("Remove") { _, _ -> receipt = ""; renderReceipt() }.setNegativeButton("Cancel", null).show()
+            }
+        ), ui.lp(8))
+    }
+
+    private fun showFull() {
+        val bmp = Receipts.bitmap(a, receipt, 1600) ?: return
+        val iv = android.widget.ImageView(a).apply { setImageBitmap(bmp); adjustViewBounds = true; setBackgroundColor(Color.BLACK) }
+        AlertDialog.Builder(a).setView(android.widget.ScrollView(a).apply { addView(iv) }).setPositiveButton("Close", null).show()
+    }
+
+    private fun takePhoto() {
+        try {
+            val cv = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "carobd_receipt_${System.currentTimeMillis()}.jpg")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (android.os.Build.VERSION.SDK_INT >= 29) put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CarOBD")
+            }
+            camUri = a.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+            val i = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, camUri)
+            @Suppress("DEPRECATION") a.startActivityForResult(i, REQ_CAM)
+        } catch (e: Exception) { ui.toast("Camera not available – use Choose image") }
+    }
+
+    private fun pickImage() {
+        val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(android.content.Intent.CATEGORY_OPENABLE); type = "image/*" }
+        @Suppress("DEPRECATION") a.startActivityForResult(i, REQ_PICK)
+    }
+
+    fun photoResult(req: Int, ok: Boolean, uri: android.net.Uri?) {
+        val src = if (req == REQ_CAM) camUri else uri
+        if (!ok || src == null) { if (req == REQ_CAM) camUri?.let { try { a.contentResolver.delete(it, null, null) } catch (_: Exception) {} }; return }
+        val name = Receipts.save(a, src)
+        if (req == REQ_CAM) try { a.contentResolver.delete(src, null, null) } catch (_: Exception) {}
+        if (name == null) { ui.toast("Could not read the image"); return }
+        if (receipt.isNotEmpty() && receipt != (Db.fuelLogs(ObdManager.vehicle.id).firstOrNull { it.id == a.selectedFuelId }?.receipt ?: "")) Receipts.delete(a, receipt)
+        receipt = name; renderReceipt()
     }
 
     private fun save(existing: FuelLog?, lastOdo: Double) {
@@ -329,7 +463,9 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         val c = costE.num() ?: if (q != null && p != null) q * p else null
         if (q == null || q <= 0 || c == null) { ui.toast("Enter fuel quantity and price or cost"); return }
         val odo = if (tripMeter) lastOdo + (o0 ?: 0.0) else (o0 ?: v.odoKm)
-        val log = FuelLog(existing?.id ?: 0, v.id, cal.timeInMillis, odo, q, c, full, (note + if (missed) " $MISSED" else "").trim())
+        val log = FuelLog(existing?.id ?: 0, v.id, cal.timeInMillis, odo, q, c, full, (note + if (missed) " $MISSED" else "").trim(),
+            stationEt.text.toString().trim(), sLat, sLon, receipt)
+        if (existing != null && existing.receipt.isNotEmpty() && existing.receipt != receipt) Receipts.delete(a, existing.receipt)
         Db.saveFuel(log)
         if (c > 0) v.fuelPrice = c / q
         if (odo > v.odoKm) v.odoKm = odo

@@ -47,7 +47,7 @@ object Weather {
     }
 
     /** Best known position: live GPS → last system fix → parked position. */
-    fun here(ctx: Context): Pair<Double, Double>? {
+    fun here(ctx: Context, allowPark: Boolean = true): Pair<Double, Double>? {
         Gps.last?.let { return it.latitude to it.longitude }
         if (Gps.hasPermission(ctx)) try {
             val lm = ctx.getSystemService(android.location.LocationManager::class.java)
@@ -59,7 +59,7 @@ object Weather {
             if (best != null) return best.latitude to best.longitude
         } catch (_: Exception) {
         }
-        if (Prefs.parkLat != 0.0 || Prefs.parkLon != 0.0) return Prefs.parkLat to Prefs.parkLon
+        if (allowPark && (Prefs.parkLat != 0.0 || Prefs.parkLon != 0.0)) return Prefs.parkLat to Prefs.parkLon
         return null
     }
 

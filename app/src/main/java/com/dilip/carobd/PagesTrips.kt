@@ -123,6 +123,7 @@ class TripsPage(a: MainActivity) : Page(a) {
             ui.btn("Stop", Ui.BAD) { ObdManager.stopTrip(); histSig = "" },
             ui.btn("CSV", Ui.CARD) { exportAll() }
         ), ui.lp(8))
+        c.addView(ui.tv("Swipe a drive to the left to delete it", 11.5f, Ui.DIM), ui.lp(4))
         hist = ui.vbox()
         c.addView(hist)
         val sv = ui.scroll(c)
@@ -249,7 +250,9 @@ class TripsPage(a: MainActivity) : Page(a) {
                 setOnClickListener { a.selectedTripId = tr.id; a.show("TripDetail") }
             }
             ui.pressAnim(card)
-            hist.addView(card, ui.lp(8))
+            hist.addView(ui.swipeDelete(card, "Delete this drive?", "${ui.date(tr.start, "EEE dd MMM, HH:mm")} · ${"%.1f".format(tr.distanceKm)} km will be removed with its route.") {
+                Db.deleteTrip(tr.id); histSig = ""; refresh()
+            }, ui.lp(8))
             Geo.endpoints(tr.id) { ep ->
                 if (ep == null) { startTv.text = "No GPS"; endTv.text = "No GPS"; return@endpoints }
                 Geo.name(a, ep.first.first, ep.first.second) { startTv.text = it }

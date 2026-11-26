@@ -29,6 +29,7 @@ object Backup {
                 .put("trips", Db.count("trips")).put("fuel", Db.count("fuel")).put("vehicles", Db.count("vehicles")).toString().toByteArray())
             z.closeEntry()
             z.putNextEntry(ZipEntry("carobd.db")); tmp.inputStream().use { it.copyTo(z) }; z.closeEntry()
+            Receipts.dir(ctx).listFiles()?.forEach { r -> z.putNextEntry(ZipEntry("receipts/" + r.name)); r.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             val all = JSONObject()
             for (n in prefFiles) {
                 val o = JSONObject()
@@ -53,6 +54,7 @@ object Backup {
     /** Returns null on success, else an error message. */
     fun restore(ctx: Context, input: InputStream): String? {
         val tmpDb = File(ctx.cacheDir, "restore.db"); var settings: JSONObject? = null
+        val gotReceipts = ArrayList<String>()
         val buf = input.buffered(); buf.mark(20)
         val head = ByteArray(16); val n = buf.read(head); buf.reset()
         val legacy = n >= 15 && String(head, Charsets.US_ASCII).startsWith("SQLite format 3")
@@ -64,6 +66,10 @@ object Backup {
                     when (e.name) {
                         "carobd.db" -> tmpDb.outputStream().use { z.copyTo(it) }
                         "settings.json" -> settings = JSONObject(String(z.readBytes()))
+                        else -> if (e.name.startsWith("receipts/") && !e.isDirectory) {
+                            val nm = e.name.substringAfter("receipts/").replace("/", "").replace("..", "")
+                            if (nm.isNotEmpty()) { File(ctx.cacheDir, "rc_$nm").outputStream().use { z.copyTo(it) }; gotReceipts += nm }
+                        }
                     }
                     e = z.nextEntry
                 }
