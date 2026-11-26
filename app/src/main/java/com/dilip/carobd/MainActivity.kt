@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
-        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator"
+        "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
     )
     private lateinit var content: FrameLayout
     private lateinit var rootRef: View
@@ -185,6 +185,7 @@ class MainActivity : Activity() {
         pages["Faq"] = FaqPage(this)
         pages["Reports"] = ReportsPage(this)
         pages["Calc"] = CalcPage(this)
+        pages["Reset"] = ServiceResetPage(this)
         for (p in pages.values) {
             p.view = p.build()
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))

@@ -102,6 +102,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Car health", Ui.GOOD) { a.show("Health") },
             Triple("Driving style", Ui.VIOLET) { a.show("Analysis") },
             Triple("Maintenance", Ui.WARN) { a.show("Maint") },
+            Triple("Service reset", Ui.ORANGE) { a.show("Reset") },
             Triple("Garage", Ui.ACC) { a.show("Garage") },
             Triple(if (alertN > 0) "Alerts ($alertN)" else "Alerts", Ui.PINK) { a.show("Alerts") },
             Triple("Performance", Ui.CYAN) { a.show("Perf") },
@@ -123,7 +124,7 @@ class MorePage(a: MainActivity) : Page(a) {
 
     private fun iconOf(l: String): Ic = when {
         l.startsWith("Live") -> Ic.CHART; l.startsWith("Road") -> Ic.NAV; l.startsWith("Backup") -> Ic.DATABASE; l.startsWith("Diag") -> Ic.PULSE; l.startsWith("Drive") -> Ic.GAUGE
-        l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH
+        l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH; l.startsWith("Service reset") -> Ic.REFRESH
         l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
         l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Permissions") -> Ic.SLIDERS; l.startsWith("Home Assistant") -> Ic.HOME; l.startsWith("Documents") -> Ic.DOC

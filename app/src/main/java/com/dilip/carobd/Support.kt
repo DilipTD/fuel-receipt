@@ -243,6 +243,9 @@ object Prefs {
     var lastAddr: String
         get() = sp.getString("lastAddr", "") ?: ""
         set(v) = sp.edit().putString("lastAddr", v).apply()
+    var resetProfiles: String
+        get() = sp.getString("resetProfiles", "[]") ?: "[]"
+        set(v) = sp.edit().putString("resetProfiles", v).apply()
     var wifiHost: String
         get() = sp.getString("host", "192.168.0.10") ?: "192.168.0.10"
         set(v) = sp.edit().putString("host", v).apply()
