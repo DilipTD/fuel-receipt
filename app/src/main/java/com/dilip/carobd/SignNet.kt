@@ -4,6 +4,7 @@ import android.content.Context
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.exp
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -145,8 +146,14 @@ object SignNet {
      * Candidate sign regions from colour alone: red, blue or yellow pixels, joined up so a thin ring becomes one blob.
      * Deliberately loose: the network (which also knows "not a sign") decides what is really a sign.
      */
-    fun propose(px: IntArray, w: Int, h: Int, maxN: Int = 8): List<SignCand> {
+    fun propose(px: IntArray, w: Int, h: Int, maxN: Int = 10): List<SignCand> {
         if (w < 32 || h < 32 || px.size < w * h) return emptyList()
+        // two views of the same picture: sharp (thin rings, small signs) and smoothed (camera noise); keep both sets
+        val sharp = BooleanArray(w * h)
+        for (i in px.indices) {
+            val c = px[i]; val r = c shr 16 and 0xFF; val g = c shr 8 and 0xFF; val b = c and 0xFF
+            sharp[i] = (r > 60 && r > 1.35 * max(g, b)) || (b > 60 && b > 1.25 * max(r, g)) || (r > 110 && g > 90 && r > 1.5 * b && g > 1.3 * b)
+        }
         // 3x3 average first, so camera noise on grey road does not look like sign colour
         val sr = IntArray(w * h); val sg = IntArray(w * h); val sb = IntArray(w * h)
         for (y in 0 until h) { val o = y * w
@@ -161,6 +168,16 @@ object SignNet {
             val sat = max(r, max(g, b)) - min(r, min(g, b))
             m[y * w + x] = sat > 28 && ((r > 60 && r > 1.35 * max(g, b)) || (b > 60 && b > 1.25 * max(r, g)) || (r > 110 && g > 90 && r > 1.5 * b && g > 1.3 * b))
         }
+        val all = blobs(sharp, w, h) + blobs(m, w, h)
+        val out = ArrayList<SignCand>()
+        for (c in all.sortedByDescending { it.w * it.h }) {
+            val dup = out.any { o -> abs((o.x + o.w / 2) - (c.x + c.w / 2)) < max(o.w, c.w) / 4 && abs((o.y + o.h / 2) - (c.y + c.h / 2)) < max(o.h, c.h) / 4 && abs(o.w - c.w) < max(o.w, c.w) * 0.3 }
+            if (!dup) out += c
+        }
+        return out.take(maxN)
+    }
+
+    private fun blobs(m: BooleanArray, w: Int, h: Int): List<SignCand> {
         // grow by 3 pixels in each direction (two passes)
         val t = BooleanArray(w * h)
         val R = 3
@@ -190,7 +207,7 @@ object SignNet {
             val x0 = (cx - side / 2).coerceIn(0, max(0, w - side)); val y0 = (cy - side / 2).coerceIn(0, max(0, h - side))
             out += SignCand(x0, y0, min(side, w - x0), min(side, h - y0), 3, false)
         }
-        return out.sortedByDescending { it.w * it.h }.take(maxN)
+        return out.sortedByDescending { it.w * it.h }.take(8)
     }
 
     /** Best sign for a candidate, trying several crop sizes (stops early when sure): class and probability, or null. */
