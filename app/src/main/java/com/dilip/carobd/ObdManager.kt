@@ -43,6 +43,7 @@ object ObdManager {
     @Volatile var vin = ""
     @Volatile var diagText = "Connect to the car, then choose an action above."
     @Volatile var busy = false
+    private val pendingDiag = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile var cycleMs = 0L
     @Volatile var logFile = ""
     @Volatile var engineOn = false
@@ -166,15 +167,18 @@ object ObdManager {
             diagText = "Not connected."
             return
         }
+        pendingDiag.incrementAndGet()
         busy = true
         diagText = "$title…"
         jobs.add { e ->
             diagText = try {
+                diagText = "$title…"
                 block(e)
             } catch (ex: Exception) {
                 "Error: ${ex.message}"
             }
-            busy = false
+            // stay busy while other diagnostic jobs are still queued
+            busy = pendingDiag.decrementAndGet() > 0
         }
     }
 
@@ -252,6 +256,7 @@ object ObdManager {
             if (!Prefs.roadAssist && (!Prefs.backgroundWatch || userDisconnected)) try { app.stopService(Intent(app, ObdService::class.java)) } catch (_: Exception) {}
             else if (!Prefs.roadAssist) ObdService.update(app, AppInfo.NAME, "Waiting for the car – will connect automatically")
             if (!status.startsWith("Error")) status = "Disconnected"
+            jobs.clear(); pendingDiag.set(0)
             busy = false
             engineOn = false
             state = State.DISCONNECTED

@@ -269,6 +269,8 @@ class SimulationTest : SimBase() {
         for (k in listOf("Dash", "Health", "Live", "Car", "HUD", "Battery", "Perf")) monkey(k, 25)
 
         Report.head("4b. Corrections while cruising at 50 km/h")
+        waitFor(20_000) { !ObdManager.busy }
+        Report.info("Before correction: speed ${ObdManager.values[0x0D]}, engineOn=${ObdManager.engineOn}, busy=${ObdManager.busy}, emu ignition=${emu?.ignition}")
         Prefs.speedCorrPct = 10.0
         waitFor(4000) { (ObdManager.values[0x0D] ?: 0.0) > 54 }
         val cs = ObdManager.values[0x0D] ?: 0.0
