@@ -24,7 +24,7 @@ object SignVision {
     const val FW = 320
     private const val DW = 12
     private const val DH = 16
-    private const val FP = 10
+    private const val FP = 12
     val LIMITS = setOf(10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 120, 130)
 
     /** NV21 camera frame → small upright ARGB image (width, height). */
@@ -149,16 +149,19 @@ object SignVision {
     }
 
     /** Reads the number on a round red-ring speed-limit sign, or null when it is not one. */
+    @Volatile var why = ""
+    private fun fail(w: String): LimitRead? { why = w; return null }
+
     fun readLimit(px: IntArray, w: Int, h: Int, c: SignCand): LimitRead? {
-        if (!c.ring || c.kind != 0) return null
+        if (!c.ring || c.kind != 0) return fail("1")
         val s = max(c.w, c.h)
         val cx = c.x + c.w / 2; val cy = c.y + c.h / 2
-        val half = (s * 0.36).toInt()
+        val half = (s * 0.35).toInt()
         val x0 = (cx - half).coerceAtLeast(0); val x1 = (cx + half).coerceAtMost(w - 1)
         val y0 = (cy - half).coerceAtLeast(0); val y1 = (cy + half).coerceAtMost(h - 1)
         val iw = x1 - x0 + 1; val ih = y1 - y0 + 1
-        if (iw < 14 || ih < 14) return null
-        val rad2 = (s * 0.38) * (s * 0.38)
+        if (iw < 14 || ih < 14) return fail("2")
+        val rad2 = (s * 0.35) * (s * 0.35)
         val gray = IntArray(iw * ih); val inside = BooleanArray(iw * ih)
         val hist = IntArray(256); var n = 0
         for (y in 0 until ih) for (x in 0 until iw) {
@@ -167,7 +170,7 @@ object SignVision {
                 val g = luma(px[(y0 + y) * w + x0 + x]); gray[y * iw + x] = g; inside[y * iw + x] = true; hist[g]++; n++
             }
         }
-        if (n < 100) return null
+        if (n < 100) return fail("3")
         // Otsu threshold
         var sum = 0L; for (i in 0..255) sum += i.toLong() * hist[i]
         var wb = 0; var sb = 0L; var best = 0.0; var thr = 128
@@ -179,7 +182,7 @@ object SignVision {
             val v = wb.toDouble() * wf * (mb - mf) * (mb - mf)
             if (v > best) { best = v; thr = t }
         }
-        if (thr > 200 || thr < 20) return null
+        if (thr > 200 || thr < 20) return fail("4")
         val dark = BooleanArray(iw * ih) { inside[it] && gray[it] <= thr }
         // dark components = digits
         val seen = BooleanArray(iw * ih); val stack = IntArray(iw * ih)
@@ -200,14 +203,14 @@ object SignVision {
             val bh = b1 - b0 + 1; val bw = a1 - a0 + 1
             if (bh >= s * 0.2 && bh <= s * 0.66 && bw >= 2 && bw <= s * 0.5 && cnt >= 8) boxes += Box(a0, b0, a1, b1, cnt)
         }
-        if (boxes.size !in 2..3) return null
+        if (boxes.size !in 2..3) return fail("boxes=${boxes.size} thr=$thr n=$n")//("5")
         boxes.sortBy { it.x0 }
         // digits must sit on one line and have similar height
         val hMax = boxes.maxOf { it.y1 - it.y0 + 1 }; val hMin = boxes.minOf { it.y1 - it.y0 + 1 }
-        if (hMin < hMax * 0.75) return null
+        if (hMin < hMax * 0.75) return fail("heights $hMin..$hMax")
         var value = 0; var score = 0.0
         for (b in boxes) {
-            val g = normDigit(dark, iw, ih, b.x0, b.y0, b.x1, b.y1) ?: return null
+            val g = normDigit(dark, iw, ih, b.x0, b.y0, b.x1, b.y1) ?: return fail("7")
             var bestD = -1; var bestS = 0.0
             for ((d, t) in templates) {
                 var same = 0
@@ -215,11 +218,11 @@ object SignVision {
                 val sc = same.toDouble() / g.size
                 if (sc > bestS) { bestS = sc; bestD = d }
             }
-            if (bestD < 0 || bestS < 0.74) return null
+            if (bestD < 0 || bestS < 0.74) return fail("digit ${bestD} score=${"%.2f".format(bestS)} boxes=${boxes.size} thr=$thr")
             value = value * 10 + bestD; score += bestS
         }
         score /= boxes.size
-        if (value !in LIMITS || score < 0.78) return null
+        if (value !in LIMITS || score < 0.78) return fail("value=$value score=${"%.2f".format(score)}")
         return LimitRead(value, score)
     }
 
@@ -228,9 +231,12 @@ object SignVision {
     /** Brightness- and size-independent fingerprint of the sign (10×10 colour thumbnail, centred and unit length). */
     fun fingerprint(px: IntArray, w: Int, h: Int, c: SignCand): FloatArray {
         val f = FloatArray(FP * FP * 3)
+        // central 70 % only: the border looks alike on many signs, the symbol inside tells them apart
+        val ox = c.x + (c.w * 0.15).toInt(); val oy = c.y + (c.h * 0.15).toInt()
+        val cw = max(FP, (c.w * 0.7).toInt()); val chh = max(FP, (c.h * 0.7).toInt())
         for (ty in 0 until FP) for (tx in 0 until FP) {
-            val sx0 = c.x + tx * c.w / FP; val sx1 = max(sx0 + 1, c.x + (tx + 1) * c.w / FP)
-            val sy0 = c.y + ty * c.h / FP; val sy1 = max(sy0 + 1, c.y + (ty + 1) * c.h / FP)
+            val sx0 = ox + tx * cw / FP; val sx1 = max(sx0 + 1, ox + (tx + 1) * cw / FP)
+            val sy0 = oy + ty * chh / FP; val sy1 = max(sy0 + 1, oy + (ty + 1) * chh / FP)
             var r = 0L; var g = 0L; var b = 0L; var t = 0
             for (y in sy0 until min(sy1, h)) for (x in sx0 until min(sx1, w)) { val p = px[y * w + x]; r += p shr 16 and 0xFF; g += p shr 8 and 0xFF; b += p and 0xFF; t++ }
             if (t == 0) t = 1

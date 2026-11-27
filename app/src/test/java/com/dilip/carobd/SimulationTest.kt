@@ -672,7 +672,7 @@ class SignVisionTest : SimBase() {
             val (px, w, h) = scene { limitSign(it, 160f, 120f, rr, v, tf, br) }
             val cs = SignVision.detect(px, w, h)
             val rd = cs.firstNotNullOfOrNull { SignVision.readLimit(px, w, h, it) }
-            if (rd?.value == v) okN++ else Report.bad("Limit $v (r=$rr br=$br) read as ${rd?.value} from ${cs.size} candidate(s)")
+            if (rd?.value == v) okN++ else Report.bad("Limit $v (r=$rr br=$br) read as ${rd?.value} from ${cs.size} candidate(s): ${SignVision.why}")
         }
         if (okN == tot) Report.ok("Offline digit reading: $okN of $tot synthetic limit signs read correctly") else Report.bad("Digit reading: only $okN of $tot correct")
         // teach once
