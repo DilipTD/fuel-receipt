@@ -40,8 +40,10 @@ class CustomPid(
 
 object Prefs {
     private lateinit var sp: SharedPreferences
+    private var spApp: Context? = null
     fun init(ctx: Context) {
-        if (!::sp.isInitialized) sp = ctx.applicationContext.getSharedPreferences("car_obd", Context.MODE_PRIVATE)
+        val app = ctx.applicationContext
+        if (!::sp.isInitialized || spApp !== app) { sp = app.getSharedPreferences("car_obd", Context.MODE_PRIVATE); spApp = app }
     }
 
     private fun dbl(k: String, def: Double) = sp.getString(k, null)?.toDoubleOrNull() ?: def
