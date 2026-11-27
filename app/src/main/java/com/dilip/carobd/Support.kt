@@ -130,6 +130,15 @@ object Prefs {
         set(v) = putB("notifyDrive", v)
     var coolantMax: Double get() = dbl("coolMax", 105.0)
         set(v) = putD("coolMax", v)
+    /** Vehicle class used to pick the right road speed limit: Car, Truck or Bus. Stored per vehicle. */
+    fun vehicleClass(id: Long): String = sp.getString("vclass_$id", "Car") ?: "Car"
+    fun setVehicleClass(id: Long, c: String) = sp.edit().putString("vclass_$id", c).apply()
+    var welcomed: Boolean
+        get() = sp.getBoolean("welcomed", false)
+        set(v) = sp.edit().putBoolean("welcomed", v).apply()
+    var permsPrompted: Boolean
+        get() = sp.getBoolean("permsPrompted", false)
+        set(v) = sp.edit().putBoolean("permsPrompted", v).apply()
     fun askedPerm(k: String) = sp.getBoolean("asked_$k", false)
     fun markAskedPerm(k: String) = sp.edit().putBoolean("asked_$k", true).apply()
     var mqttOn: Boolean get() = b("mqttOn", false)

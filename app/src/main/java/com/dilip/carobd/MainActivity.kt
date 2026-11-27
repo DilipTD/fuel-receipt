@@ -148,14 +148,18 @@ class MainActivity : Activity() {
         root.addView(navWrap)
         val frame = FrameLayout(this)
         frame.addView(root, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        val showWelcome = !Prefs.welcomed
         val splash = buildSplash()
-        frame.addView(splash, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        if (showWelcome) frame.addView(splash, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         setContentView(frame)
         Theme.applyRoot(this, root)
         rootRef = root
-        handler.postDelayed({
-            splash.animate().alpha(0f).setDuration(450).withEndAction { splash.visibility = View.GONE }.start()
-        }, if (savedInstanceState == null) 1700L else 0L)
+        if (showWelcome) {
+            Prefs.welcomed = true
+            handler.postDelayed({
+                splash.animate().alpha(0f).setDuration(450).withEndAction { splash.visibility = View.GONE }.start()
+            }, if (savedInstanceState == null) 2200L else 0L)
+        }
 
         pages["Connect"] = ConnectPage(this)
         pages["Home"] = HomePage(this)
@@ -196,7 +200,7 @@ class MainActivity : Activity() {
         val firstRun = Prefs.lastAddr.isEmpty() && Prefs.lastType != 2
         show(if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
         intent?.getStringExtra("open")?.let { show(it) }
-        if (Legal.needsConsent(this)) Legal.consent(this) { requestPerms() } else requestPerms()
+        if (Legal.needsConsent(this)) Legal.consent(this) { requestPermsOnce() } else requestPermsOnce()
         Maint.schedule(this)
         Mqtt.ensureStarted(applicationContext)
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
@@ -291,6 +295,13 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) l += Manifest.permission.POST_NOTIFICATIONS
         if (Build.VERSION.SDK_INT <= 28) l += Manifest.permission.WRITE_EXTERNAL_STORAGE
         return l.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
+    }
+
+    /** Asks for the permissions only the first time after installation; later the Permissions page or a feature asks if needed. */
+    private fun requestPermsOnce() {
+        if (Prefs.permsPrompted) return
+        Prefs.permsPrompted = true
+        requestPerms()
     }
 
     fun requestPerms() {

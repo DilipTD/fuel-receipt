@@ -26,7 +26,7 @@ object RoadAssist {
     class Hazard(val kind: String, val lat: Double, val lon: Double, val label: String, val mine: Boolean = false, val adv: Int = 0)
     class Next(val limit: Int, val dist: Int, val estimated: Boolean, val road: String)
     /** [fl] bits: 1 lit, 2 sidewalk, 4 unpaved, 8 roundabout, bits 8-11 lane count. */
-    class Way(val id: Long, val name: String, val ref: String, val hw: String, val limit: Int, val oneway: Boolean, val pts: DoubleArray, val fl: Int = 0) {
+    class Way(val id: Long, val name: String, val ref: String, val hw: String, val limit: Int, val oneway: Boolean, val pts: DoubleArray, val fl: Int = 0, val hgv: Int = -1, val bus: Int = -1) {
         val lit: Boolean get() = fl and 1 != 0
         val sidewalk: Boolean get() = fl and 2 != 0
         val unpaved: Boolean get() = fl and 4 != 0
@@ -112,7 +112,18 @@ object RoadAssist {
     private var camMap: HashMap<Long, Int>? = null
 
     /** After a restore: forget cached corrections so the restored ones are used. */
-    fun reloadUserData() { camMap = null; hazT = 0L; lastMatchT = 0L }
+    fun reloadUserData() { camMap = null; hazT = 0L; lastMatchT = 0L; synchronized(estCache) { estCache.clear() }; info = null; curWay = 0L }
+
+    /** Car, Truck or Bus – from the active vehicle in the Garage. */
+    private fun vclass(): String = try { Prefs.vehicleClass(ObdManager.vehicle.id) } catch (_: Throwable) { "Car" }
+    private const val TRUCK_CAP = 80
+
+    /** The marked limit of a way for the current vehicle class (0 or less = none). */
+    private fun markedFor(w: Way, cls: String): Int = when (cls) {
+        "Truck" -> if (w.hgv > 0) w.hgv else if (w.limit > 0) min(w.limit, TRUCK_CAP) else -1
+        "Bus" -> if (w.bus > 0) w.bus else if (w.hgv > 0) w.hgv else w.limit
+        else -> w.limit
+    }
 
     private fun cams(): HashMap<Long, Int> = camMap ?: HashMap<Long, Int>().also { m ->
         try { val o = JSONObject(Prefs.roadCam); for (k in o.keys()) m[k.toLong()] = o.getInt(k) } catch (_: Exception) {}
@@ -196,7 +207,7 @@ object RoadAssist {
                 for (k in 0 until wa.length()) {
                     val w = wa.getJSONObject(k); val p = w.getJSONArray("p")
                     ways += Way(w.getLong("i"), w.optString("n"), w.optString("f"), w.optString("h"), w.optInt("l", -1), w.optInt("o") == 1,
-                        DoubleArray(p.length()) { p.getDouble(it) }, w.optInt("x", 0))
+                        DoubleArray(p.length()) { p.getDouble(it) }, w.optInt("x", 0), w.optInt("lh", -1), w.optInt("lb", -1))
                 }
                 val hz = ArrayList<Hazard>(); val ha = o.getJSONArray("hz")
                 for (k in 0 until ha.length()) { val h = ha.getJSONObject(k); hz += Hazard(h.getString("k"), h.getDouble("a"), h.getDouble("o"), h.optString("b", labelFor(h.getString("k")))) }
@@ -215,7 +226,7 @@ object RoadAssist {
                 val wa = JSONArray()
                 for (w in t.ways) {
                     val p = JSONArray(); w.pts.forEach { p.put(Math.round(it * 1e5) / 1e5) }
-                    wa.put(JSONObject().put("i", w.id).put("n", w.name).put("f", w.ref).put("h", w.hw).put("l", w.limit).put("o", if (w.oneway) 1 else 0).put("x", w.fl).put("p", p))
+                    wa.put(JSONObject().put("i", w.id).put("n", w.name).put("f", w.ref).put("h", w.hw).put("l", w.limit).put("o", if (w.oneway) 1 else 0).put("x", w.fl).put("lh", w.hgv).put("lb", w.bus).put("p", p))
                 }
                 val ha = JSONArray()
                 t.hz.forEach { ha.put(JSONObject().put("k", it.kind).put("a", it.lat).put("o", it.lon).put("b", it.label)) }
@@ -428,13 +439,15 @@ object RoadAssist {
                 if (lite && g.length() > 3) pts = thin(pts)
                 val ow = tags.optString("oneway").let { it == "yes" || it == "1" || it == "true" } || tags.optString("junction") == "roundabout"
                 val lim = parseLimit(tags.optString("maxspeed").ifBlank { tags.optString("maxspeed:forward") }) ?: -1
+                val hgv = parseLimit(tags.optString("maxspeed:hgv").ifBlank { tags.optString("maxspeed:hgv:forward") }) ?: -1
+                val bus = parseLimit(tags.optString("maxspeed:bus").ifBlank { tags.optString("maxspeed:bus:forward") }) ?: -1
                 var fl = 0
                 if (tags.optString("lit") == "yes") fl = fl or 1
                 if (listOf("sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right").any { k -> tags.optString(k).let { it.isNotEmpty() && it != "no" && it != "none" } }) fl = fl or 2
                 if (tags.optString("surface") in setOf("unpaved", "gravel", "dirt", "ground", "sand", "earth", "mud", "grass", "compacted", "fine_gravel")) fl = fl or 4
                 if (tags.optString("junction") == "roundabout") fl = fl or 8
                 fl = fl or ((tags.optString("lanes").toIntOrNull() ?: 0).coerceIn(0, 15) shl 8)
-                ways += Way(e.getLong("id"), tags.optString("name"), tags.optString("ref"), tags.optString("highway"), lim, ow, pts, fl)
+                ways += Way(e.getLong("id"), tags.optString("name"), tags.optString("ref"), tags.optString("highway"), lim, ow, pts, fl, hgv, bus)
             } else {
                 val nl = e.optDouble("lat", Double.NaN); val no = e.optDouble("lon", Double.NaN)
                 if (nl.isNaN()) continue
@@ -675,19 +688,31 @@ object RoadAssist {
         val fix = fixes().optInt(w.id.toString(), -1).takeIf { it > 0 }
         if (fix != null) return Lim(fix, 100, "Set by you", "you")
         cams()[w.id]?.let { return Lim(it, 90, "Read from a road sign by the camera", "cam") }
-        if (w.limit > 0) return Lim(w.limit, 95, "Marked on the map (OpenStreetMap)", "osm")
-        return synchronized(estCache) { estCache.getOrPut(w.id) { estimateFor(w, near, snap) } }
+        val cls = vclass()
+        val m = markedFor(w, cls)
+        if (m > 0) {
+            val why = when {
+                cls == "Truck" && w.hgv > 0 -> "Marked on the map for trucks (OpenStreetMap)"
+                cls == "Truck" && w.limit > m -> "Marked ${w.limit} km/h for cars; capped for trucks"
+                cls == "Bus" && w.bus > 0 -> "Marked on the map for buses (OpenStreetMap)"
+                cls == "Bus" && w.hgv > 0 -> "Marked on the map for heavy vehicles (OpenStreetMap)"
+                else -> "Marked on the map (OpenStreetMap)"
+            }
+            return Lim(m, if (cls != "Car" && w.limit > 0 && m == w.limit && w.hgv <= 0 && w.bus <= 0) 90 else 95, why, "osm")
+        }
+        val key = w.id * 4 + (if (cls == "Truck") 1 else if (cls == "Bus") 2 else 0)
+        return synchronized(estCache) { estCache.getOrPut(key) { estimateFor(w, near, snap, cls) } }
     }
 
     private fun region(la: Double, lo: Double) = if (la in 6.0..36.0 && lo in 68.0..98.0) "IN" else "XX"
 
     /** Estimated limit: same road nearby, else a regional default for the road type in built-up or open areas. */
-    private fun estimateFor(w: Way, near: Int, snap: List<Tile>): Lim {
+    private fun estimateFor(w: Way, near: Int, snap: List<Tile>, vc: String = "Car"): Lim {
         val cls = w.hw.removeSuffix("_link")
         // 1. a nearby section of the same road, or a connected road of the same class, that has a marked limit
         var bestLim = -1; var bestD = 1200.0; var how = ""
         for (t in snap) for (o in t.ways) {
-            if (o.id == w.id || o.limit <= 0 || o.hw.removeSuffix("_link") != cls) continue
+            if (o.id == w.id || markedFor(o, vc) <= 0 || o.hw.removeSuffix("_link") != cls) continue
             val same = (w.ref.isNotEmpty() && o.ref == w.ref) || (w.name.isNotEmpty() && o.name == w.name)
             val joined = o.pts.size >= 4 && w.pts.size >= 4 && (
                 Loc.dist(o.pts[0], o.pts[1], w.pts[0], w.pts[1]) < 0.004 || Loc.dist(o.pts[0], o.pts[1], w.pts[w.pts.size - 2], w.pts[w.pts.size - 1]) < 0.004 ||
@@ -695,7 +720,7 @@ object RoadAssist {
             if (!same && !joined) continue
             var dm = 1e9; var k = 0
             while (k < o.pts.size) { dm = min(dm, Loc.dist(lat, lon, o.pts[k], o.pts[k + 1]) * 1000); k += 2 }
-            if (dm < bestD) { bestD = dm; bestLim = o.limit; how = if (same) "road" else "connected road" }
+            if (dm < bestD) { bestD = dm; bestLim = markedFor(o, vc); how = if (same) "road" else "connected road" }
         }
         if (bestLim > 0) return Lim(bestLim, 70, "Same $how is marked $bestLim km/h about ${bestD.toInt()} m away", "est")
 
@@ -715,8 +740,11 @@ object RoadAssist {
         if (w.oneway && w.lanes >= 2 && (cls == "trunk" || cls == "primary") && !urban) { v = min(v + 10, 100); notes += "divided carriageway" }
         if (w.unpaved) { v = min(v, 30); notes += "unpaved" }
         if (w.roundabout) { v = 25; notes += "roundabout" }
+        if (vc == "Truck" && v > TRUCK_CAP) { v = TRUCK_CAP; notes += "truck" }
+        if (vc == "Truck" && inIn && !urban && (cls == "trunk" || cls == "primary") && v > 65) { v = 65; notes += "truck" }
+        if (vc == "Bus" && inIn && !urban && cls != "motorway" && v > 70) { v = 70; notes += "bus" }
         val area = if (urban) "built-up area" else "open road"
-        return Lim(v, if (urban || inIn) 45 else 40, "${if (inIn) "India" else "General"} default for ${w.hw.replace('_', ' ')} roads, $area" + if (notes.isNotEmpty()) " (${notes.joinToString(", ")})" else "", "est")
+        return Lim(v, if (urban || inIn) 45 else 40, "${if (inIn) "India" else "General"} default for ${w.hw.replace('_', ' ')} roads, $area${if (vc != "Car") ", for a ${vc.lowercase()}" else ""}" + if (notes.isNotEmpty()) " (${notes.joinToString(", ")})" else "", "est")
     }
 
     private fun refreshHazards() {

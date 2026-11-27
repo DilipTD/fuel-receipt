@@ -195,6 +195,11 @@ class GaragePage(a: MainActivity) : Page(a) {
             adapter = ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, Fuels.all.map { it.name })
             setSelection(Fuels.all.indexOfFirst { it.name == v.fuel }.coerceAtLeast(0))
         }
+        val vtypes = listOf("Car", "Truck", "Bus")
+        val vtype = Spinner(a).apply {
+            adapter = ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, listOf("Car / SUV / van", "Truck / heavy goods", "Bus"))
+            setSelection(vtypes.indexOf(if (v.id == 0L) "Car" else Prefs.vehicleClass(v.id)).coerceAtLeast(0))
+        }
         val disp = ui.edit("litres", v.dispL.toString(), true)
         val tank = ui.edit("litres / kg / kWh", v.tankL.toString(), true)
         val ve = ui.edit("0.80–0.90", v.ve.toString(), true)
@@ -234,7 +239,7 @@ class GaragePage(a: MainActivity) : Page(a) {
         }
         applyFuel(v.fuel)
         rawFormDialog(if (v.id == 0L) "Add vehicle" else "Edit ${v.name}", listOf(
-            labeledRow("Name", name), labeledRow("Make", make), labeledRow("Model", model), labeledRow("Year", year), labeledRow("Fuel type", fuel),
+            labeledRow("Name", name), labeledRow("Make", make), labeledRow("Model", model), labeledRow("Year", year), labeledRow("Vehicle type (road speed limits)", vtype), labeledRow("Fuel type", fuel),
             rDisp, rTank, rVe, rPrice, rCorr, labeledRow("Odometer (km)", odo),
             labeledRow("Overspeed alert (km/h)", spd), rRpm,
             labeledRow("VIN", vinE), labeledRow("Registration number", regE)
@@ -249,6 +254,8 @@ class GaragePage(a: MainActivity) : Page(a) {
             spd.num()?.let { v.speedLimit = it.toInt() }; rpm.num()?.let { v.rpmLimit = it.toInt() }
             v.vin = vinE.text.toString().trim().uppercase().replace(" ", ""); v.regNo = regE.text.toString().trim().uppercase()
             Db.saveVehicle(v)
+            Prefs.setVehicleClass(v.id, vtypes[vtype.selectedItemPosition.coerceAtLeast(0)])
+            RoadAssist.reloadUserData()
             if (isNew) {
                 Maint.loadDefaults(v)
                 Prefs.activeVehicle = v.id

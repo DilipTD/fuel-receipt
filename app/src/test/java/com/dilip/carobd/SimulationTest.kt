@@ -948,3 +948,39 @@ class LargeTextTest : SimBase() {
         Report.flush("Large text")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class VehicleClassTest : SimBase() {
+    private fun at(lat: Double, lon: Double, hd: Float) {
+        val l = android.location.Location("gps").apply { latitude = lat; longitude = lon; bearing = hd; speed = 20f; accuracy = 4f; time = System.currentTimeMillis() }
+        RoadAssist.onLocation(l)
+    }
+    @Test
+    fun classes() {
+        prep(); launch()
+        Report.head("Speed limit by vehicle type")
+        if (Prefs.welcomed && Prefs.permsPrompted) Report.ok("Welcome screen and permission prompt are marked as shown after the first start") else Report.bad("First-run flags not set: welcomed=${Prefs.welcomed}, perms=${Prefs.permsPrompted}")
+        Prefs.roadAssist = true; Prefs.mapAuto = false
+        RoadAssist.clearSaved()
+        RoadAssist.installTile(RoadAssist.Tile(10.0, 77.0, 3000.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(21, "Tagged", "", "primary", 100, false, doubleArrayOf(10.0, 76.99, 10.0, 77.01), 0, 70, 60),
+            RoadAssist.Way(22, "Car only", "", "motorway", 100, false, doubleArrayOf(10.01, 76.99, 10.01, 77.01)),
+            RoadAssist.Way(23, "Untagged", "", "primary", -1, false, doubleArrayOf(10.02, 76.99, 10.02, 77.01))
+        ), emptyList()))
+        val id = ObdManager.vehicle.id
+        fun lim(la: Double, c: String): Int? { Prefs.setVehicleClass(id, c); RoadAssist.reloadUserData(); at(la, 77.0, 90f); return RoadAssist.info?.limit }
+        val a = lim(10.0, "Car"); val b = lim(10.0, "Truck"); val d = lim(10.0, "Bus")
+        if (a == 100 && b == 70 && d == 60) Report.ok("Road with truck and bus tags: car 100, truck 70, bus 60") else Report.bad("Tagged road gave car=$a truck=$b bus=$d")
+        val c1 = lim(10.01, "Car"); val c2 = lim(10.01, "Truck")
+        if (c1 == 100 && c2 == 80) Report.ok("Car-only 100 limit is capped to 80 for a truck") else Report.bad("Car-only road gave car=$c1 truck=$c2")
+        val e1 = lim(10.02, "Car"); val e2 = lim(10.02, "Truck")
+        if (e1 != null && e2 != null && e2 < e1) Report.ok("Estimated limit for a truck ($e2) is lower than for a car ($e1)") else Report.bad("Estimate car=$e1 truck=$e2")
+        Prefs.setVehicleClass(id, "Car")
+        showPage("Garage"); try { act.pages["Garage"]!!.refresh(); Report.ok("Garage renders") } catch (t: Throwable) { Report.bad("Garage crashed", t) }
+        RoadAssist.clearSaved(); Prefs.roadAssist = false
+        Report.flush("Vehicle class")
+    }
+}
