@@ -241,6 +241,12 @@ object RoadAssist {
     fun mapFile(): File? = file()?.takeIf { it.exists() && it.length() > 20 }
 
     /** After a restore: drop the in-memory copy so the restored file is read. */
+    /** Installs a restored map file at the place the app reads it from. */
+    fun installMapFile(src: File): Boolean = try {
+        val dst = file()
+        if (dst != null && src.length() > 20) { src.copyTo(dst, true); true } else false
+    } catch (_: Exception) { false }
+
     fun reloadMaps() { synchronized(tiles) { tiles.clear(); estCache.clear(); loaded = false }; info = null; next = null; curve = null; curWay = 0L; lastMatchT = 0L }
 
     fun savedInfo(): String {

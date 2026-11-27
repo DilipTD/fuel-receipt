@@ -99,8 +99,7 @@ object Backup {
         for (nm in gotDocs) try { File(ctx.cacheDir, "dc_$nm").let { it.copyTo(File(Docs.dir(ctx), nm), true); it.delete() } } catch (_: Exception) {}
         if (gotMaps) try {
             val mf = File(ctx.cacheDir, "restore_maps.json")
-            val dst = File(ctx.filesDir, "road_areas.json")
-            if (mf.length() > 20) { mf.copyTo(dst, true) }
+            RoadAssist.installMapFile(mf)
             mf.delete()
         } catch (_: Exception) {}
         settings?.let { all ->
