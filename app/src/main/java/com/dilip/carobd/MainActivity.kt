@@ -38,7 +38,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Signs" to "Sign camera", "Welcome" to "Welcome", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Signs" to "Sign camera", "Vision" to "Drive vision", "Welcome" to "Welcome", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
@@ -165,6 +165,7 @@ class MainActivity : Activity() {
         pages["Home"] = HomePage(this)
         pages["Road"] = RoadPage(this)
         pages["Signs"] = SignPage(this)
+        pages["Vision"] = VisionPage(this)
         pages["Backup"] = BackupPage(this)
         pages["TripReplay"] = TripReplayPage(this)
         pages["Dash"] = DashPage(this)
@@ -364,15 +365,15 @@ class MainActivity : Activity() {
         val hasBack = pages[name]?.parent != null
         backBtn.visibility = if (hasBack) View.VISIBLE else View.GONE
         logo.visibility = if (hasBack) View.GONE else View.VISIBLE
-        val full = name == "HUD" || name == "Car"
-        requestedOrientation = if (name == "Car") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        val full = name == "HUD" || name == "Car" || name == "Vision"
+        requestedOrientation = if (name == "Car" || name == "Vision") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (name != "Perf" && PerfMeter.mode != PerfMeter.Mode.IDLE) PerfMeter.cancel()
         if (full != inFull) { inFull = full; goFullScreen(full) }
         navWrap.visibility = if (full) View.GONE else View.VISIBLE
         header.visibility = if (full) View.GONE else View.VISIBLE
         pages[name]?.onShow()
-        if (prev != name && name != "Car" && name != "HUD") pages[name]?.view?.let { pv ->
+        if (prev != name && name != "Car" && name != "HUD" && name != "Vision") pages[name]?.view?.let { pv ->
             pv.alpha = 0f; pv.translationX = ui.dp(28).toFloat()
             pv.animate().alpha(1f).translationX(0f).setDuration(260).setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
             ui.staggerIn(pv)
@@ -403,7 +404,7 @@ class MainActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && (current == "Car" || current == "HUD")) goFullScreen(true)
+        if (hasFocus && (current == "Car" || current == "HUD" || current == "Vision")) goFullScreen(true)
     }
 
     private fun refresh() {

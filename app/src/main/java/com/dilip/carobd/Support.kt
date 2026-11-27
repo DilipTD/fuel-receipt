@@ -146,6 +146,16 @@ object Prefs {
     var signBuiltin: Boolean
         get() = sp.getBoolean("signBuiltin", true)
         set(v) = sp.edit().putBoolean("signBuiltin", v).apply()
+    var adasLane: Boolean
+        get() = sp.getBoolean("adasLane", true)
+        set(v) = sp.edit().putBoolean("adasLane", v).apply()
+    var adasFcw: Boolean
+        get() = sp.getBoolean("adasFcw", true)
+        set(v) = sp.edit().putBoolean("adasFcw", v).apply()
+    /** Where the car bonnet starts in the picture, in percent of the height (rows below are ignored). */
+    var adasHood: Int
+        get() = sp.getInt("adasHood", 86).coerceIn(60, 98)
+        set(v) = sp.edit().putInt("adasHood", v).apply()
     var welcomed: Boolean
         get() = sp.getBoolean("welcomed", false)
         set(v) = sp.edit().putBoolean("welcomed", v).apply()

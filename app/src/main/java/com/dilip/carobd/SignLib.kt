@@ -117,14 +117,14 @@ object SignEngine {
 
     fun hasPending() = pendingThumb != null && System.currentTimeMillis() - pendingAt < 6000
 
-    class Seen(val name: String, val kind: Char, val t: Long)
+    class Seen(val name: String, val kind: Char, val t: Long, val id: Int = -1)
     val recent = java.util.concurrent.CopyOnWriteArrayList<Seen>()
     private val bHist = ArrayDeque<Set<Int>>()
     private val bLast = HashMap<Int, Float>()
     var builtinSeen = 0
 
-    private fun note(name: String, kind: Char, now: Long) {
-        recent.add(0, Seen(name, kind, now)); while (recent.size > 8) recent.removeAt(recent.size - 1); builtinSeen++
+    private fun note(name: String, kind: Char, now: Long, id: Int = -1) {
+        recent.add(0, Seen(name, kind, now, id)); while (recent.size > 8) recent.removeAt(recent.size - 1); builtinSeen++
     }
 
     fun process(px: IntArray, w: Int, h: Int) {
@@ -182,7 +182,7 @@ object SignEngine {
         lastKnown = s.name; lastKnownAt = now
         if (now - (lastBuiltin[s.id] ?: 0L) < 45_000) return
         lastBuiltin[s.id] = now
-        note(s.name, s.kind, now)
+        note(s.name, s.kind, now, s.id)
         val heavyOnly = s.id == 10 || s.id == 16 || s.id == 42
         val heavy = try { Prefs.vehicleClass(ObdManager.vehicle.id) != "Car" } catch (_: Throwable) { false }
         when (s.kind) {

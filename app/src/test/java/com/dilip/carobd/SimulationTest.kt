@@ -1155,3 +1155,90 @@ class SignNetTest : SimBase() {
         Report.flush("Standard sign recogniser")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class AdasTest : SimBase() {
+    private fun road(shift: Int = 0, car: Int = 0, night: Boolean = false): Triple<IntArray, Int, Int> {
+        val w = 320; val h = 240
+        val bm = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bm)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        c.drawColor(if (night) android.graphics.Color.rgb(8, 10, 14) else android.graphics.Color.rgb(150, 180, 220))
+        p.color = if (night) android.graphics.Color.rgb(30, 32, 36) else android.graphics.Color.rgb(100, 100, 104)
+        val rp = android.graphics.Path().apply { moveTo(160f + shift, 110f); lineTo(330f, 240f); lineTo(-10f, 240f); close() }
+        c.drawPath(rp, p)
+        p.color = android.graphics.Color.rgb(235, 235, 235); p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 5f
+        if (!night) { c.drawLine(160f + shift, 110f, 70f + shift, 215f, p); c.drawLine(160f + shift, 110f, 250f + shift, 215f, p) }
+        else { p.color = android.graphics.Color.rgb(150, 150, 150); c.drawLine(160f + shift, 110f, 70f + shift, 215f, p); c.drawLine(160f + shift, 110f, 250f + shift, 215f, p) }
+        p.style = android.graphics.Paint.Style.FILL
+        if (car > 0) {
+            val cw = car; val cx = 160 + shift; val bottom = 190 - (60 - car).coerceAtLeast(0) / 2
+            if (!night) {
+                p.color = android.graphics.Color.rgb(15, 15, 18); c.drawRect(cx - cw / 2f - 2, bottom.toFloat(), cx + cw / 2f + 2, bottom + 6f, p)
+                p.color = android.graphics.Color.rgb(190, 190, 200); c.drawRect(cx - cw / 2f, bottom - cw * 0.7f, cx + cw / 2f, bottom.toFloat(), p)
+            } else {
+                p.color = android.graphics.Color.rgb(255, 30, 30)
+                c.drawRect(cx - cw / 2f, bottom - 10f, cx - cw / 2f + cw * 0.18f, bottom - 4f, p); c.drawRect(cx + cw / 2f - cw * 0.18f, bottom - 10f, cx + cw / 2f, bottom - 4f, p)
+            }
+        }
+        val px = IntArray(w * h); bm.getPixels(px, 0, w, 0, 0, w, h)
+        return Triple(px, w, h)
+    }
+
+    @Test
+    fun adas() {
+        prep(); launch()
+        Report.head("Driver assist (lane, vehicle, distance)")
+        Prefs.adasHood = 86; Prefs.adasLane = true; Prefs.adasFcw = true; Prefs.signSpeak = false
+        Adas.reset(); Adas.hfovDeg = 60.0
+        val (p0, w, h) = road()
+        for (i in 0 until 3) Adas.process(p0, w, h)
+        val ln = Adas.lane
+        if (ln != null) Report.ok("Lane lines found (left ${ln.xl.toInt()}, right ${ln.xr.toInt()} at the bottom)") else Report.bad("No lane found on a clear synthetic road")
+        if (Adas.departing == 0) Report.ok("Centred in the lane: no departure warning") else Report.bad("False departure warning while centred (${Adas.departing}, offset %.2f)".format(Adas.offset))
+        val (p1, _, _) = road(shift = 60)
+        for (i in 0 until 5) Adas.process(p1, w, h)
+        if (Adas.departing != 0) Report.ok("Drifting is flagged (offset %.2f, direction ${Adas.departing})".format(Adas.offset)) else Report.bad("Drift of 60 px not flagged (offset %.2f, lane=${Adas.lane != null})".format(Adas.offset))
+        Adas.reset()
+        val (p2, _, _) = road(car = 50)
+        for (i in 0 until 3) Adas.process(p2, w, h)
+        val v = Adas.veh
+        if (v != null && Math.abs((v.x + v.w / 2) - 160) < 25) Report.ok("Vehicle ahead found, about %.1f m (box width ${v.w}px)".format(v.dist)) else Report.bad("Vehicle ahead not found (veh=${v?.x},${v?.w})")
+        val (pn, _, _) = road(car = 50, night = true)
+        Adas.reset()
+        for (i in 0 until 3) Adas.process(pn, w, h)
+        if (Adas.veh != null && Adas.veh!!.night) Report.ok("Vehicle ahead found at night from its red lights, about %.1f m".format(Adas.veh!!.dist)) else Report.bad("Night vehicle not found")
+        // nearer vehicle gives a shorter distance
+        val (pf, _, _) = road(car = 30)
+        Adas.reset(); for (i in 0 until 3) Adas.process(pf, w, h)
+        val far = Adas.veh?.dist ?: 0.0
+        Adas.reset(); for (i in 0 until 3) Adas.process(p2, w, h)
+        val near = Adas.veh?.dist ?: 0.0
+        if (far > near && near > 0) Report.ok("Smaller car in the picture reads farther (%.1f m vs %.1f m)".format(far, near)) else Report.bad("Distance ordering wrong: far=$far near=$near")
+        // empty road
+        Adas.reset(); for (i in 0 until 4) Adas.process(p0, w, h)
+        if (Adas.veh == null && Adas.level == 0) Report.ok("Empty road: no vehicle and no warning") else Report.bad("Phantom vehicle on empty road")
+        // closing in: simulate shrinking distance with own speed
+        Adas.reset(); RoadAssist.speedKmh = 60.0
+        val t0 = System.currentTimeMillis()
+        var seen2 = false
+        for ((i, cw) in listOf(30, 36, 42, 50, 60, 72).withIndex()) { val (pp, _, _) = road(car = cw); Adas.process(pp, w, h, t0 + i * 450L); if (Adas.level >= 1) seen2 = true }
+        if (seen2) Report.ok("Closing in fast on a vehicle raises a warning (level ${Adas.level}, ttc %.1f s)".format(Adas.ttc)) else Report.bad("No warning while closing (ttc %.1f, dist %.1f)".format(Adas.ttc, Adas.veh?.dist ?: -1.0))
+        RoadAssist.speedKmh = 0.0
+        Report.info("Synthetic scenes only: real roads, glare, rain, faded lines and trucks will give lower accuracy. Pedestrian detection is not included.")
+        // icons + page
+        var icons = 0
+        val bm = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bm)
+        for (s in SignNet.KB) { try { SignIcon.draw(cv, s, 60f, 60f, 40f); icons++ } catch (t: Throwable) { Report.bad("Icon ${s.name} failed", t) } }
+        if (icons == SignNet.KB.size) Report.ok("Icons drawn for all $icons standard signs")
+        SignEngine.reset()
+        showPage("Vision")
+        try { act.pages["Vision"]!!.refresh(); Report.ok("Drive vision page renders (full screen, landscape)") } catch (t: Throwable) { Report.bad("Vision page crashed", t) }
+        act.pages["Vision"]!!.onHide()
+        Report.flush("Driver assist")
+    }
+}

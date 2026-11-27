@@ -95,6 +95,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Live data", Ui.ACC) { a.show("Live") },
             Triple("Road assistant", Ui.GOOD) { a.show("Road") },
             Triple("Sign camera", Ui.CYAN) { a.show("Signs") },
+            Triple("Drive vision", Ui.GOOD) { a.show("Vision") },
             Triple("Documents", Ui.CYAN) { a.show("Docs") },
             Triple("Backup & cloud", Ui.VIOLET) { a.show("Backup") },
             Triple("Reports", Ui.VIOLET) { a.show("Reports") },

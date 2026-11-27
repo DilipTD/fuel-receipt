@@ -139,6 +139,7 @@ class SignPage(a: MainActivity) : Page(a) {
         c.addView(startBtn, ui.lp(8))
         c.addView(ui.row(torchBtn, zoomBtn, fullBtn), ui.lp(6))
         overlay.onTap = { dt -> a.runOnUiThread { when (dt.state) { 2 -> if (SignEngine.hasPending()) teachDialog(null) else ui.toast("Hold steady on the sign for a moment, then tap again"); 4 -> ui.toast("Standard sign: ${dt.label}"); 1, 3 -> SignLib.entries.firstOrNull { it.name == dt.label || (dt.state == 3) && it.action == "ignore" }?.let { teachDialog(it) }; else -> ui.toast("Speed limit ${dt.label} read from the sign") } } }
+        c.addView(ui.btn("Drive vision – full screen, lanes, distance, signs", Ui.GOOD) { a.show("Vision") }, ui.lp(6))
         c.addView(statusTv, ui.lp(6))
         resultBox = ui.vbox()
         c.addView(resultBox, ui.lp(6))
