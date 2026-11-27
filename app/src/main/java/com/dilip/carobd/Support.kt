@@ -259,6 +259,12 @@ object Prefs {
     var signLib: String
         get() = sp.getString("signLib", "[]") ?: "[]"
         set(v) = sp.edit().putString("signLib", v).apply()
+    var mapRadiusKm: Int
+        get() = sp.getInt("mapRadiusKm", 50)
+        set(v) = sp.edit().putInt("mapRadiusKm", v).apply()
+    var mapAuto: Boolean
+        get() = sp.getBoolean("mapAuto", true)
+        set(v) = sp.edit().putBoolean("mapAuto", v).apply()
     var roadCam: String
         get() = sp.getString("roadCam", "{}") ?: "{}"
         set(v) = sp.edit().putString("roadCam", v).apply()

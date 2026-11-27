@@ -67,6 +67,8 @@ class RoadPage(a: MainActivity) : Page(a) {
     private lateinit var logBox: LinearLayout
     private lateinit var headTv: TextView
     private lateinit var mapTv: TextView
+    private lateinit var dlBar: android.widget.ProgressBar
+    private lateinit var dlTv: TextView
     private lateinit var basisTv: TextView
     private lateinit var speedBar: SpecBar
     private lateinit var nextBox: LinearLayout
@@ -132,15 +134,38 @@ class RoadPage(a: MainActivity) : Page(a) {
         box.addView(ui.section("Offline map", Ic.DATABASE))
         mapTv = ui.tv(RoadAssist.savedInfo(), 12.5f, Ui.DIM)
         box.addView(mapTv, ui.lp(4))
+        val radii = listOf(10, 25, 50, 100, 200)
+        val sp = android.widget.Spinner(a).apply {
+            adapter = android.widget.ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, radii.map { "Map radius $it km  (about ${RoadAssist.areasFor(it)} areas)" })
+            setSelection(radii.indexOf(Prefs.mapRadiusKm).coerceAtLeast(0))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(pr: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) { Prefs.mapRadiusKm = radii[pos] }
+                override fun onNothingSelected(pr: android.widget.AdapterView<*>?) {}
+            }
+        }
+        box.addView(sp, ui.lp(4))
+        dlBar = android.widget.ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
+        box.addView(dlBar, ui.lp(4))
+        dlTv = ui.tv("", 12.5f, Ui.WHITE, true).apply { visibility = View.GONE }
+        box.addView(dlTv, ui.lp(2))
         box.addView(ui.row(
-            ui.btn("Download this area", Ui.ACC) {
-                ui.toast("Downloading in the background – you can leave this screen. Progress shows in the status line.")
+            ui.btn("Download map", Ui.ACC) {
+                RoadAssist.downloadWide(Prefs.mapRadiusKm) { m -> ui.toast(m); mapTv.text = RoadAssist.savedInfo() }
+                ui.toast("Downloading in the background – you can leave this screen")
+                refresh()
+            },
+            ui.btn("Stop", Ui.CARD) { RoadAssist.cancelDownload() }), ui.lp(6))
+        box.addView(ui.row(
+            ui.btn("Town detail here", Ui.CARD) {
+                ui.toast("Downloading town detail in the background")
                 RoadAssist.downloadArea { m -> ui.toast(m); mapTv.text = RoadAssist.savedInfo() }
             },
             ui.btn("Clear saved maps", Ui.CARD) {
                 AlertDialog.Builder(a).setTitle("Clear saved maps?").setMessage("Road data will be downloaded again when needed.")
                     .setPositiveButton("Clear") { _, _ -> RoadAssist.clearSaved(); mapTv.text = RoadAssist.savedInfo() }.setNegativeButton("Cancel", null).show()
-            }), ui.lp(8))
+            }), ui.lp(6))
+        box.addView(ui.check("Download highway maps ahead automatically", Prefs.mapAuto).apply { setOnCheckedChangeListener { _, v -> Prefs.mapAuto = v } }, ui.lp(4))
+        box.addView(ui.tv("Highways, ramps and hazards are saved for the whole radius, so the limit is known before you get there and without internet. Town streets are saved in detail around where you drive. A 200 km map has many areas and can take an hour or more; it carries on in the background and continues where it stopped if interrupted.", 11.5f, Ui.DIM), ui.lp(4))
         box.addView(ui.section("Announcements", Ic.VOICE))
         logBox = ui.vbox(); box.addView(logBox)
 
@@ -214,7 +239,12 @@ class RoadPage(a: MainActivity) : Page(a) {
     override fun refresh() {
         if (!::sign.isInitialized) return
         val r = RoadAssist
-        if (::mapTv.isInitialized && r.status.startsWith("Downloading")) mapTv.text = r.status
+        if (::dlBar.isInitialized) {
+            if (r.dlBusy || r.status.startsWith("Downloading")) {
+                dlBar.visibility = View.VISIBLE; dlTv.visibility = View.VISIBLE
+                dlBar.progress = r.dlPct; dlTv.text = r.dlText.ifEmpty { r.status }
+            } else { dlBar.visibility = View.GONE; dlTv.visibility = View.GONE }
+        }
         val i = r.info
         val spd = r.speedKmh
         sign.limit = i?.limit; sign.estimated = i?.estimated == true

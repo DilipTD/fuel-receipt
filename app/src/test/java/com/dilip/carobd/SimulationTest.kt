@@ -702,3 +702,31 @@ class SignVisionTest : SimBase() {
         Report.flush("Sign camera")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class WideMapTest : SimBase() {
+    @Test
+    fun wideMap() {
+        prep(); launch()
+        Report.head("Wide highway map")
+        Prefs.roadAssist = true; Prefs.mapAuto = false
+        RoadAssist.clearSaved()
+        val n200 = RoadAssist.areasFor(200); val n50 = RoadAssist.areasFor(50)
+        if (n200 in 300..800 && n50 in 20..80) Report.ok("Grid size: 50 km = $n50 areas, 200 km = $n200 areas") else Report.bad("Unexpected grid: 50 km=$n50, 200 km=$n200")
+        RoadAssist.installTile(RoadAssist.Tile(10.0, 77.0, 12000.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(11, "Highway", "NH44", "trunk", -1, false, doubleArrayOf(10.0, 76.99, 10.0, 77.01))
+        ), emptyList(), true))
+        val l = android.location.Location("gps").apply { latitude = 10.0; longitude = 77.0; bearing = 90f; speed = 25f; accuracy = 5f; time = System.currentTimeMillis() }
+        RoadAssist.onLocation(l)
+        val i = RoadAssist.info
+        if (i?.road == "Highway" && i.limit != null) Report.ok("Wide highway map gives the road and limit with no town map (limit ${i.limit}, ${i.basis})") else Report.bad("Wide map not used: ${i?.road}")
+        if (RoadAssist.savedInfo().contains("wide highway")) Report.ok("Saved-map line shows the wide highway area: ${RoadAssist.savedInfo()}") else Report.bad("Saved info: ${RoadAssist.savedInfo()}")
+        showPage("Road")
+        try { act.pages["Road"]!!.refresh(); Report.ok("Road page renders with the download controls") } catch (e: Throwable) { Report.bad("Road page crashed", e) }
+        RoadAssist.clearSaved(); Prefs.roadAssist = false
+        Report.flush("Wide highway map")
+    }
+}

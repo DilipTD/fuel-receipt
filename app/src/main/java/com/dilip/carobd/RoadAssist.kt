@@ -40,7 +40,7 @@ object RoadAssist {
             minLa = a; maxLa = b; minLo = c; maxLo = d
         }
     }
-    class Tile(val la: Double, val lo: Double, val r: Double, val t: Long, val ways: List<Way>, val hz: List<Hazard>)
+    class Tile(val la: Double, val lo: Double, val r: Double, val t: Long, val ways: List<Way>, val hz: List<Hazard>, val lite: Boolean = false)
 
     @Volatile var info: Info? = null
     @Volatile var hazards: List<Hazard> = emptyList()
@@ -83,6 +83,9 @@ object RoadAssist {
     private const val FILE = "road_areas.json"
     private const val TILE_R = 1500.0
     private const val MAX_TILES = 40
+    private const val MAX_WIDE = 900
+    private const val WIDE_R = 12000.0
+    private val MAJOR_ROADS = "motorway|trunk|primary|secondary|motorway_link|trunk_link|primary_link|secondary_link"
     private const val FRESH_MS = 45L * 86_400_000L
     private val OK_ROADS = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 
@@ -194,7 +197,7 @@ object RoadAssist {
                 }
                 val hz = ArrayList<Hazard>(); val ha = o.getJSONArray("hz")
                 for (k in 0 until ha.length()) { val h = ha.getJSONObject(k); hz += Hazard(h.getString("k"), h.getDouble("a"), h.getDouble("o"), h.optString("b", labelFor(h.getString("k")))) }
-                tiles += Tile(o.getDouble("la"), o.getDouble("lo"), o.getDouble("r"), o.getLong("t"), ways, hz)
+                tiles += Tile(o.getDouble("la"), o.getDouble("lo"), o.getDouble("r"), o.getLong("t"), ways, hz, o.optInt("lt") == 1)
             }
         } catch (_: Exception) {
             tiles.clear()
@@ -213,7 +216,7 @@ object RoadAssist {
                 }
                 val ha = JSONArray()
                 t.hz.forEach { ha.put(JSONObject().put("k", it.kind).put("a", it.lat).put("o", it.lon).put("b", it.label)) }
-                ta.put(JSONObject().put("la", t.la).put("lo", t.lo).put("r", t.r).put("t", t.t).put("ways", wa).put("hz", ha))
+                ta.put(JSONObject().put("la", t.la).put("lo", t.lo).put("r", t.r).put("t", t.t).put("lt", if (t.lite) 1 else 0).put("ways", wa).put("hz", ha))
             }
             f.writeText(JSONObject().put("v", 1).put("tiles", ta).toString())
         } catch (_: Exception) {
@@ -224,22 +227,30 @@ object RoadAssist {
         synchronized(tiles) { loadTiles() }
         val kb = (file()?.length() ?: 0L) / 1024
         val n = synchronized(tiles) { tiles.size }
-        return if (n == 0) "No saved map yet – drive with internet, or download this area" else "$n saved area(s) · ${if (kb > 1024) "%.1f MB".format(kb / 1024.0) else "$kb KB"} · works offline"
+        val nl = synchronized(tiles) { tiles.count { it.lite } }
+        return if (n == 0) "No saved map yet – drive with internet, or download this area" else "$n saved area(s)${if (nl > 0) " ($nl wide highway)" else ""} · ${if (kb > 1024) "%.1f MB".format(kb / 1024.0) else "$kb KB"} · works offline"
     }
 
     fun clearSaved() { synchronized(tiles) { tiles.clear(); estCache.clear(); file()?.delete() }; info = null; next = null; curve = null }
 
-    private fun covered(la: Double, lo: Double, margin: Double, fresh: Boolean): Boolean = synchronized(tiles) {
+    /** [lite]: also count wide highway-only areas (they do not replace detailed town maps). */
+    private fun covered(la: Double, lo: Double, margin: Double, fresh: Boolean, lite: Boolean = false): Boolean = synchronized(tiles) {
         val now = System.currentTimeMillis()
-        tiles.any { (!fresh || now - it.t < FRESH_MS) && Loc.dist(la, lo, it.la, it.lo) * 1000 <= it.r - margin }
+        tiles.any { (lite || !it.lite) && (!fresh || now - it.t < FRESH_MS) && Loc.dist(la, lo, it.la, it.lo) * 1000 <= it.r - margin }
     }
 
-    private fun addTile(t: Tile) = synchronized(tiles) {
-        tiles.removeAll { Loc.dist(it.la, it.lo, t.la, t.lo) * 1000 < 300 }
+    private fun coveredWide(la: Double, lo: Double): Boolean = synchronized(tiles) {
+        val now = System.currentTimeMillis()
+        tiles.any { it.lite && now - it.t < FRESH_MS && Loc.dist(la, lo, it.la, it.lo) * 1000 <= it.r - 1500 }
+    }
+
+    private fun addTile(t: Tile, save: Boolean = true) = synchronized(tiles) {
+        tiles.removeAll { it.lite == t.lite && Loc.dist(it.la, it.lo, t.la, t.lo) * 1000 < (if (t.lite) 2500 else 300) }
         tiles += t
         estCache.clear()
-        while (tiles.size > MAX_TILES) tiles.remove(tiles.minByOrNull { it.t })
-        saveTiles()
+        while (tiles.count { !it.lite } > MAX_TILES) tiles.remove(tiles.filter { !it.lite }.minByOrNull { it.t })
+        while (tiles.count { it.lite } > MAX_WIDE) tiles.remove(tiles.filter { it.lite }.minByOrNull { it.t })
+        if (save) saveTiles()
     }
 
     /** Used by tests and offline import. */
@@ -272,9 +283,108 @@ object RoadAssist {
         }
     }
 
-    private fun fetchTile(la: Double, lo: Double, r: Double): Tile? {
+    /* ---------------- wide area download (highways, up to 200 km) and automatic prefetch ---------------- */
+
+    private val dlEx = Executors.newSingleThreadExecutor()
+    @Volatile var dlBusy = false
+    @Volatile var dlPct = 0
+    @Volatile var dlText = ""
+    @Volatile private var dlCancel = false
+    private var autoWideT = 0L
+
+    fun cancelDownload() { dlCancel = true }
+
+    fun isOnline(): Boolean = try {
+        val cm = ObdManager.app.getSystemService(android.net.ConnectivityManager::class.java)
+        val n = cm?.activeNetwork
+        n != null && cm.getNetworkCapabilities(n)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (_: Throwable) { false }
+
+    /** Number of 16 km areas needed for a radius. */
+    fun areasFor(radiusKm: Int): Int = wideGrid(0.0, 0.0, radiusKm).size
+
+    private fun wideGrid(la: Double, lo: Double, radiusKm: Int): List<Pair<Double, Double>> {
+        val step = 16000.0
+        val n = (radiusKm * 1000.0 / step).toInt() + 1
+        val out = ArrayList<Pair<Double, Double>>()
+        for (i in -n..n) for (j in -n..n) {
+            val dn = i * step; val de = j * step
+            if (sqrt(dn * dn + de * de) > radiusKm * 1000.0 + 4000.0) continue
+            out += (la + dn / 110540.0) to (lo + de / (111320.0 * cos(Math.toRadians(la))))
+        }
+        return out.sortedBy { Loc.dist(la, lo, it.first, it.second) }
+    }
+
+    /** Downloads all highways and highway hazards within [radiusKm] of here, in the background, with a percentage. Safe to repeat: finished areas are skipped. */
+    fun downloadWide(radiusKm: Int, cb: (String) -> Unit) {
+        if (dlBusy) { cb("A map download is already running"); return }
+        val la = if (lastFix != 0L) lat else Loc.here(ObdManager.app, true)?.first
+        val lo = if (lastFix != 0L) lon else Loc.here(ObdManager.app, true)?.second
+        if (la == null || lo == null) { cb("No position yet – wait for GPS"); return }
+        if (!isOnline()) { cb("No internet connection"); return }
+        dlBusy = true; dlCancel = false; dlPct = 0; dlText = "Starting…"
+        try { ObdService.start(ObdManager.app) } catch (_: Throwable) {}
+        dlEx.execute {
+            var ok = 0; var fail = 0; var skipped = 0; var streak = 0
+            val grid = wideGrid(la, lo, radiusKm)
+            try {
+                // town detail around you first, so the screen works at once
+                try { fetchTile(la, lo, TILE_R)?.let { addTile(it); lastMatchT = 0L } } catch (_: Exception) {}
+                for ((i, p) in grid.withIndex()) {
+                    if (dlCancel) break
+                    dlPct = (i * 100 / grid.size)
+                    dlText = "Downloading $dlPct% · area ${i + 1} of ${grid.size}"
+                    if (coveredWide(p.first, p.second)) { skipped++; continue }
+                    val t = try { fetchTile(p.first, p.second, WIDE_R, true) } catch (_: Exception) { null }
+                    if (t != null) { addTile(t, save = ok % 6 == 5); ok++; streak = 0; lastMatchT = 0L }
+                    else { fail++; streak++; if (streak >= 6) break }
+                    try { Thread.sleep(900) } catch (_: Exception) {}
+                }
+            } finally {
+                synchronized(tiles) { saveTiles() }
+                dlBusy = false; dlPct = if (fail == 0 && !dlCancel) 100 else dlPct; dlText = ""
+            }
+            val msg = when {
+                dlCancel -> "Stopped. $ok new areas saved; tap Download again to continue."
+                streak >= 6 -> "Stopped – the map servers are not answering (${lastErr.ifEmpty { "busy" }}). $ok saved; try again later, it continues where it stopped."
+                fail > 0 -> "Done with $fail areas missing (servers busy). Tap Download again to finish them."
+                else -> "Map ready: ${ok + skipped} areas, radius $radiusKm km. Works offline."
+            }
+            main.post { cb(msg) }
+        }
+    }
+
+    /** Keeps highway maps ahead of you so the road is known before you reach it. */
+    private fun autoWide() {
+        if (!Prefs.mapAuto || dlBusy) return
+        val now = System.currentTimeMillis()
+        if (now < autoWideT) return
+        var cLa = lat; var cLo = lon
+        if (coveredWide(lat, lon)) {
+            val h = heading ?: return
+            if (speedKmh < 25) return
+            val d = 14000.0
+            cLa = lat + d * cos(Math.toRadians(h.toDouble())) / 110540.0
+            cLo = lon + d * sin(Math.toRadians(h.toDouble())) / (111320.0 * cos(Math.toRadians(lat)))
+            if (coveredWide(cLa, cLo)) return
+        }
+        if (!isOnline()) return
+        autoWideT = now + 45_000
+        dlBusy = true; dlText = "Updating highway map ahead…"; dlPct = 0
+        dlEx.execute {
+            try {
+                val t = fetchTile(cLa, cLo, WIDE_R, true)
+                if (t != null) { addTile(t); lastMatchT = 0L; autoWideT = 0L } else autoWideT = System.currentTimeMillis() + 120_000
+            } catch (_: Exception) { autoWideT = System.currentTimeMillis() + 120_000 }
+            finally { dlBusy = false; dlText = "" }
+        }
+    }
+
+    private fun fetchTile(la: Double, lo: Double, r: Double, lite: Boolean = false): Tile? {
         val ri = r.toInt()
-        val q = "[out:json][timeout:50];(way(around:$ri,$la,$lo)[\"highway\"~\"^($OK_ROADS)\$\"];" +
+        val q = if (lite) "[out:json][timeout:90];(way(around:$ri,$la,$lo)[\"highway\"~\"^($MAJOR_ROADS)\$\"];" +
+                "node(around:$ri,$la,$lo)[\"highway\"=\"speed_camera\"];node(around:$ri,$la,$lo)[\"traffic_calming\"~\"bump|hump|table|cushion\"];" +
+                "node(around:$ri,$la,$lo)[\"railway\"=\"level_crossing\"];node(around:$ri,$la,$lo)[\"barrier\"=\"toll_booth\"];);out tags geom;" else "[out:json][timeout:50];(way(around:$ri,$la,$lo)[\"highway\"~\"^($OK_ROADS)\$\"];" +
                 "node(around:$ri,$la,$lo)[\"highway\"=\"speed_camera\"];node(around:$ri,$la,$lo)[\"traffic_calming\"];" +
                 "node(around:$ri,$la,$lo)[\"amenity\"~\"^(school|hospital)\$\"];node(around:$ri,$la,$lo)[\"railway\"=\"level_crossing\"];" +
                 "node(around:$ri,$la,$lo)[\"barrier\"=\"toll_booth\"];);out tags geom;"
@@ -287,7 +397,7 @@ object RoadAssist {
                 try {
                     val c = URL(host).openConnection() as HttpURLConnection
                     c.requestMethod = "POST"; c.doOutput = true
-                    c.connectTimeout = 10000; c.readTimeout = 50000
+                    c.connectTimeout = 10000; c.readTimeout = if (lite) 100000 else 50000
                     c.setRequestProperty("User-Agent", "CarOBDPro/${AppInfo.VERSION} (Android; personal OBD app)")
                     c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                     c.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
@@ -310,8 +420,9 @@ object RoadAssist {
             if (e.getString("type") == "way") {
                 val g = e.optJSONArray("geometry") ?: continue
                 if (g.length() < 2) continue
-                val pts = DoubleArray(g.length() * 2)
+                var pts = DoubleArray(g.length() * 2)
                 for (k in 0 until g.length()) { val p = g.getJSONObject(k); pts[k * 2] = p.getDouble("lat"); pts[k * 2 + 1] = p.getDouble("lon") }
+                if (lite && g.length() > 3) pts = thin(pts)
                 val ow = tags.optString("oneway").let { it == "yes" || it == "1" || it == "true" } || tags.optString("junction") == "roundabout"
                 val lim = parseLimit(tags.optString("maxspeed").ifBlank { tags.optString("maxspeed:forward") }) ?: -1
                 var fl = 0
@@ -335,7 +446,20 @@ object RoadAssist {
                 }
             }
         }
-        return Tile(la, lo, r, System.currentTimeMillis(), ways, hz)
+        return Tile(la, lo, r, System.currentTimeMillis(), ways, hz, lite)
+    }
+
+    /** Drop points closer than 12 m to the previous kept one (keeps bends, shrinks the wide highway maps). */
+    private fun thin(p: DoubleArray): DoubleArray {
+        val o = ArrayList<Double>(); o += p[0]; o += p[1]
+        var la = p[0]; var lo = p[1]
+        var i = 2
+        while (i < p.size - 2) {
+            if (Loc.dist(la, lo, p[i], p[i + 1]) * 1000 >= 12) { o += p[i]; o += p[i + 1]; la = p[i]; lo = p[i + 1] }
+            i += 2
+        }
+        o += p[p.size - 2]; o += p[p.size - 1]
+        return o.toDoubleArray()
     }
 
     /* ---------------- live tracking ---------------- */
@@ -350,6 +474,7 @@ object RoadAssist {
         if (l.hasBearing() && speedKmh > 4) heading = l.bearing
         synchronized(tiles) { loadTiles() }
         maybeFetch()
+        autoWide()
         matchRoad(l)
         refreshHazards()
         updateStats()
@@ -375,10 +500,10 @@ object RoadAssist {
             // already covered here: prefetch the area ahead while driving
             val h = heading ?: return
             if (speedKmh < 20) return
-            val d = 700.0
+            val d = 1100.0
             val aLa = lat + d * cos(Math.toRadians(h.toDouble())) / 110540.0
             val aLo = lon + d * sin(Math.toRadians(h.toDouble())) / (111320.0 * cos(Math.toRadians(lat)))
-            if (covered(aLa, aLo, 100.0, true)) return
+            if (covered(aLa, aLo, 200.0, true)) return
             cLa = aLa; cLo = aLo
         }
         busy = true; lastFetchT = now
@@ -387,7 +512,7 @@ object RoadAssist {
             try {
                 val t = fetchTile(cLa, cLo, TILE_R)
                 if (t != null) { addTile(t); status = "Tracking"; lastMatchT = 0L }
-                else { failUntil = System.currentTimeMillis() + 25_000; status = (if (covered(lat, lon, 0.0, false)) "Offline – using saved map" else "Offline – no saved map here") + (if (lastErr.isNotEmpty()) " ($lastErr)" else "") }
+                else { failUntil = System.currentTimeMillis() + 25_000; status = (if (covered(lat, lon, 0.0, false, true)) "Offline – using saved map" else "Offline – no saved map here") + (if (lastErr.isNotEmpty()) " ($lastErr)" else "") }
             } catch (_: Exception) {
                 failUntil = System.currentTimeMillis() + 45_000
             } finally { busy = false }
