@@ -468,5 +468,6 @@ abstract class Page(val a: MainActivity) {
     lateinit var view: View
     abstract fun build(): View
     open fun onShow() {}
+    open fun onHide() {}
     open fun refresh() {}
 }

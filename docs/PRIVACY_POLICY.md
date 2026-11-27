@@ -32,6 +32,8 @@ All of this is stored only on your device (in the app's private storage).
 
 • To announce speed limits, speed breakers, cameras and school/hospital zones while you drive.
 
+• To read road signs with the optional Sign camera. Pictures are analysed on the phone and are not saved or sent; only the small picture of a sign you choose to teach is kept.
+
 • To suggest possible causes of fault codes and maintenance reminders using on-device rules. No data is sent to an AI service.
 
 • To create backups that you control.

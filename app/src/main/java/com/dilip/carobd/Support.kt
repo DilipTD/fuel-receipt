@@ -256,6 +256,16 @@ object Prefs {
     var roadUserHaz: String
         get() = sp.getString("roadUserHaz", "[]") ?: "[]"
         set(v) = sp.edit().putString("roadUserHaz", v).apply()
+    var signLib: String
+        get() = sp.getString("signLib", "[]") ?: "[]"
+        set(v) = sp.edit().putString("signLib", v).apply()
+    var roadCam: String
+        get() = sp.getString("roadCam", "{}") ?: "{}"
+        set(v) = sp.edit().putString("roadCam", v).apply()
+    var signAuto: Boolean get() = b("signAuto", true)
+        set(v) = putB("signAuto", v)
+    var signSpeak: Boolean get() = b("signSpeak", true)
+        set(v) = putB("signSpeak", v)
     var liveBaseline: String
         get() = sp.getString("liveBaseline", "{}") ?: "{}"
         set(v) = sp.edit().putString("liveBaseline", v).apply()

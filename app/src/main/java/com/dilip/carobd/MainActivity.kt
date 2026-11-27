@@ -38,7 +38,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Signs" to "Sign camera", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
@@ -160,6 +160,7 @@ class MainActivity : Activity() {
         pages["Connect"] = ConnectPage(this)
         pages["Home"] = HomePage(this)
         pages["Road"] = RoadPage(this)
+        pages["Signs"] = SignPage(this)
         pages["Backup"] = BackupPage(this)
         pages["TripReplay"] = TripReplayPage(this)
         pages["Dash"] = DashPage(this)
@@ -243,6 +244,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         ObdManager.appVisible = false
+        try { pages[current]?.onHide() } catch (_: Throwable) {}
         handler.removeCallbacks(tick)
     }
 
@@ -327,6 +329,7 @@ class MainActivity : Activity() {
     fun show(name: String) {
         if (!pages.containsKey(name)) return
         val prev = current
+        if (prev != name) try { pages[prev]?.onHide() } catch (_: Throwable) {}
         current = name
         ObdManager.livePage = name in LIVE_PAGES
         pages.forEach { (k, p) -> p.view.visibility = if (k == name) View.VISIBLE else View.GONE }

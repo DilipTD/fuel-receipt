@@ -74,7 +74,9 @@ class PermissionsPage(a: MainActivity) : Page(a) {
         if (Build.VERSION.SDK_INT >= 33)
             permRow(Ic.BELL, "Notifications", "Fault, over-speed and reminder alerts, running-service notice", Perms.notifyOk(a),
                 listOf(Manifest.permission.POST_NOTIFICATIONS))
-        box.addView(ui.iconCard(Ic.GEAR, Ui.CYAN, "Open Android app settings", "Camera, files and other system-level controls", Ui.CARD) { Perms.openSettings(a) }, ui.lp(6))
+        permRow(Ic.SCAN, "Camera", "Sign camera only – reads road signs on the phone, pictures are not saved or sent",
+            a.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED, listOf(Manifest.permission.CAMERA))
+        box.addView(ui.iconCard(Ic.GEAR, Ui.CYAN, "Open Android app settings", "Files and other system-level controls", Ui.CARD) { Perms.openSettings(a) }, ui.lp(6))
 
         box.addView(ui.section("Location features", Ic.NAV))
         feature("Road assistant", "Speed limit, direction and hazard announcements; uses GPS in the background with a notification.",

@@ -627,3 +627,78 @@ class RoadEstimateTest : SimBase() {
         Report.flush("Road AI estimates")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class SignVisionTest : SimBase() {
+    private fun scene(draw: (android.graphics.Canvas) -> Unit): Triple<IntArray, Int, Int> {
+        val w = 320; val h = 240
+        val bm = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bm)
+        c.drawColor(android.graphics.Color.rgb(96, 110, 100))
+        draw(c)
+        val px = IntArray(w * h); bm.getPixels(px, 0, w, 0, 0, w, h)
+        return Triple(px, w, h)
+    }
+
+    private fun limitSign(c: android.graphics.Canvas, cx: Float, cy: Float, r: Float, v: Int, tf: android.graphics.Typeface, br: Int) {
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        p.color = android.graphics.Color.rgb(205 * br / 255, 20 * br / 255, 30 * br / 255); c.drawCircle(cx, cy, r, p)
+        p.color = android.graphics.Color.rgb(240 * br / 255, 240 * br / 255, 240 * br / 255); c.drawCircle(cx, cy, r * 0.74f, p)
+        p.color = android.graphics.Color.rgb(15, 15, 15); p.typeface = tf; p.textAlign = android.graphics.Paint.Align.CENTER
+        p.textSize = r * (if (v >= 100) 0.62f else 0.78f)
+        c.drawText(v.toString(), cx, cy + p.textSize * 0.36f, p)
+    }
+
+    private fun warnSign(c: android.graphics.Canvas, cx: Float, cy: Float, r: Float, br: Int) {
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        p.color = android.graphics.Color.rgb(205 * br / 255, 20 * br / 255, 30 * br / 255); c.drawCircle(cx, cy, r, p)
+        p.color = android.graphics.Color.rgb(240 * br / 255, 240 * br / 255, 240 * br / 255); c.drawCircle(cx, cy, r * 0.74f, p)
+        p.color = android.graphics.Color.rgb(15, 15, 15); c.drawRect(cx - r * 0.45f, cy - r * 0.08f, cx + r * 0.45f, cy + r * 0.08f, p)
+        c.drawRect(cx - r * 0.08f, cy - r * 0.4f, cx + r * 0.08f, cy - r * 0.1f, p)
+    }
+
+    @Test
+    fun signs() {
+        prep(); launch()
+        Report.head("Sign camera")
+        SignLib.load(true)
+        SignLib.entries.clear(); SignLib.save()
+        var okN = 0; var tot = 0
+        for (v in listOf(40, 60, 80, 100)) for ((tf, rr, br) in listOf(Triple(android.graphics.Typeface.DEFAULT_BOLD, 34f, 255), Triple(android.graphics.Typeface.SANS_SERIF, 26f, 255), Triple(android.graphics.Typeface.DEFAULT_BOLD, 42f, 200))) {
+            tot++
+            val (px, w, h) = scene { limitSign(it, 160f, 120f, rr, v, tf, br) }
+            val cs = SignVision.detect(px, w, h)
+            val rd = cs.firstNotNullOfOrNull { SignVision.readLimit(px, w, h, it) }
+            if (rd?.value == v) okN++ else Report.bad("Limit $v (r=$rr br=$br) read as ${rd?.value} from ${cs.size} candidate(s)")
+        }
+        if (okN == tot) Report.ok("Offline digit reading: $okN of $tot synthetic limit signs read correctly") else Report.bad("Digit reading: only $okN of $tot correct")
+        // teach once
+        SignEngine.reset()
+        val (p1, w, h) = scene { warnSign(it, 160f, 120f, 34f, 255) }
+        for (i in 0 until 6) SignEngine.process(p1, w, h)
+        if (SignEngine.hasPending()) Report.ok("Unknown sign becomes a Teach card after stable frames") else Report.bad("Unknown sign never became pending (dets=${SignEngine.dets.size})")
+        val e = SignEngine.teach("Test hazard", "warn", 0, "Careful ahead")
+        if (e != null && SignLib.entries.size == 1) Report.ok("Taught once and stored in the library") else Report.bad("Teach failed")
+        SignEngine.reset()
+        val (p2, w2, h2) = scene { warnSign(it, 150f, 110f, 27f, 215) }
+        for (i in 0 until 5) SignEngine.process(p2, w2, h2)
+        if (SignEngine.lastKnown == "Test hazard") Report.ok("Taught sign recognised again at another size and brightness") else Report.bad("Not recognised again: '${SignEngine.lastKnown}' pending=${SignEngine.hasPending()}")
+        // a different sign must not match as the taught one
+        SignEngine.reset()
+        val (p3, w3, h3) = scene { limitSign(it, 160f, 120f, 34f, 60, android.graphics.Typeface.DEFAULT_BOLD, 255) }
+        for (i in 0 until 5) SignEngine.process(p3, w3, h3)
+        if (SignEngine.lastKnown != "Test hazard" && SignEngine.lastLimit == 60) Report.ok("A speed-limit sign is not mistaken for the taught sign") else Report.bad("Wrong match: known='${SignEngine.lastKnown}' limit=${SignEngine.lastLimit}")
+        // persistence
+        val raw = Prefs.signLib
+        SignLib.entries.clear(); SignLib.load(true)
+        if (raw.isNotEmpty() && SignLib.entries.size == 1 && SignLib.entries[0].name == "Test hazard") Report.ok("Library survives save and load (${raw.length} chars, goes with Backup & cloud)") else Report.bad("Library roundtrip failed: ${SignLib.entries.size}")
+        // page
+        showPage("Signs")
+        try { act.pages["Signs"]!!.refresh(); Report.ok("Sign camera page renders") } catch (t: Throwable) { Report.bad("Sign page crashed", t) }
+        SignLib.entries.clear(); SignLib.save(); SignEngine.reset()
+        Report.flush("Sign camera")
+    }
+}

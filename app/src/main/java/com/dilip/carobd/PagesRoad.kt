@@ -169,7 +169,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         val i = RoadAssist.info
         if (i == null) { ui.toast("No road matched yet"); return }
         val lim = i.limit
-        val src = when (i.source) { "you" -> "Set by you"; "osm" -> "Marked on the map"; else -> "Estimated" }
+        val src = when (i.source) { "you" -> "Set by you"; "osm" -> "Marked on the map"; "cam" -> "Read by the camera"; else -> "Estimated" }
         val msg = StringBuilder()
         msg.append(if (lim != null) "${Units.sStr(lim.toDouble())} · $src · ${i.conf} % sure\n\n" else "No limit data for this road.\n\n")
         if (i.basis.isNotEmpty()) msg.append("Why: ${i.basis}.\n\n")
@@ -193,8 +193,10 @@ class RoadPage(a: MainActivity) : Page(a) {
         val opts = listOf(20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120)
         val items = opts.map { Units.sStr(it.toDouble()) }.toMutableList()
         if (i.source == "you") items.add("Remove my correction")
+        if (i.source == "cam") items.add("Forget the camera reading")
         AlertDialog.Builder(a).setTitle("Real speed limit on ${i.road.ifEmpty { "this road" }}").setItems(items.toTypedArray()) { _, k ->
             if (k < opts.size) { RoadAssist.setLimitFix(i.wayId, opts[k]); ui.toast("Saved – I will use ${Units.sStr(opts[k].toDouble())} here") }
+            else if (i.source == "cam") { RoadAssist.forgetCamera(i.wayId); ui.toast("Camera reading forgotten") }
             else { RoadAssist.setLimitFix(i.wayId, null); ui.toast("Correction removed") }
         }.show()
     }
@@ -236,7 +238,7 @@ class RoadPage(a: MainActivity) : Page(a) {
             i == null -> if (r.lastFix == 0L) Gps.statusText(a) else r.status
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
-        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + (if (i.lanes > 0) " · ${i.lanes} lanes" else "") + (if (i.oneway) " · one-way" else "") + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else if (i.source == "you") "limit ${Units.sStr(i.limit!!.toDouble())} (set by you)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
+        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + (if (i.lanes > 0) " · ${i.lanes} lanes" else "") + (if (i.oneway) " · one-way" else "") + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else if (i.source == "you") "limit ${Units.sStr(i.limit!!.toDouble())} (set by you)" else if (i.source == "cam") "limit ${Units.sStr(i.limit!!.toDouble())} (read from a sign)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
         aiTv.text = when {
             i == null -> "Drive with GPS on – I will find the road, its limit and hazards."
             sign.over -> "You are ${Units.sStr(spd - (i.limit ?: 0))} over the limit – ease off."

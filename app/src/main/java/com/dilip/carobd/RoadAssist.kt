@@ -105,6 +105,37 @@ object RoadAssist {
         lastMatchT = 0L
     }
 
+    private var camMap: HashMap<Long, Int>? = null
+
+    private fun cams(): HashMap<Long, Int> = camMap ?: HashMap<Long, Int>().also { m ->
+        try { val o = JSONObject(Prefs.roadCam); for (k in o.keys()) m[k.toLong()] = o.getInt(k) } catch (_: Exception) {}
+        camMap = m
+    }
+
+    /** A speed-limit sign read by the camera applies to the road you are on (kept until you correct it). Returns false when no road is matched. */
+    fun cameraLimit(limit: Int): Boolean {
+        val id = curWay
+        if (id == 0L || info == null) return false
+        val m = cams()
+        if (m[id] != limit) {
+            m[id] = limit
+            val o = JSONObject(); for ((k, v) in m) o.put(k.toString(), v)
+            Prefs.roadCam = o.toString(); lastMatchT = 0L
+            addLog("Camera read a $limit sign" + (info?.road?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""))
+            info = info?.let { Info(it.road, it.ref, it.highway, limit, false, it.fetched, "cam", it.wayId, 90, "Read from a road sign by the camera", it.lanes, it.oneway, it.lit, it.urban) }
+        }
+        return true
+    }
+
+    fun forgetCamera(wayId: Long) {
+        val m = cams(); m.remove(wayId)
+        val o = JSONObject(); for ((k, v) in m) o.put(k.toString(), v)
+        Prefs.roadCam = o.toString(); lastMatchT = 0L
+    }
+
+    fun hazardNear(kind: String, meters: Double): Boolean =
+        (userHazards() + hazards).any { it.kind == kind && Loc.dist(lat, lon, it.lat, it.lon) * 1000 < meters }
+
     private fun userHazards(): List<Hazard> = try {
         val a = JSONArray(Prefs.roadUserHaz)
         (0 until a.length()).map { val o = a.getJSONObject(it); Hazard(o.getString("k"), o.getDouble("a"), o.getDouble("o"), o.optString("b", labelFor(o.getString("k"))), true) }
@@ -451,6 +482,7 @@ object RoadAssist {
     private fun limitOf(w: Way, near: Int, snap: List<Tile>): Lim {
         val fix = fixes().optInt(w.id.toString(), -1).takeIf { it > 0 }
         if (fix != null) return Lim(fix, 100, "Set by you", "you")
+        cams()[w.id]?.let { return Lim(it, 90, "Read from a road sign by the camera", "cam") }
         if (w.limit > 0) return Lim(w.limit, 95, "Marked on the map (OpenStreetMap)", "osm")
         return synchronized(estCache) { estCache.getOrPut(w.id) { estimateFor(w, near, snap) } }
     }
