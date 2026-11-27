@@ -57,6 +57,7 @@ class CompassView(ctx: Context) : View(ctx) {
 class RoadPage(a: MainActivity) : Page(a) {
     override val parent = "More"
     private lateinit var box: LinearLayout
+    private lateinit var recBtn: android.widget.Button
     private lateinit var sign: RoadSignView
     private lateinit var compass: CompassView
     private lateinit var spdTv: TextView
@@ -131,6 +132,10 @@ class RoadPage(a: MainActivity) : Page(a) {
             addView(statsTv, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             addView(ui.tv("Reset", 12f, Ui.ACC, true).apply { setPadding(ui.dp(10), ui.dp(6), ui.dp(4), ui.dp(6)); setOnClickListener { RoadAssist.resetStats(); refresh() } })
         }, ui.lp(2))
+        box.addView(ui.section("Drive report", Ic.CHART))
+        box.addView(ui.tv("Wrong limit or road? Record the drive, tap Mark problem where it happens, then Stop & save. The report shows GPS quality, the matched road and where each limit came from – send me the summary and I can fix it.", 12f, Ui.DIM))
+        recBtn = ui.btn("Record this drive", Ui.BAD) { toggleDriveLog() }
+        box.addView(ui.row(recBtn, ui.btn("Mark problem", Ui.CARD) { if (DriveLog.recording) { DriveLog.mark(); ui.toast("Marked") } else ui.toast("Start recording first") }), ui.lp(6))
         box.addView(ui.section("Offline map", Ic.DATABASE))
         mapTv = ui.tv(RoadAssist.savedInfo(), 12.5f, Ui.DIM)
         box.addView(mapTv, ui.lp(4))
@@ -236,9 +241,26 @@ class RoadPage(a: MainActivity) : Page(a) {
         }.show()
     }
 
+    private fun toggleDriveLog() {
+        if (!DriveLog.recording) {
+            if (!Prefs.roadAssist) { ui.toast("Turn on the road assistant first"); return }
+            DriveLog.start(); ui.toast("Recording. Keep the Road assistant on, drive, and tap Mark problem when something is wrong.")
+        } else {
+            val sum = DriveLog.summary()
+            val txt = DriveLog.stop()
+            if (txt == null) { ui.toast("No GPS points were recorded"); return }
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+            val path = Exporter.writeText(a, "carobd_drive_$stamp.txt", "text/plain", txt)
+            try { (a.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Drive report", sum)) } catch (_: Throwable) {}
+            ui.toast(if (path != null) "Saved to $path. Summary copied – paste it in the chat." else "Summary copied. File export failed – check storage permission.")
+        }
+        refresh()
+    }
+
     override fun refresh() {
         if (!::sign.isInitialized) return
         val r = RoadAssist
+        if (::recBtn.isInitialized) recBtn.text = if (DriveLog.recording) "Stop & save (${DriveLog.seconds() / 60}:${"%02d".format(DriveLog.seconds() % 60)})" else "Record this drive"
         if (::dlBar.isInitialized) {
             if (r.dlBusy || r.status.startsWith("Downloading")) {
                 dlBar.visibility = View.VISIBLE; dlTv.visibility = View.VISIBLE

@@ -95,7 +95,10 @@ object RoadAssist {
         return n[((deg + 22.5f) / 45f).toInt() % 8]
     }
 
-    fun addLog(s: String) { synchronized(log) { log.addFirst(System.currentTimeMillis() to s); while (log.size > 30) log.removeLast() } }
+    /** Which saved map covers the current position: town, wide (highways only) or none. */
+    fun coverage(): String = if (covered(lat, lon, 0.0, false)) "town" else if (coveredWide(lat, lon)) "wide" else "none"
+
+    fun addLog(s: String) { try { DriveLog.event(s) } catch (_: Throwable) {}; synchronized(log) { log.addFirst(System.currentTimeMillis() to s); while (log.size > 30) log.removeLast() } }
 
     /* ---------------- user data: limit corrections and own hazards ---------------- */
 
@@ -507,6 +510,7 @@ object RoadAssist {
         refreshHazards()
         updateStats()
         evaluate()
+        try { DriveLog.fix(l) } catch (_: Throwable) {}
     }
 
     private fun updateStats() {

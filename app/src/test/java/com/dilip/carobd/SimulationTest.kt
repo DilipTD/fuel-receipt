@@ -1037,3 +1037,33 @@ class WelcomeTest : SimBase() {
         Report.flush("Welcome")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class DriveLogTest : SimBase() {
+    @Test
+    fun driveLog() {
+        prep(); launch()
+        Report.head("Drive report")
+        Prefs.roadAssist = true; Prefs.mapAuto = false
+        RoadAssist.clearSaved()
+        RoadAssist.installTile(RoadAssist.Tile(10.0, 77.0, 3000.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(31, "Report Road", "SH1", "primary", 60, false, doubleArrayOf(10.0, 76.99, 10.0, 77.01))), emptyList()))
+        DriveLog.start()
+        for (i in 0 until 3) {
+            val l = android.location.Location("gps").apply { latitude = 10.0; longitude = 76.995 + i * 0.001; bearing = 90f; speed = 15f; accuracy = 6f; time = System.currentTimeMillis() }
+            RoadAssist.onLocation(l); Thread.sleep(1100)
+        }
+        DriveLog.mark()
+        val txt = DriveLog.stop()
+        if (txt != null && txt.contains("Drive report") && txt.contains("Report Road") && txt.contains("MARK") && txt.contains("Rows")) Report.ok("Drive report has summary, matched road, marker and rows") else Report.bad("Drive report incomplete: ${txt?.take(300)}")
+        if (txt != null && Regex("Road matched: (\\d+)%").find(txt)?.groupValues?.get(1)?.toInt() ?: 0 >= 60) Report.ok("Report shows the road was matched") else Report.bad("Matched percentage low: ${txt?.take(400)}")
+        showPage("Road")
+        try { act.pages["Road"]!!.onShow(); act.pages["Road"]!!.refresh(); Report.ok("Road page renders with the drive report button") } catch (e: Throwable) { Report.bad("Road page crashed", e) }
+        monkey("Road", 30)
+        RoadAssist.clearSaved(); Prefs.roadAssist = false
+        Report.flush("Drive report")
+    }
+}
