@@ -71,6 +71,7 @@ object RoadAssist {
     private val tiles = ArrayList<Tile>()
     private var loaded = false
     @Volatile private var busy = false
+    @Volatile var lastErr = ""
     private var failUntil = 0L
     private var lastFetchT = 0L
     private var curWay = 0L
@@ -81,7 +82,7 @@ object RoadAssist {
 
     private const val FILE = "road_areas.json"
     private const val TILE_R = 1500.0
-    private const val MAX_TILES = 12
+    private const val MAX_TILES = 40
     private const val FRESH_MS = 45L * 86_400_000L
     private val OK_ROADS = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 
@@ -244,18 +245,29 @@ object RoadAssist {
     /** Used by tests and offline import. */
     fun installTile(t: Tile) = addTile(t)
 
-    /** Download an area around the current position for offline use. */
-    fun downloadArea(radius: Double = 3000.0, cb: (String) -> Unit) {
-        if (busy) { cb("Another download is running"); return }
+    /** Download a wide area (about 6 km square) around the current position for offline use, in the background. */
+    fun downloadArea(radius: Double = TILE_R, cb: (String) -> Unit) {
+        if (busy) { cb("A map download is already running"); return }
         val la = if (lastFix != 0L) lat else Loc.here(ObdManager.app, true)?.first
         val lo = if (lastFix != 0L) lon else Loc.here(ObdManager.app, true)?.second
         if (la == null || lo == null) { cb("No position yet – wait for GPS"); return }
-        busy = true; status = "Downloading map…"
+        busy = true; status = "Downloading map 0/9…"
+        try { ObdService.start(ObdManager.app) } catch (_: Throwable) {}
         ex.execute {
-            val msg = try {
-                val t = fetchTile(la, lo, radius)
-                if (t == null) "Download failed – check internet and try again" else { addTile(t); "Saved ${t.ways.size} roads and ${t.hz.size} hazards around you" }
-            } catch (e: Exception) { "Download failed: ${e.message}" } finally { busy = false; status = "Tracking" }
+            var ok = 0; var ways = 0; var hz = 0
+            try {
+                val order = listOf(0 to 0, 1 to 0, -1 to 0, 0 to 1, 0 to -1, 1 to 1, -1 to -1, 1 to -1, -1 to 1)
+                for ((i, o) in order.withIndex()) {
+                    status = "Downloading map ${i + 1}/9…"
+                    val tla = la + o.first * 2000.0 / 110540.0
+                    val tlo = lo + o.second * 2000.0 / (111320.0 * cos(Math.toRadians(la)))
+                    val t = fetchTile(tla, tlo, radius)
+                    if (t != null) { addTile(t); ok++; ways += t.ways.size; hz += t.hz.size; lastMatchT = 0L }
+                    else if (i == 0) break   // no internet / servers busy: stop early
+                }
+            } catch (_: Exception) {
+            } finally { busy = false; status = "Tracking" }
+            val msg = if (ok == 0) "Download failed (${lastErr.ifEmpty { "no internet" }}). Try again in a minute." else "Saved $ok of 9 map areas: $ways roads, $hz hazards. Works offline now."
             main.post { cb(msg) }
         }
     }
@@ -267,17 +279,30 @@ object RoadAssist {
                 "node(around:$ri,$la,$lo)[\"amenity\"~\"^(school|hospital)\$\"];node(around:$ri,$la,$lo)[\"railway\"=\"level_crossing\"];" +
                 "node(around:$ri,$la,$lo)[\"barrier\"=\"toll_booth\"];);out tags geom;"
         var body: String? = null
-        for (host in listOf("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")) {
-            try {
-                val c = URL("$host?data=" + URLEncoder.encode(q, "UTF-8")).openConnection() as HttpURLConnection
-                c.connectTimeout = 8000; c.readTimeout = 55000
-                c.setRequestProperty("User-Agent", "CarOBDPro/${AppInfo.VERSION} (Android)")
-                if (c.responseCode == 200) body = c.inputStream.bufferedReader().use { it.readText() }
-                c.disconnect()
-                if (body != null) break
-            } catch (_: Exception) {
+        val errs = ArrayList<String>()
+        val hosts = listOf("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter")
+        for (round in 0..1) {
+            for (host in hosts) {
+                try {
+                    val c = URL(host).openConnection() as HttpURLConnection
+                    c.requestMethod = "POST"; c.doOutput = true
+                    c.connectTimeout = 10000; c.readTimeout = 50000
+                    c.setRequestProperty("User-Agent", "CarOBDPro/${AppInfo.VERSION} (Android; personal OBD app)")
+                    c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                    c.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
+                    val code = c.responseCode
+                    if (code == 200) body = c.inputStream.bufferedReader().use { it.readText() }
+                    else errs += "${URL(host).host} HTTP $code"
+                    c.disconnect()
+                    if (body != null && body.trimStart().startsWith("{")) break else body = null
+                } catch (e: Exception) { errs += "${URL(host).host}: ${e.javaClass.simpleName}" }
             }
+            if (body != null) break
+            try { Thread.sleep(2500) } catch (_: Exception) {}
         }
+        if (body == null) { lastErr = errs.takeLast(2).joinToString("; "); return null }
+        lastErr = ""
         val els = JSONObject(body ?: return null).optJSONArray("elements") ?: return null
         val ways = ArrayList<Way>(); val hz = ArrayList<Hazard>()
         for (i in 0 until els.length()) {
@@ -360,7 +385,7 @@ object RoadAssist {
             try {
                 val t = fetchTile(cLa, cLo, TILE_R)
                 if (t != null) { addTile(t); status = "Tracking"; lastMatchT = 0L }
-                else { failUntil = System.currentTimeMillis() + 45_000; status = if (covered(lat, lon, 0.0, false)) "Offline – using saved map" else "Offline – no saved map here" }
+                else { failUntil = System.currentTimeMillis() + 25_000; status = (if (covered(lat, lon, 0.0, false)) "Offline – using saved map" else "Offline – no saved map here") + (if (lastErr.isNotEmpty()) " ($lastErr)" else "") }
             } catch (_: Exception) {
                 failUntil = System.currentTimeMillis() + 45_000
             } finally { busy = false }

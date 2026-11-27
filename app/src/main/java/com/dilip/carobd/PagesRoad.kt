@@ -134,7 +134,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         box.addView(mapTv, ui.lp(4))
         box.addView(ui.row(
             ui.btn("Download this area", Ui.ACC) {
-                ui.toast("Downloading… this can take up to a minute")
+                ui.toast("Downloading in the background – you can leave this screen. Progress shows in the status line.")
                 RoadAssist.downloadArea { m -> ui.toast(m); mapTv.text = RoadAssist.savedInfo() }
             },
             ui.btn("Clear saved maps", Ui.CARD) {
@@ -214,6 +214,7 @@ class RoadPage(a: MainActivity) : Page(a) {
     override fun refresh() {
         if (!::sign.isInitialized) return
         val r = RoadAssist
+        if (::mapTv.isInitialized && r.status.startsWith("Downloading")) mapTv.text = r.status
         val i = r.info
         val spd = r.speedKmh
         sign.limit = i?.limit; sign.estimated = i?.estimated == true
