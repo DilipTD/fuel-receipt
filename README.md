@@ -1,4 +1,4 @@
-# Dr. Vittu OBDII Pro v4.19.1 – universal ELM327 app (any OBD-II / EOBD car)
+# Dr. Vittu OBDII Pro v4.20.0 – universal ELM327 app (any OBD-II / EOBD car)
 
 **Software developed by Dilip Kumar TD**
 
@@ -32,7 +32,7 @@
 - Battery monitor with a live graph and a cranking-voltage history.
 - "Where's my car" parking location, plus an About screen with the version and developer credit.
 
-Native Android app (Kotlin, no external libraries, Android 7.0+). It works with any car that has OBD-II/EOBD: petrol cars from about 2001, diesel from about 2004, and every CAN car from about 2008. That includes Tata, Maruti, Hyundai, Kia, Mahindra, Toyota, Honda, VW/Skoda, MG and others.
+Native Android app (Kotlin, no external libraries, Android 7.0+). It works with any car that has OBD-II/EOBD: petrol cars from about 2001, diesel from about 2004, and every CAN car from about 2008. That includes Maruti, Hyundai, Kia, Mahindra, Toyota, Honda, VW/Skoda, MG and others.
 
 ## Connectivity
 - **Bluetooth Classic (SPP).** This covers most ELM327 v1.5/v2.1 adapters, OBDLink LX/MX and Vgate.

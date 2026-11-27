@@ -21,9 +21,17 @@ import kotlin.math.*
  */
 object RoadAssist {
     class Info(val road: String, val ref: String, val highway: String, val limit: Int?, val estimated: Boolean, val fetched: Long,
-               val source: String = "osm", val wayId: Long = 0L)
-    class Hazard(val kind: String, val lat: Double, val lon: Double, val label: String, val mine: Boolean = false)
-    class Way(val id: Long, val name: String, val ref: String, val hw: String, val limit: Int, val oneway: Boolean, val pts: DoubleArray) {
+               val source: String = "osm", val wayId: Long = 0L, val conf: Int = 100, val basis: String = "", val lanes: Int = 0,
+               val oneway: Boolean = false, val lit: Boolean = false, val urban: Boolean = false)
+    class Hazard(val kind: String, val lat: Double, val lon: Double, val label: String, val mine: Boolean = false, val adv: Int = 0)
+    class Next(val limit: Int, val dist: Int, val estimated: Boolean, val road: String)
+    /** [fl] bits: 1 lit, 2 sidewalk, 4 unpaved, 8 roundabout, bits 8-11 lane count. */
+    class Way(val id: Long, val name: String, val ref: String, val hw: String, val limit: Int, val oneway: Boolean, val pts: DoubleArray, val fl: Int = 0) {
+        val lit: Boolean get() = fl and 1 != 0
+        val sidewalk: Boolean get() = fl and 2 != 0
+        val unpaved: Boolean get() = fl and 4 != 0
+        val roundabout: Boolean get() = fl and 8 != 0
+        val lanes: Int get() = (fl shr 8) and 15
         val minLa: Double; val maxLa: Double; val minLo: Double; val maxLo: Double
         init {
             var a = 1e9; var b = -1e9; var c = 1e9; var d = -1e9
@@ -42,6 +50,20 @@ object RoadAssist {
     @Volatile var lon = 0.0
     @Volatile var lastFix = 0L
     @Volatile var status = "Waiting for GPS"
+    @Volatile var next: Next? = null
+    @Volatile var curve: Pair<Hazard, Int>? = null
+    @Volatile var statSec = 0.0
+    @Volatile var limSec = 0.0
+    @Volatile var overSec = 0.0
+    @Volatile var maxOver = 0.0
+    @Volatile var topSpd = 0.0
+    @Volatile var alertsN = 0
+    private val announced = HashSet<String>()
+    private val estCache = HashMap<Long, Lim>()
+    private var aheadT = 0L
+    private var prevFix = 0L
+
+    fun resetStats() { statSec = 0.0; limSec = 0.0; overSec = 0.0; maxOver = 0.0; topSpd = 0.0; alertsN = 0; announced.clear() }
     val log = ArrayDeque<Pair<Long, String>>()
 
     private val ex = Executors.newSingleThreadExecutor()
@@ -136,7 +158,7 @@ object RoadAssist {
                 for (k in 0 until wa.length()) {
                     val w = wa.getJSONObject(k); val p = w.getJSONArray("p")
                     ways += Way(w.getLong("i"), w.optString("n"), w.optString("f"), w.optString("h"), w.optInt("l", -1), w.optInt("o") == 1,
-                        DoubleArray(p.length()) { p.getDouble(it) })
+                        DoubleArray(p.length()) { p.getDouble(it) }, w.optInt("x", 0))
                 }
                 val hz = ArrayList<Hazard>(); val ha = o.getJSONArray("hz")
                 for (k in 0 until ha.length()) { val h = ha.getJSONObject(k); hz += Hazard(h.getString("k"), h.getDouble("a"), h.getDouble("o"), h.optString("b", labelFor(h.getString("k")))) }
@@ -155,7 +177,7 @@ object RoadAssist {
                 val wa = JSONArray()
                 for (w in t.ways) {
                     val p = JSONArray(); w.pts.forEach { p.put(Math.round(it * 1e5) / 1e5) }
-                    wa.put(JSONObject().put("i", w.id).put("n", w.name).put("f", w.ref).put("h", w.hw).put("l", w.limit).put("o", if (w.oneway) 1 else 0).put("p", p))
+                    wa.put(JSONObject().put("i", w.id).put("n", w.name).put("f", w.ref).put("h", w.hw).put("l", w.limit).put("o", if (w.oneway) 1 else 0).put("x", w.fl).put("p", p))
                 }
                 val ha = JSONArray()
                 t.hz.forEach { ha.put(JSONObject().put("k", it.kind).put("a", it.lat).put("o", it.lon).put("b", it.label)) }
@@ -173,7 +195,7 @@ object RoadAssist {
         return if (n == 0) "No saved map yet – drive with internet, or download this area" else "$n saved area(s) · ${if (kb > 1024) "%.1f MB".format(kb / 1024.0) else "$kb KB"} · works offline"
     }
 
-    fun clearSaved() { synchronized(tiles) { tiles.clear(); file()?.delete() }; info = null }
+    fun clearSaved() { synchronized(tiles) { tiles.clear(); estCache.clear(); file()?.delete() }; info = null; next = null; curve = null }
 
     private fun covered(la: Double, lo: Double, margin: Double, fresh: Boolean): Boolean = synchronized(tiles) {
         val now = System.currentTimeMillis()
@@ -183,6 +205,7 @@ object RoadAssist {
     private fun addTile(t: Tile) = synchronized(tiles) {
         tiles.removeAll { Loc.dist(it.la, it.lo, t.la, t.lo) * 1000 < 300 }
         tiles += t
+        estCache.clear()
         while (tiles.size > MAX_TILES) tiles.remove(tiles.minByOrNull { it.t })
         saveTiles()
     }
@@ -235,7 +258,13 @@ object RoadAssist {
                 for (k in 0 until g.length()) { val p = g.getJSONObject(k); pts[k * 2] = p.getDouble("lat"); pts[k * 2 + 1] = p.getDouble("lon") }
                 val ow = tags.optString("oneway").let { it == "yes" || it == "1" || it == "true" } || tags.optString("junction") == "roundabout"
                 val lim = parseLimit(tags.optString("maxspeed").ifBlank { tags.optString("maxspeed:forward") }) ?: -1
-                ways += Way(e.getLong("id"), tags.optString("name"), tags.optString("ref"), tags.optString("highway"), lim, ow, pts)
+                var fl = 0
+                if (tags.optString("lit") == "yes") fl = fl or 1
+                if (listOf("sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right").any { k -> tags.optString(k).let { it.isNotEmpty() && it != "no" && it != "none" } }) fl = fl or 2
+                if (tags.optString("surface") in setOf("unpaved", "gravel", "dirt", "ground", "sand", "earth", "mud", "grass", "compacted", "fine_gravel")) fl = fl or 4
+                if (tags.optString("junction") == "roundabout") fl = fl or 8
+                fl = fl or ((tags.optString("lanes").toIntOrNull() ?: 0).coerceIn(0, 15) shl 8)
+                ways += Way(e.getLong("id"), tags.optString("name"), tags.optString("ref"), tags.optString("highway"), lim, ow, pts, fl)
             } else {
                 val nl = e.optDouble("lat", Double.NaN); val no = e.optDouble("lon", Double.NaN)
                 if (nl.isNaN()) continue
@@ -257,6 +286,7 @@ object RoadAssist {
 
     fun onLocation(l: Location) {
         if (!Prefs.roadAssist) return
+        prevFix = lastFix
         lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
         speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
         if (l.hasBearing() && speedKmh > 4) heading = l.bearing
@@ -264,7 +294,19 @@ object RoadAssist {
         maybeFetch()
         matchRoad(l)
         refreshHazards()
+        updateStats()
         evaluate()
+    }
+
+    private fun updateStats() {
+        val dt = if (prevFix > 0) ((lastFix - prevFix) / 1000.0).coerceIn(0.0, 5.0) else 0.0
+        if (speedKmh <= 3) return
+        statSec += dt; topSpd = max(topSpd, speedKmh)
+        val i = info ?: return
+        val lim = i.limit ?: return
+        if (i.estimated && !Prefs.roadEstWarn) return
+        limSec += dt
+        if (speedKmh > lim + Prefs.speedMargin) { overSec += dt; maxOver = max(maxOver, speedKmh - lim) }
     }
 
     private fun maybeFetch() {
@@ -294,21 +336,23 @@ object RoadAssist {
         }
     }
 
-    private fun matchRoad(l: Location) {
-        val snap = synchronized(tiles) { tiles.toList() }
-        val now = System.currentTimeMillis()
-        val tol = max(35.0, (if (l.hasAccuracy()) l.accuracy else 10f) * 1.5 + 15)
-        val dLat = tol / 110540.0; val dLon = tol / (111320.0 * cos(Math.toRadians(lat)))
-        val hd = if (speedKmh > 6) heading else null
+    private class Cand(val w: Way, val d: Double, val near: Int)
+    private class Lim(val limit: Int?, val conf: Int, val basis: String, val src: String)
+
+    /** Best matching road at a position, preferring the direction of travel and the road we were on. */
+    private fun scan(snap: List<Tile>, la: Double, lo: Double, hd: Float?, tol: Double, prefer: Long): Cand? {
+        val dLat = tol / 110540.0; val dLon = tol / (111320.0 * cos(Math.toRadians(la)))
         var best: Way? = null; var bestCost = 1e9; var bestDist = 0.0
+        var near = 0
         for (t in snap) {
-            if (Loc.dist(lat, lon, t.la, t.lo) * 1000 > t.r + 500) continue
+            if (Loc.dist(la, lo, t.la, t.lo) * 1000 > t.r + 500) continue
             for (w in t.ways) {
-                if (lat < w.minLa - dLat || lat > w.maxLa + dLat || lon < w.minLo - dLon || lon > w.maxLo + dLon) continue
+                if (la > w.minLa - 0.0025 && la < w.maxLa + 0.0025 && lo > w.minLo - 0.0025 && lo < w.maxLo + 0.0025) near++
+                if (la < w.minLa - dLat || la > w.maxLa + dLat || lo < w.minLo - dLon || lo > w.maxLo + dLon) continue
                 var dMin = 1e9; var bear = 0.0
                 var k = 0
                 while (k < w.pts.size - 2) {
-                    val d = segDist(lat, lon, w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3])
+                    val d = segDist(la, lo, w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3])
                     if (d < dMin) { dMin = d; bear = bearingTo(w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3]) }
                     k += 2
                 }
@@ -318,20 +362,130 @@ object RoadAssist {
                     val diff = abs(((bear - hd + 540) % 360) - 180)
                     cost += (if (w.oneway) diff else min(diff, 180 - diff)) * 0.4
                 }
-                if (w.id == curWay) cost -= 10
+                if (w.id == prefer) cost -= 10
                 if (cost < bestCost) { bestCost = cost; best = w; bestDist = dMin }
             }
         }
-        if (best == null) {
-            if (snap.isNotEmpty() && now - lastMatchT > 10_000) { info = null; curWay = 0L; status = if (snap.any { Loc.dist(lat, lon, it.la, it.lo) * 1000 <= it.r }) "No road data here" else status }
+        return best?.let { Cand(it, bestDist, near) }
+    }
+
+    private fun matchRoad(l: Location) {
+        val snap = synchronized(tiles) { tiles.toList() }
+        val now = System.currentTimeMillis()
+        val tol = max(35.0, (if (l.hasAccuracy()) l.accuracy else 10f) * 1.5 + 15)
+        val hd = if (speedKmh > 6) heading else null
+        val cand = scan(snap, lat, lon, hd, tol, curWay)
+        if (cand == null) {
+            if (snap.isNotEmpty() && now - lastMatchT > 10_000) { info = null; curWay = 0L; next = null; curve = null; status = if (snap.any { Loc.dist(lat, lon, it.la, it.lo) * 1000 <= it.r }) "No road data here" else status }
             return
         }
+        val best = cand.w
         curWay = best.id; lastMatchT = now
-        val fix = fixes().optInt(best.id.toString(), -1).takeIf { it > 0 }
-        val tagged = best.limit.takeIf { it > 0 }
-        val limit = fix ?: tagged ?: estimate(best.hw)
-        info = Info(best.name, best.ref, best.hw, limit, fix == null && tagged == null, now, if (fix != null) "you" else if (tagged != null) "osm" else "est", best.id)
+        val lim = limitOf(best, cand.near, snap)
+        info = Info(best.name, best.ref, best.hw, lim.limit, lim.src == "est", now, lim.src, best.id, lim.conf, lim.basis, best.lanes, best.oneway, best.lit, cand.near >= 14)
         if (!busy) status = if (covered(lat, lon, 0.0, true)) "Tracking" else "Tracking (saved map)"
+        if (now - aheadT > 1200) { aheadT = now; lookAhead(snap, best, hd) }
+    }
+
+    /** Next speed-limit change and sharp curves on the road ahead. */
+    private fun lookAhead(snap: List<Tile>, w: Way, hd: Float?) {
+        if (hd == null || speedKmh < 15) { next = null; curve = null; return }
+        val dist = (speedKmh / 3.6 * 8.0).coerceIn(90.0, 280.0)
+        val aLa = lat + dist * cos(Math.toRadians(hd.toDouble())) / 110540.0
+        val aLo = lon + dist * sin(Math.toRadians(hd.toDouble())) / (111320.0 * cos(Math.toRadians(lat)))
+        val c = scan(snap, aLa, aLo, hd, 22.0, 0L)
+        var nx: Next? = null
+        if (c != null && c.w.id != w.id) {
+            val l = limitOf(c.w, c.near, snap)
+            if (l.limit != null && l.limit != info?.limit) nx = Next(l.limit, dist.toInt(), l.src == "est", c.w.name.ifBlank { c.w.ref })
+        }
+        next = nx
+        curve = detectCurve(w, hd)
+    }
+
+    private fun angDiff(a: Double, b: Double) = abs(((a - b + 540) % 360) - 180)
+
+    private fun detectCurve(w: Way, hd: Float): Pair<Hazard, Int>? {
+        if (w.roundabout) return null
+        val n = w.pts.size / 2
+        if (n < 3) return null
+        var bk = -1; var bd = 1e9; var bb = 0.0
+        for (k in 0 until n - 1) {
+            val d = segDist(lat, lon, w.pts[2 * k], w.pts[2 * k + 1], w.pts[2 * k + 2], w.pts[2 * k + 3])
+            if (d < bd) { bd = d; bk = k; bb = bearingTo(w.pts[2 * k], w.pts[2 * k + 1], w.pts[2 * k + 2], w.pts[2 * k + 3]) }
+        }
+        if (bk < 0 || bd > 40) return null
+        val fwd = angDiff(bb, hd.toDouble()) < 90
+        if (!fwd && w.oneway) return null
+        val idx = if (fwd) ((bk + 1) until n).toList() else (bk downTo 0).toList()
+        var pLa = lat; var pLo = lon; var cum = 0.0
+        val cums = ArrayList<Double>(); val brs = ArrayList<Double>(); val vLa = ArrayList<Double>(); val vLo = ArrayList<Double>()
+        for (i in idx) {
+            val la2 = w.pts[2 * i]; val lo2 = w.pts[2 * i + 1]
+            val seg = Loc.dist(pLa, pLo, la2, lo2) * 1000
+            if (seg < 4.0) continue
+            cums += cum; brs += bearingTo(pLa, pLo, la2, lo2); vLa += pLa; vLo += pLo
+            cum += seg; pLa = la2; pLo = lo2
+            if (cum > 240) break
+        }
+        var maxChg = 0.0; var bi = -1
+        for (i in brs.indices) for (j in i + 1 until brs.size) {
+            if (cums[j] - cums[i] > 80) break
+            val chg = angDiff(brs[i], brs[j])
+            if (chg > maxChg) { maxChg = chg; bi = j }
+        }
+        if (maxChg < 55 || bi < 0) return null
+        val d = cums[bi]
+        if (d < 15) return null
+        val adv = if (maxChg < 70) 40 else if (maxChg < 100) 30 else 20
+        return Hazard("curve", vLa[bi], vLo[bi], "Sharp curve", false, adv) to d.toInt()
+    }
+
+    private fun limitOf(w: Way, near: Int, snap: List<Tile>): Lim {
+        val fix = fixes().optInt(w.id.toString(), -1).takeIf { it > 0 }
+        if (fix != null) return Lim(fix, 100, "Set by you", "you")
+        if (w.limit > 0) return Lim(w.limit, 95, "Marked on the map (OpenStreetMap)", "osm")
+        return synchronized(estCache) { estCache.getOrPut(w.id) { estimateFor(w, near, snap) } }
+    }
+
+    private fun region(la: Double, lo: Double) = if (la in 6.0..36.0 && lo in 68.0..98.0) "IN" else "XX"
+
+    /** Estimated limit: same road nearby, else a regional default for the road type in built-up or open areas. */
+    private fun estimateFor(w: Way, near: Int, snap: List<Tile>): Lim {
+        val cls = w.hw.removeSuffix("_link")
+        // 1. a nearby section of the same road, or a connected road of the same class, that has a marked limit
+        var bestLim = -1; var bestD = 1200.0; var how = ""
+        for (t in snap) for (o in t.ways) {
+            if (o.id == w.id || o.limit <= 0 || o.hw.removeSuffix("_link") != cls) continue
+            val same = (w.ref.isNotEmpty() && o.ref == w.ref) || (w.name.isNotEmpty() && o.name == w.name)
+            val joined = o.pts.size >= 4 && w.pts.size >= 4 && (
+                Loc.dist(o.pts[0], o.pts[1], w.pts[0], w.pts[1]) < 0.004 || Loc.dist(o.pts[0], o.pts[1], w.pts[w.pts.size - 2], w.pts[w.pts.size - 1]) < 0.004 ||
+                Loc.dist(o.pts[o.pts.size - 2], o.pts[o.pts.size - 1], w.pts[0], w.pts[1]) < 0.004 || Loc.dist(o.pts[o.pts.size - 2], o.pts[o.pts.size - 1], w.pts[w.pts.size - 2], w.pts[w.pts.size - 1]) < 0.004)
+            if (!same && !joined) continue
+            var dm = 1e9; var k = 0
+            while (k < o.pts.size) { dm = min(dm, Loc.dist(lat, lon, o.pts[k], o.pts[k + 1]) * 1000); k += 2 }
+            if (dm < bestD) { bestD = dm; bestLim = o.limit; how = if (same) "road" else "connected road" }
+        }
+        if (bestLim > 0) return Lim(bestLim, 70, "Same $how is marked $bestLim km/h about ${bestD.toInt()} m away", "est")
+
+        // 2. regional default
+        val urban = near >= 14 || w.hw == "residential" || (w.lit && w.sidewalk)
+        val inIn = region(lat, lon) == "IN"
+        var v: Int? = if (inIn) when (cls) {
+            "motorway" -> 100; "trunk" -> if (urban) 60 else 80; "primary" -> if (urban) 50 else 70; "secondary" -> if (urban) 40 else 60
+            "tertiary" -> if (urban) 40 else 50; "unclassified" -> if (urban) 30 else 40; "residential" -> 30; "living_street" -> 20; "service" -> 20; else -> null
+        } else when (cls) {
+            "motorway" -> 100; "trunk" -> if (urban) 60 else 80; "primary" -> if (urban) 50 else 60; "secondary" -> if (urban) 40 else 50
+            "tertiary" -> if (urban) 30 else 40; "unclassified" -> if (urban) 30 else 40; "residential" -> 30; "living_street" -> 20; "service" -> 20; else -> null
+        }
+        if (v == null) return Lim(null, 0, "No limit data for this road type", "est")
+        val notes = ArrayList<String>()
+        if (w.hw.endsWith("_link")) { v = min(v, if (cls == "motorway") 60 else 40); notes += "slip road" }
+        if (w.oneway && w.lanes >= 2 && (cls == "trunk" || cls == "primary") && !urban) { v = min(v + 10, 100); notes += "divided carriageway" }
+        if (w.unpaved) { v = min(v, 30); notes += "unpaved" }
+        if (w.roundabout) { v = 25; notes += "roundabout" }
+        val area = if (urban) "built-up area" else "open road"
+        return Lim(v, if (urban || inIn) 45 else 40, "${if (inIn) "India" else "General"} default for ${w.hw.replace('_', ' ')} roads, $area" + if (notes.isNotEmpty()) " (${notes.joinToString(", ")})" else "", "est")
     }
 
     private fun refreshHazards() {
@@ -354,11 +508,6 @@ object RoadAssist {
         return if (s.contains("mph", true)) (n * 1.609).roundToInt() else n
     }
 
-    private fun estimate(hw: String) = when (hw) {
-        "motorway" -> 100; "motorway_link" -> 60; "trunk" -> 80; "trunk_link" -> 50; "primary" -> 60; "primary_link" -> 40
-        "secondary" -> 50; "tertiary" -> 40; "unclassified" -> 40; "residential" -> 30; "living_street" -> 20; "service" -> 20; else -> null
-    }
-
     private fun segDist(pLa: Double, pLo: Double, aLa: Double, aLo: Double, bLa: Double, bLo: Double): Double {
         val k = cos(Math.toRadians(pLa)) * 111320.0; val m = 110540.0
         val ax = (aLo - pLo) * k; val ay = (aLa - pLa) * m; val bx = (bLo - pLo) * k; val by = (bLa - pLa) * m
@@ -373,15 +522,19 @@ object RoadAssist {
         return (Math.toDegrees(atan2(y, x)) + 360) % 360
     }
 
-    /** Hazards ahead of the car (within ±65° of the heading). */
+    /** Hazards ahead of the car (within ±65° of the heading); the reach grows with speed (about 8 s). */
     fun ahead(): List<Pair<Hazard, Int>> {
         val h = heading ?: return emptyList()
-        return hazards.mapNotNull { z ->
+        val reach = (speedKmh / 3.6 * 8.0).coerceIn(0.0, 420.0)
+        val out = hazards.mapNotNull { z ->
             val d = Loc.dist(lat, lon, z.lat, z.lon) * 1000
             val br = bearingTo(lat, lon, z.lat, z.lon)
             val diff = abs(((br - h + 540) % 360) - 180)
-            if (diff <= 65 && d <= (if (z.kind == "camera") 350 else if (z.kind == "toll" || z.kind == "rail") 300 else 260)) z to d.toInt() else null
-        }.sortedBy { it.second }
+            val base = if (z.kind == "camera") 350.0 else if (z.kind == "toll" || z.kind == "rail") 300.0 else 260.0
+            if (diff <= 65 && d <= max(base, reach)) z to d.toInt() else null
+        }.toMutableList()
+        curve?.let { out += it }
+        return out.sortedBy { it.second }
     }
 
     private fun evaluate() {
@@ -408,11 +561,20 @@ object RoadAssist {
             if (slow && spd < 30) continue
             val txt = when (z.kind) {
                 "camera" -> "Speed camera ahead"; "bump", "pothole" -> "${z.label} ahead, slow down"
-                "curve" -> "Sharp curve ahead, slow down"; "rail" -> "Level crossing ahead, be ready to stop"; "toll" -> "Toll plaza ahead"
+                "curve" -> "Sharp curve ahead" + (if (z.adv > 0) ", ease to ${z.adv}" else ", slow down"); "rail" -> "Level crossing ahead, be ready to stop"; "toll" -> "Toll plaza ahead"
                 "school" -> "School zone ahead, drive carefully"; "hospital" -> "Hospital zone ahead, keep quiet and slow"
                 else -> "${z.label} ahead"
             }
-            Alerts.announce(key, txt, 300_000); addLog("$txt · ${d} m")
+            Alerts.announce(key, txt, 300_000)
+            if (announced.add(key)) { alertsN++; addLog("$txt · ${d} m") }
+        }
+        // limit change ahead
+        next?.let { n ->
+            if (!n.estimated && spd > 8) {
+                val key = "next-${n.limit}-$curWay"
+                Alerts.announce(key, "Speed limit ahead ${n.limit}", 120_000)
+                if (announced.add(key)) addLog("Limit ahead: ${n.limit} in ${n.dist} m")
+            }
         }
         // notification text with the live limit
         if (lim != lastNotifLimit && ObdService.running) {

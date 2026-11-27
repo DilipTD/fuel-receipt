@@ -67,6 +67,10 @@ class RoadPage(a: MainActivity) : Page(a) {
     private lateinit var logBox: LinearLayout
     private lateinit var headTv: TextView
     private lateinit var mapTv: TextView
+    private lateinit var basisTv: TextView
+    private lateinit var speedBar: SpecBar
+    private lateinit var nextBox: LinearLayout
+    private lateinit var statsTv: TextView
     private var logSig = ""
 
     override fun build(): View { box = ui.col(); return ui.scroll(box) }
@@ -76,6 +80,10 @@ class RoadPage(a: MainActivity) : Page(a) {
         sign = RoadSignView(a); compass = CompassView(a)
         spdTv = ui.tv("0", 38f, Ui.WHITE, true); headTv = ui.tv("—", 15f, Ui.CYAN, true)
         roadTv = ui.tv("Finding road…", 16f, Ui.WHITE, true); subTv = ui.tv("", 12f, Ui.DIM); aiTv = ui.tv("", 12.5f, Ui.WHITE)
+        sign.setOnClickListener { explainLimit() }
+        speedBar = SpecBar(a).apply { tall = true; visibility = View.GONE }
+        basisTv = ui.tv("", 11.5f, Ui.DIM)
+        nextBox = ui.vbox(); statsTv = ui.tv("", 12.5f, Ui.WHITE)
         box.addView(LinearLayout(a).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = ui.rounded(Ui.CARD, 22); setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(14))
@@ -91,13 +99,15 @@ class RoadPage(a: MainActivity) : Page(a) {
                 addView(headTv.apply { gravity = Gravity.CENTER })
             })
         }, ui.lp(6))
+        box.addView(speedBar, ui.lp(6))
+        box.addView(nextBox, ui.lp(6))
         box.addView(LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             background = ui.rounded(Ui.CARD, 18); setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
             addView(LinearLayout(a).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(ui.badge(Ic.ROUTE, Ui.ACC, 36), LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)).apply { rightMargin = ui.dp(10) })
-                addView(ui.vbox().apply { addView(roadTv); addView(subTv) }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+                addView(ui.vbox().apply { addView(roadTv); addView(subTv); addView(basisTv) }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             })
             addView(LinearLayout(a).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -112,6 +122,13 @@ class RoadPage(a: MainActivity) : Page(a) {
         box.addView(ui.row(
             ui.btn("Correct this limit", Ui.CARD) { correctLimit() },
             ui.btn("Report hazard here", Ui.CARD) { reportHazard() }), ui.lp(8))
+        box.addView(ui.section("This drive", Ic.CHART))
+        box.addView(LinearLayout(a).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.rounded(Ui.CARD, 14); setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            addView(statsTv, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            addView(ui.tv("Reset", 12f, Ui.ACC, true).apply { setPadding(ui.dp(10), ui.dp(6), ui.dp(4), ui.dp(6)); setOnClickListener { RoadAssist.resetStats(); refresh() } })
+        }, ui.lp(2))
         box.addView(ui.section("Offline map", Ic.DATABASE))
         mapTv = ui.tv(RoadAssist.savedInfo(), 12.5f, Ui.DIM)
         box.addView(mapTv, ui.lp(4))
@@ -148,6 +165,28 @@ class RoadPage(a: MainActivity) : Page(a) {
         refresh()
     }
 
+    private fun explainLimit() {
+        val i = RoadAssist.info
+        if (i == null) { ui.toast("No road matched yet"); return }
+        val lim = i.limit
+        val src = when (i.source) { "you" -> "Set by you"; "osm" -> "Marked on the map"; else -> "Estimated" }
+        val msg = StringBuilder()
+        msg.append(if (lim != null) "${Units.sStr(lim.toDouble())} · $src · ${i.conf} % sure\n\n" else "No limit data for this road.\n\n")
+        if (i.basis.isNotEmpty()) msg.append("Why: ${i.basis}.\n\n")
+        msg.append("Road: ${i.highway.replace('_', ' ')}")
+        if (i.lanes > 0) msg.append(" · ${i.lanes} lanes")
+        if (i.oneway) msg.append(" · one-way")
+        if (i.lit) msg.append(" · lit")
+        if (i.urban) msg.append(" · built-up area")
+        if (i.estimated) msg.append("\n\nEstimates come from nearby marked roads or typical limits for the road type. If you know the real limit, set it once and I will remember it for this road.")
+        val b = AlertDialog.Builder(a).setTitle(if (lim != null) "Speed limit ${Units.sStr(lim.toDouble())}" else "Speed limit").setMessage(msg.toString())
+            .setNegativeButton("Close", null).setNeutralButton("Correct") { _, _ -> correctLimit() }
+        if (i.estimated && lim != null && i.wayId != 0L) b.setPositiveButton("Confirm ${Units.sStr(lim.toDouble())}") { _, _ ->
+            RoadAssist.setLimitFix(i.wayId, lim); ui.toast("Saved – this road now uses ${Units.sStr(lim.toDouble())}")
+        }
+        b.show()
+    }
+
     private fun correctLimit() {
         val i = RoadAssist.info
         if (i == null || i.wayId == 0L) { ui.toast("No road matched yet"); return }
@@ -178,6 +217,18 @@ class RoadPage(a: MainActivity) : Page(a) {
         sign.limit = i?.limit; sign.estimated = i?.estimated == true
         sign.over = i?.limit != null && spd > i.limit + Prefs.speedMargin
         spdTv.text = "%.0f".format(Units.spd(spd)); spdTv.setTextColor(if (sign.over) Ui.BAD else Ui.WHITE)
+        val lm = i?.limit
+        if (lm != null) {
+            val mg = Prefs.speedMargin
+            speedBar.set(Spec(0.0, lm + mg.toDouble(), 0.0, lm + mg + 10.0, 0.0, maxOf(120.0, lm * 1.6)), spd, if (spd <= lm + mg) 0 else if (spd <= lm + mg + 10) 1 else 2)
+        } else speedBar.set(null, null, 0)
+        basisTv.text = if (i == null) "" else (if (i.limit != null) "${i.conf} % sure · " else "") + i.basis + "  (tap the sign for details)"
+        nextBox.removeAllViews()
+        r.next?.let { n -> nextBox.addView(ui.iconCard(Ic.FLAG, Ui.CYAN, "Limit changes to ${Units.sStr(n.limit.toDouble())}", "in about ${n.dist} m" + (if (n.road.isNotEmpty()) " · ${n.road}" else "") + if (n.estimated) " · estimated" else "")) }
+        val mins = r.statSec / 60.0
+        statsTv.text = if (r.statSec < 10) "Moving time, over-limit share and alerts appear while you drive." else
+            "%.0f min moving · top speed %s\nOver the limit %s of the time%s · %d hazard alerts".format(mins, Units.sStr(r.topSpd),
+                if (r.limSec > 5) "%.0f %%".format(r.overSec * 100 / r.limSec) else "–", if (r.maxOver > 0) " · worst +${Units.sStr(r.maxOver)}" else "", r.alertsN)
         compass.deg = r.heading
         headTv.text = if (r.heading != null) "${RoadAssist.compass(r.heading)} · ${r.heading!!.toInt()}°" else "—"
         roadTv.text = when {
@@ -185,7 +236,7 @@ class RoadPage(a: MainActivity) : Page(a) {
             i == null -> if (r.lastFix == 0L) Gps.statusText(a) else r.status
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
-        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else if (i.source == "you") "limit ${Units.sStr(i.limit!!.toDouble())} (set by you)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
+        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + (if (i.lanes > 0) " · ${i.lanes} lanes" else "") + (if (i.oneway) " · one-way" else "") + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else if (i.source == "you") "limit ${Units.sStr(i.limit!!.toDouble())} (set by you)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
         aiTv.text = when {
             i == null -> "Drive with GPS on – I will find the road, its limit and hazards."
             sign.over -> "You are ${Units.sStr(spd - (i.limit ?: 0))} over the limit – ease off."

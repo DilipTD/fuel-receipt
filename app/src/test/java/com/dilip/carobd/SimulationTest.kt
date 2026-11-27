@@ -564,3 +564,66 @@ class LiveSpecTest : SimBase() {
         Report.flush("Live data analysis")
     }
 }
+
+
+/** Road AI v2: estimated limits (same road, regional default), limit change ahead, sharp curves, drive stats. */
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class RoadEstimateTest : SimBase() {
+    private fun fix(la: Double, lo: Double, bearing: Float, kmh: Double) = android.location.Location("gps").apply {
+        latitude = la; longitude = lo; this.bearing = bearing; speed = (kmh / 3.6).toFloat(); accuracy = 5f; time = System.currentTimeMillis()
+    }
+
+    @Test
+    fun roadEstimates() {
+        prep()
+        launch()
+        Report.head("Road AI estimates")
+        Prefs.roadAssist = true
+        RoadAssist.clearSaved()
+        // 1. untagged section of a road whose neighbour section is marked 80
+        RoadAssist.installTile(RoadAssist.Tile(0.5000, -30.0000, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(1, "Ring Road", "NH1", "primary", 80, false, doubleArrayOf(0.5, -30.0100, 0.5, -30.0050)),
+            RoadAssist.Way(2, "Ring Road", "NH1", "primary", -1, false, doubleArrayOf(0.5, -30.0050, 0.5, -29.9980))
+        ), emptyList()))
+        RoadAssist.onLocation(fix(0.5, -30.0000, 90f, 40.0))
+        val a = RoadAssist.info
+        if (a?.limit == 80 && a.estimated && a.conf == 70 && a.basis.contains("Same road")) Report.ok("Untagged section inherits 80 from the same road (${a.basis})") else Report.bad("Inherit failed: ${a?.limit} ${a?.basis}")
+        // 2. regional default in India, rural secondary road
+        RoadAssist.installTile(RoadAssist.Tile(20.0000, 78.0000, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(3, "", "SH5", "secondary", -1, false, doubleArrayOf(20.0, 77.9990, 20.0, 78.0010))
+        ), emptyList()))
+        RoadAssist.onLocation(fix(20.0, 78.0000, 90f, 40.0))
+        val b = RoadAssist.info
+        if (b?.limit == 60 && b.estimated && b.basis.contains("India")) Report.ok("India default for a rural secondary road: 60 (${b.basis})") else Report.bad("India default failed: ${b?.limit} ${b?.basis}")
+        // 3. sharp curve
+        RoadAssist.installTile(RoadAssist.Tile(0.7000, -30.0000, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(4, "Hill Road", "", "tertiary", 40, false, doubleArrayOf(0.7, -30.0030, 0.7, -29.9990, 0.70045, -29.9990))
+        ), emptyList()))
+        RoadAssist.onLocation(fix(0.7, -30.0020, 90f, 40.0))
+        val cv = RoadAssist.curve
+        if (cv != null && cv.first.kind == "curve" && cv.first.adv == 30) Report.ok("Sharp 90° curve detected ${cv.second} m ahead, advice ease to ${cv.first.adv}") else Report.bad("Curve not detected: ${cv?.second}")
+        if (RoadAssist.ahead().any { it.first.kind == "curve" }) Report.ok("Curve is listed in the hazards ahead") else Report.bad("Curve missing from ahead()")
+        // 4. limit change ahead
+        RoadAssist.installTile(RoadAssist.Tile(0.9000, -30.0000, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(5, "Main St", "", "secondary", 60, false, doubleArrayOf(0.9, -30.0040, 0.9, -30.0020)),
+            RoadAssist.Way(6, "Main St", "", "secondary", 40, false, doubleArrayOf(0.9, -30.0020, 0.9, -29.9990))
+        ), emptyList()))
+        RoadAssist.onLocation(fix(0.9, -30.0030, 90f, 70.0))
+        val nx = RoadAssist.next
+        if (nx != null && nx.limit == 40) Report.ok("Limit change ahead detected: 40 in ${nx.dist} m") else Report.bad("Next limit not detected: ${nx?.limit}")
+        // 5. stats
+        RoadAssist.resetStats()
+        RoadAssist.onLocation(fix(0.9, -30.0030, 90f, 70.0))
+        Thread.sleep(1100)
+        RoadAssist.onLocation(fix(0.9, -30.0029, 90f, 70.0))
+        if (RoadAssist.statSec > 0.5 && RoadAssist.overSec > 0.5 && RoadAssist.maxOver >= 9) Report.ok("Drive stats: ${"%.1f".format(RoadAssist.statSec)} s moving, ${"%.1f".format(RoadAssist.overSec)} s over, worst +${"%.0f".format(RoadAssist.maxOver)}") else Report.bad("Stats wrong: ${RoadAssist.statSec} ${RoadAssist.overSec} ${RoadAssist.maxOver}")
+        showPage("Road")
+        try { act.pages["Road"]!!.refresh(); Report.ok("Road page renders (speed bar, next limit, drive stats)") } catch (e: Throwable) { Report.bad("Road page crashed", e) }
+        RoadAssist.clearSaved()
+        Prefs.roadAssist = false
+        Report.flush("Road AI estimates")
+    }
+}

@@ -187,8 +187,8 @@ class GaragePage(a: MainActivity) : Page(a) {
 
     private fun edit(v: Vehicle) {
         val name = ui.edit("My car", v.name)
-        val make = ui.edit("e.g. Tata, Maruti, Hyundai", v.make)
-        val model = ui.edit("e.g. Nexon, Swift, Creta", v.model)
+        val make = ui.edit("e.g. Maruti, Hyundai, Toyota", v.make)
+        val model = ui.edit("e.g. Swift, Creta, City", v.model)
         val year = ui.edit("2022", if (v.year > 0) v.year.toString() else "", true)
         val fuel = Spinner(a).apply {
             adapter = ArrayAdapter(a, android.R.layout.simple_spinner_dropdown_item, Fuels.all.map { it.name })

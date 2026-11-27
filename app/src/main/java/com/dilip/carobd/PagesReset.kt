@@ -120,7 +120,7 @@ class ServiceResetPage(a: MainActivity) : Page(a) {
         }
         box.addView(ui.section("Last result", Ic.TERMINAL))
         box.addView(out, ui.lp(6))
-        box.addView(ui.tv("The app cannot know each car's private reset command (they are brand-specific and mostly unpublished for Indian models like Tata). Enter one you have for your car; the app sends it over the ELM327, shows the ECU's answer and marks the service done in Maintenance.", 12f, Ui.DIM), ui.lp(12))
+        box.addView(ui.tv("The app cannot know each car's private reset command (they are brand-specific and mostly unpublished). Enter one you have for your car; the app sends it over the ELM327, shows the ECU's answer and marks the service done in Maintenance.", 12f, Ui.DIM), ui.lp(12))
     }
 
     private fun options(k: ServiceReset.Kind) {
