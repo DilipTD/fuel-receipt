@@ -2,7 +2,7 @@
 
 ## Acceptance
 
-By installing or using Dr. Vittu OBDII Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 26 November 2026.
+By installing or using Dr. Vittu OBDII Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 27 November 2026.
 
 ## Licence
 
@@ -15,6 +15,10 @@ Do not operate or read the app while driving. Set it up before you start and let
 ## Diagnostics are a guide only
 
 Readings, fault-code explanations, root-cause suggestions, health scores, range and eco estimates and other "AI" results are produced by rules and calculations on your phone. They can be wrong or incomplete. Always confirm faults with a qualified mechanic before repairs, and do not ignore warning lights on the dashboard.
+
+## Sign recognition is a driver aid, not a safety system
+
+The Sign camera and the road warnings it gives (for example stop, no entry, school, curves) are an aid only. They give spoken and on-screen warnings; the app never steers, brakes, accelerates or controls the car in any way. The recognition model was trained on German road signs and can miss signs, misread them or see signs that are not there, especially in glare, darkness, rain or at an angle, and some signs in other countries look different. Always watch the road and obey the real signs. Mount the phone firmly and do not touch it while driving.
 
 ## Speed limits and road data
 

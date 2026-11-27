@@ -6,7 +6,7 @@ Dr. Vittu OBDII Pro ("the app") is developed by Dilip Kumar TD ("the developer",
 
 The short version: your data stays on your phone. The app has no user accounts, no advertising, no analytics and no tracking SDKs. The developer does not receive, collect or sell your personal data.
 
-Last updated: 26 November 2026.
+Last updated: 27 November 2026.
 
 ## Information the app handles
 
@@ -32,7 +32,9 @@ All of this is stored only on your device (in the app's private storage).
 
 • To announce speed limits, speed breakers, cameras and school/hospital zones while you drive.
 
-• To read road signs with the optional Sign camera. Pictures are analysed on the phone and are not saved or sent; only the small picture of a sign you choose to teach is kept.
+• To read road signs with the optional Sign camera. Pictures are analysed on the phone and are not saved or sent. Standard signs (stop, no entry, school, curves and similar) are recognised by a small model that is built into the app and runs offline. Only the small picture of a sign you choose to teach is kept.
+
+• To save a sign map: when a standard sign is recognised, the sign type and its approximate position are saved on the phone so the road assistant can warn you before you reach it next time. No pictures are stored in the sign map. You can clear it on the Signs page, and it is part of your own backup.
 
 • To suggest possible causes of fault codes and maintenance reminders using on-device rules. No data is sent to an AI service.
 
@@ -68,7 +70,7 @@ We do not sell or share your data. Data leaves the app only when you choose to: 
 
 ## Retention and deletion
 
-Data stays on your phone until you delete it. You can delete individual drives, fill-ups, service records, documents and alerts by swiping them left, or delete everything with More → Privacy & legal → Delete all my data. Uninstalling the app removes its local data. Backup files you saved elsewhere must be deleted by you in that location.
+Data stays on your phone until you delete it. The sign map can be cleared on the Signs page. You can delete individual drives, fill-ups, service records, documents and alerts by swiping them left, or delete everything with More → Privacy & legal → Delete all my data. Uninstalling the app removes its local data. Backup files you saved elsewhere must be deleted by you in that location.
 
 ## Security
 

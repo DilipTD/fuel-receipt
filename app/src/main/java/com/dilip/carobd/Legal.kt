@@ -33,6 +33,7 @@ object Legal {
         val msg = "Dr. Vittu OBDII Pro connects to your OBD adapter and records your drives.\n\n" +
             "• Location: your precise location is used for trip routes, speed, road speed-limit announcements and fuel-station positions – including in the background while the road assistant or trip recording is running (a notification is always shown).\n" +
             "• Bluetooth / Wi-Fi: to find and talk to your OBD adapter.\n" +
+            "• Camera (optional): the Sign camera reads road signs on the phone only. Pictures are not saved or sent. It gives warnings only and is not a safety system.\n" +
             "• Internet: map tiles and road data are fetched from OpenStreetMap and Overpass using your coordinates.\n\n" +
             "All your data stays on your phone. The developer collects nothing, shows no ads and sells no data. Backups only go to a place you choose.\n\n" +
             "Do not use the app while driving. Diagnostics are a guide only."
