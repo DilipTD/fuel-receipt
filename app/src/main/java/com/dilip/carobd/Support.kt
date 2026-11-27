@@ -82,6 +82,10 @@ object Prefs {
     var activeVehicle: Long
         get() = sp.getLong("activeVehicle", 0L)
         set(v) = sp.edit().putLong("activeVehicle", v).apply()
+    /** 0 = Performance, 1 = Balanced (default), 2 = Eco */
+    var powerMode: Int
+        get() = sp.getInt("powerMode", 1)
+        set(v) = sp.edit().putInt("powerMode", v).apply()
     var pollDelayMs: Int
         get() = sp.getInt("pollDelay", 0)
         set(v) = sp.edit().putInt("pollDelay", v).apply()

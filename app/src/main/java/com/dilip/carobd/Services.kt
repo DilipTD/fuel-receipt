@@ -351,6 +351,10 @@ class ObdService : Service() {
     companion object {
         @Volatile var running = false
             private set
+        @Volatile private var inst: ObdService? = null
+
+        /** Keep the CPU awake only when the mode needs it: Performance always, Balanced while connected, Eco only with the engine on. */
+        fun refreshWake() { inst?.applyWake() }
 
         fun build(ctx: Context, title: String, text: String): Notification {
             val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -392,6 +396,25 @@ class ObdService : Service() {
 
     private var watcher: Thread? = null
 
+    @Synchronized
+    fun applyWake() {
+        val need = when (Prefs.powerMode) {
+            0 -> true
+            1 -> ObdManager.state == ObdManager.State.CONNECTED || ObdManager.state == ObdManager.State.CONNECTING
+            else -> ObdManager.engineOn || System.currentTimeMillis() < ObdManager.wakeUntil
+        }
+        try {
+            if (wl == null) {
+                val pm = getSystemService(PowerManager::class.java)
+                wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CarOBD:link").apply { setReferenceCounted(false) }
+            }
+            val w = wl ?: return
+            if (need && !w.isHeld) w.acquire(12 * 60 * 60 * 1000L)
+            else if (!need && w.isHeld) w.release()
+        } catch (_: Exception) {
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try { ObdManager.init(this) } catch (_: Exception) {}
         val connected = ObdManager.state != ObdManager.State.DISCONNECTED
@@ -418,22 +441,24 @@ class ObdService : Service() {
         }
         if (Prefs.roadAssist) Gps.start(this)
         Mqtt.ensureStarted(applicationContext)
-        if (wl == null) {
-            val pm = getSystemService(PowerManager::class.java)
-            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CarOBD:link").apply {
-                setReferenceCounted(false)
-                acquire(12 * 60 * 60 * 1000L)
-            }
-        }
+        inst = this
+        applyWake()
         if ((Prefs.backgroundWatch || Prefs.roadAssist) && watcher == null) {
             watcher = Thread({
                 try { Thread.sleep(3000) } catch (_: InterruptedException) { return@Thread }
+                var misses = 0
                 while (running && !Thread.currentThread().isInterrupted) {
                     try {
                         try { Backup.auto(applicationContext) } catch (_: Exception) {}
-                        if (Prefs.backgroundWatch && Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED && !ObdManager.userDisconnected)
+                        applyWake()
+                        if (ObdManager.state != ObdManager.State.DISCONNECTED) misses = 0
+                        if (Prefs.backgroundWatch && Prefs.autoConnect && ObdManager.state == ObdManager.State.DISCONNECTED && !ObdManager.userDisconnected) {
                             AutoStart.connectLast(applicationContext)
-                        Thread.sleep(30_000)
+                            misses++
+                        }
+                        // back off while the car is away: 30 s, 1 min, 2 min, then 5 min (Eco doubles it)
+                        val step = if (Prefs.powerMode == 0) 30 else listOf(30, 60, 120, 300)[minOf(misses, 4).coerceAtLeast(1) - 1]
+                        Thread.sleep(step * (if (Prefs.powerMode == 2) 2 else 1) * 1000L)
                     } catch (_: InterruptedException) { break } catch (_: Exception) {}
                 }
             }, "obd-watch").apply { isDaemon = true; start() }
@@ -442,6 +467,7 @@ class ObdService : Service() {
     }
 
     override fun onDestroy() {
+        inst = null
         watcher?.interrupt(); watcher = null
         running = false
         try {

@@ -46,6 +46,12 @@ object ObdManager {
     @Volatile var cycleMs = 0L
     @Volatile var logFile = ""
     @Volatile var engineOn = false
+        set(v) { field = v; try { ObdService.refreshWake() } catch (_: Exception) {} }
+    /** True while the app is on screen; live screens (gauges, drive mode…) want fast data, everything else can poll slowly. */
+    @Volatile var appVisible = true
+    @Volatile var livePage = true
+    @Volatile var wakeUntil = 0L
+    private var lastPrio = -1
     @Volatile var ecuReady = false
     @Volatile var lastEvent: DriveEvent? = null
     @Volatile var lastEventAt = 0L
@@ -176,9 +182,38 @@ object ObdManager {
         jobs.add { e -> e.raw(cmd.trim().uppercase(), 5000) }
     }
 
-    private fun sleepCheck(ms: Long) {
+    /** Delay between poll cycles: adapts to what the user is looking at and whether the car is standing still. */
+    private fun adaptiveDelay(): Int {
+        val base = Prefs.pollDelayMs
+        if (Prefs.powerMode == 0 || perfMode) return base
+        val eco = Prefs.powerMode == 2
+        val still = (values[0x0D] ?: 0.0) < 1.0
+        return when {
+            appVisible && livePage -> base
+            appVisible -> if (eco) 700 else 300
+            else -> (if (eco) 1800 else 700) + (if (still) (if (eco) 1200 else 500) else 0)
+        }
+    }
+
+    /** True when nobody needs the full live data set (screen off or a non-live page). */
+    private fun lightPolling() = Prefs.powerMode > 0 && !(appVisible && livePage) && !perfMode
+
+    private fun applyBlePriority(parked: Boolean) {
+        val want = when {
+            Prefs.powerMode == 0 -> 1
+            parked -> 2
+            appVisible && livePage -> 1
+            Prefs.powerMode == 2 || !appVisible -> 2
+            else -> 0
+        }
+        if (want == lastPrio) return
+        lastPrio = want
+        (transport as? BleTransport)?.setPriority(want)
+    }
+
+    private fun sleepCheck(ms: Long, breakOnJob: Boolean = false) {
         var left = ms
-        while (left > 0 && !userStopped) {
+        while (left > 0 && !userStopped && !(breakOnJob && (jobs.isNotEmpty() || (appVisible && livePage)))) {
             Thread.sleep(minOf(250L, left)); left -= 250
         }
     }
@@ -207,7 +242,8 @@ object ObdManager {
                 if (attempt > 40) break
                 state = State.CONNECTING
                 status = (if (ok) "Link closed" else status) + " – reconnecting in 10 s (try $attempt)"
-                sleepCheck(10_000)
+                // back off when the car/adapter stays away: 10 s, then 30 s, then 60 s (saves phone battery)
+                sleepCheck(if (Prefs.powerMode == 0) 10_000L else when { attempt <= 5 -> 10_000L; attempt <= 15 -> 30_000L; else -> 60_000L })
             }
         } finally {
             stopTrip()
@@ -289,6 +325,9 @@ object ObdManager {
         var zeroRpmSince = 0L
         var waitTick = 0
         var lastNotif = 0L
+        var parkedSince = 0L
+        var gpsOn = true
+        lastPrio = -1
 
         try {
             while (!userStopped) {
@@ -302,24 +341,37 @@ object ObdManager {
                 if (!engineOn) {
                     // Ignition off: sample battery quickly (parked monitor + crank capture); a jump above
                     // 13.1 V means the alternator is charging, i.e. the engine has just been started.
-                    status = "Ignition off – parked battery monitor"
+                    if (parkedSince == 0L) parkedSince = now0
+                    val eco = Prefs.powerMode == 2
+                    // Balanced/Eco: after the first minutes parked, check the battery only now and then instead of continuously.
+                    val slowPark = Prefs.powerMode > 0 && !(appVisible && livePage) && now0 - parkedSince > (if (eco) 20_000L else 120_000L) && now0 > wakeUntil
+                    status = if (slowPark) "Ignition off – low-power parked monitor" else "Ignition off – parked battery monitor"
+                    applyBlePriority(slowPark)
                     waitTick++
                     var samples = 0
                     var charging = false
-                    val until = System.currentTimeMillis() + 5000
-                    while (!userStopped && System.currentTimeMillis() < until && jobs.isEmpty()) {
-                        val bv = elm.batteryVoltage() ?: break
-                        samples++
-                        recordVolt(bv)
-                        if (bv > 13.1) { charging = true; break }
-                        Thread.sleep(150)
+                    if (slowPark) {
+                        if (gpsOn && !Prefs.roadAssist) { Gps.stop(); gpsOn = false }
+                        elm.batteryVoltage()?.let { bv -> samples = 1; recordVolt(bv); if (bv > 13.1) charging = true }
+                        if (!charging) sleepCheck(if (eco) 15_000 else 8_000, breakOnJob = true)
+                    } else {
+                        val until = System.currentTimeMillis() + 5000
+                        while (!userStopped && System.currentTimeMillis() < until && jobs.isEmpty()) {
+                            val bv = elm.batteryVoltage() ?: break
+                            samples++
+                            recordVolt(bv)
+                            if (bv > 13.1) { charging = true; break }
+                            Thread.sleep(150)
+                        }
+                        if (samples == 0) sleepCheck(5000)
                     }
-                    if (samples == 0) sleepCheck(5000)
                     AlertCenter.check(app)
                     if (waitTick % 3 == 0) updateNotification()
                     val woke = if (!ecuReady) prepareEcu(elm)
                     else (elm.pid01(0x0C) ?: (if (vehicle.isEv) elm.pid01(0x0D) else null)) != null || ((charging || waitTick % 6 == 0) && prepareEcu(elm))
                     if (woke) {
+                        parkedSince = 0L
+                        if (!gpsOn) { Gps.start(app); gpsOn = true }
                         engineOn = true; lastOk = System.currentTimeMillis(); status = "Connected"
                         preCrank = true; preCrankUntil = System.currentTimeMillis() + 45_000
                         if (charging) analyseCrank()
@@ -353,13 +405,14 @@ object ObdManager {
                         if (p == 0x0C && ok) rpmOk = true
                     }
                     if (0x0C !in supported && 0x0D in supported) rpmOk = true
-                    repeat(3) {
+                    val light = lightPolling()
+                    repeat(if (light) 1 else 3) {
                         if (slow.isNotEmpty()) {
                             readPid(elm, slow[slowIdx % slow.size]); slowIdx++
                         }
                     }
                     val customs = Prefs.customPids
-                    if (customs.isNotEmpty()) {
+                    if (customs.isNotEmpty() && !light) {
                         readCustom(elm, customs[customIdx % customs.size]); customIdx++
                     }
                     if (cycle % 10 == 0) elm.batteryVoltage()?.let { recordVolt(it) }
@@ -371,6 +424,7 @@ object ObdManager {
                 if (rpmOk) lastOk = now
                 else if (now - lastOk > 20_000) {
                     log("No ECU response for 20 s – ignition off")
+                    parkedSince = 0L
                     stopTrip()
                     engineOn = false
                     values.remove(0x0C); values.remove(0x0D)
@@ -430,7 +484,8 @@ object ObdManager {
                     writeCsvRow(csv)
                 }
                 cycleMs = now - now0
-                val d = Prefs.pollDelayMs
+                applyBlePriority(false)
+                val d = adaptiveDelay()
                 if (d > 0) Thread.sleep(d.toLong())
             }
         } finally {
@@ -440,6 +495,12 @@ object ObdManager {
     }
 
     /* ---------------- trips & events ---------------- */
+
+    /** Something happened that may mean the car just woke (e.g. car Bluetooth connected): poll normally for a while. */
+    fun wakeNow(ms: Long = 3 * 60_000L) {
+        wakeUntil = System.currentTimeMillis() + ms
+        try { ObdService.refreshWake() } catch (_: Exception) {}
+    }
 
     @Synchronized
     fun startTrip() {

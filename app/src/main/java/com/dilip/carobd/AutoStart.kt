@@ -91,6 +91,7 @@ class CarBtReceiver : BroadcastReceiver() {
                 Handler(Looper.getMainLooper()).postDelayed({
                     try {
                         ObdManager.init(app)
+                        ObdManager.wakeNow()
                         if (AutoStart.connectLast(app)) ObdManager.log("Auto-start: car Bluetooth connected")
                     } catch (_: Exception) {
                     } finally {

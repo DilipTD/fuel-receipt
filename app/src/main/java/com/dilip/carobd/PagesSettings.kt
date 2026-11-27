@@ -227,6 +227,13 @@ class SettingsPage(a: MainActivity) : Page(a) {
         body.addView(ui.row(pr, pd))
         hint("Auto works for nearly every car. A poll delay helps slow clone adapters.")
 
+        body.addView(ui.section("Power saver", Ic.BATTERY))
+        val modes = listOf("Performance – fastest data, most power", "Balanced – recommended", "Eco – lowest power")
+        body.addView(spinner("Power mode", modes, Prefs.powerMode.coerceIn(0, 2)) { Prefs.powerMode = it; ObdService.refreshWake(); ObdManager.wakeNow(1000) })
+        hint("Balanced polls fast only on live screens (Dash, Live, Drive mode, HUD, Health) and slows down with the screen off or while parked. " +
+            "Eco also checks the car only every few seconds when parked and lets the phone sleep until the engine starts – trips may start up to ~15 s late. " +
+            "Use a BLE adapter for the lowest radio power. Auto-connect retries back off (30 s → 5 min) while the car is away.")
+
         body.addView(ui.section("Behaviour", Ic.GEAR))
         toggle("Auto-connect to the last adapter when the app opens", { Prefs.autoConnect }) { Prefs.autoConnect = it }
         toggle("Auto-reconnect if the link drops", { Prefs.autoReconnect }) { Prefs.autoReconnect = it }

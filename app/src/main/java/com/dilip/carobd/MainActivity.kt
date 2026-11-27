@@ -21,6 +21,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 @SuppressLint("MissingPermission", "SetTextI18n")
+/** Screens that show live gauges and need fast polling. */
+val LIVE_PAGES = setOf("Dash", "Live", "Car", "HUD", "Perf", "Battery", "Health")
+
 class MainActivity : Activity() {
     lateinit var ui: Ui
     private lateinit var header: LinearLayout
@@ -232,11 +235,14 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (Prefs.roadAssist) try { Gps.start(this) } catch (_: Exception) {}
+        ObdManager.appVisible = true
+        ObdManager.livePage = current in LIVE_PAGES
         handler.post(tick)
     }
 
     override fun onPause() {
         super.onPause()
+        ObdManager.appVisible = false
         handler.removeCallbacks(tick)
     }
 
@@ -322,6 +328,7 @@ class MainActivity : Activity() {
         if (!pages.containsKey(name)) return
         val prev = current
         current = name
+        ObdManager.livePage = name in LIVE_PAGES
         pages.forEach { (k, p) -> p.view.visibility = if (k == name) View.VISIBLE else View.GONE }
         var tab = name
         var guard = 0

@@ -212,6 +212,19 @@ class BleTransport(private val ctx: Context, private val device: BluetoothDevice
     private val descLatch = CountDownLatch(1)
     @Volatile private var writeLatch: CountDownLatch? = null
     @Volatile private var linkUp = false
+    @Volatile private var prio = -1
+
+    /** 0 = balanced, 1 = high (fast data), 2 = low power. Only BLE can change its radio duty cycle. */
+    @SuppressLint("MissingPermission")
+    fun setPriority(level: Int) {
+        if (level == prio) return
+        try {
+            val g = gatt ?: return
+            val v = when (level) { 1 -> BluetoothGatt.CONNECTION_PRIORITY_HIGH; 2 -> BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER; else -> BluetoothGatt.CONNECTION_PRIORITY_BALANCED }
+            if (g.requestConnectionPriority(v)) prio = level
+        } catch (_: Exception) {
+        }
+    }
     private val mtuLatch = CountDownLatch(1)
     @Volatile private var chunk = 20
 
