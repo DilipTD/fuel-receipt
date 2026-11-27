@@ -898,7 +898,12 @@ class RobustnessTest : SimBase() {
             val err = Backup.restore(app, java.io.ByteArrayInputStream(bos.toByteArray()))
             idle(500)
             if (Prefs.mapRadiusKm == 100 && Prefs.speedMargin == 7 && Prefs.roadFix.contains("45")) Report.ok("Backup ${bos.size() / 1024} KB restores settings and road corrections${err?.let { " ($it)" } ?: ""}")
-            else Report.bad("Restore lost data: radius ${Prefs.mapRadiusKm}, margin ${Prefs.speedMargin}, fix ${Prefs.roadFix} ($err)")
+            else {
+                val zi = java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(bos.toByteArray())); val names = ArrayList<String>(); var setJs = ""
+                var e = zi.nextEntry; while (e != null) { names += e.name; if (e.name == "settings.json") setJs = String(zi.readBytes()); e = zi.nextEntry }
+                val o = try { org.json.JSONObject(setJs).optJSONObject("car_obd") } catch (_: Exception) { null }
+                Report.bad("Restore lost data: radius ${Prefs.mapRadiusKm}, margin ${Prefs.speedMargin}, fix ${Prefs.roadFix} ($err); zip=$names; saved radius=${o?.optJSONObject("mapRadiusKm")}, margin=${o?.optJSONObject("speedMargin")}, keys=${o?.length()}; sp now=${app.getSharedPreferences("car_obd", 0).all["mapRadiusKm"]}")
+            }
             val bad = Backup.restore(app, java.io.ByteArrayInputStream("not a zip".toByteArray()))
             Report.ok("Garbage backup file rejected safely: ${bad ?: "no message"}")
         } catch (e: Throwable) { Report.bad("Backup round trip crashed", e) }
