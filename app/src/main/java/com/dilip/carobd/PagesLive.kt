@@ -155,6 +155,7 @@ class LivePage(a: MainActivity) : Page(a) {
             ui.btn("Snapshot CSV", Ui.CARD) { snapshot() },
             ui.btn("Report PDF", Ui.CARD) { report() }
         ), ui.lp(8))
+        c.addView(ui.btn("Reset learned norms", Ui.CARD) { SpecEngine.resetBaseline(); ui.toast("Your car's norms will be learned again"); lastSlow = 0L }, ui.lp(8))
         c.addView(ui.tv("Ranges are typical values for a healthy car, not factory data for one model. Treat them as a guide.", 11f, Ui.DIM), ui.lp(10))
         return ui.scroll(c)
     }

@@ -204,6 +204,8 @@ object SpecEngine {
         if (now - (lastBaseAt[k] ?: 0L) < learnGapMs) return
         lastBaseAt[k] = now
         val b = bases.getOrPut(k) { Base() }
+        // once the norm is known, readings far from it are not absorbed, so a developing fault stays visible as drift
+        if (b.n >= BASE_READY && abs(v - b.mean) > maxOf(3.0 * b.sd, baseMinDelta[k] ?: 0.0)) return
         if (b.n < 5000) {
             b.n++; val dl = v - b.mean; b.mean += dl / b.n; b.m2 += dl * (v - b.mean)
         } else { b.mean += (v - b.mean) / 5000.0 }
