@@ -28,6 +28,7 @@ object AppInfo {
     val changelog = """
 v4.23.1 – Reliability fixes
 • Backup no longer fails on a new install before the first trip is saved
+• Diagnostics: tapping several scans in a row no longer mixes up the results or shows "ready" while the adapter is still working
 • After a restore, restored road corrections, camera limits and taught signs are used straight away
 • Checked against a faulty adapter, corrupted saved data, extreme sensor values, GPS jumps, camera noise, rotation, large text and rapid screen switching
 
