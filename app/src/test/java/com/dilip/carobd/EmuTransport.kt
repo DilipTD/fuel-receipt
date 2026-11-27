@@ -23,6 +23,11 @@ class EmuTransport(
     private var spaces = true
     private var header = "7DF"
     val log = ArrayList<String>()
+    /** Fault injection: fraction of ECU replies replaced by adapter errors or garbage. */
+    @Volatile var chaos = 0.0
+    @Volatile var delayMs = 0L
+    private val rnd = java.util.Random(7)
+    private val junk = listOf("NO DATA", "?", "CAN ERROR", "BUS INIT: ...ERROR", "STOPPED", "BUFFER FULL", "41 0C", "41", "7E8 10 14 49 02", "", "41 0C ZZ QQ", "UNABLE TO CONNECT", "SEARCHING...", "41 0D FF FF FF FF FF FF FF", "ELM327 v1.5")
 
     override fun open() { connected = true }
     override fun close() { connected = false }
@@ -118,7 +123,9 @@ class EmuTransport(
 
     override fun writeBytes(data: ByteArray) {
         val cmd = String(data).trim()
-        val r = try { reply(cmd) } catch (e: Exception) { "?" }
+        var r = try { reply(cmd) } catch (e: Exception) { "?" }
+        if (delayMs > 0) try { Thread.sleep(delayMs) } catch (_: Exception) {}
+        if (chaos > 0 && !cmd.startsWith("AT", true) && rnd.nextDouble() < chaos) r = junk[rnd.nextInt(junk.size)]
         synchronized(log) { log += "> $cmd  <  ${r.replace("\r", " | ")}" ; if (log.size > 400) log.removeAt(0) }
         feed(("$r\r\r>").toByteArray())
     }

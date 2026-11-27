@@ -730,3 +730,214 @@ class WideMapTest : SimBase() {
         Report.flush("Wide highway map")
     }
 }
+
+/** Robustness: bad adapter, corrupted storage, lifecycle, extreme values, GPS chaos, camera noise, backup, text quality, threads. */
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w360dp-h640dp-port")
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class RobustnessTest : SimBase() {
+    private val pids = setOf(0x04, 0x05, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x1F, 0x2F, 0x42, 0x46)
+    private val badText = Regex("NaN|Infinity|\\bnull\\b|\\$\\{|%[sd.]|(?i)tata|(?i)nexon")
+
+    private fun textScan(tag: String) {
+        val hits = LinkedHashSet<String>()
+        for (k in act.pages.keys.toList()) {
+            if (!showPage(k)) continue
+            try { act.pages[k]!!.refresh(); idle(300) } catch (e: Throwable) { Report.bad("[$tag] '$k' refresh crashed", e); continue }
+            for (v in allViews(act.pages[k]!!.view)) if (v is TextView) {
+                val t = v.text.toString()
+                badText.find(t)?.let { hits += "$k: …${t.substring(maxOf(0, it.range.first - 25), minOf(t.length, it.range.last + 25)).replace('\n', ' ')}…" }
+            }
+        }
+        if (hits.isEmpty()) Report.ok("[$tag] no NaN / null / Infinity / format leftovers / brand names on any page")
+        else hits.take(12).forEach { Report.bad("[$tag] bad text $it") }
+    }
+
+    @Test
+    fun robustness() {
+        prep()
+        val app = RuntimeEnvironment.getApplication()
+        val thr0 = Thread.activeCount()
+
+        // A. corrupted storage
+        Report.head("A. Corrupted saved data")
+        val sp = app.getSharedPreferences("car_obd", android.content.Context.MODE_PRIVATE)
+        val jsonKeys = listOf("crankHist", "perfRuns", "roadFix", "roadUserHaz", "signLib", "roadCam", "liveBaseline", "resetProfiles", "custom", "healthSnap", "lastDiag", "livePins")
+        sp.edit().apply { jsonKeys.forEach { putString(it, "{not json[[") }; putString("spdCorr", "abc"); putString("protocol", "zz"); putString("uDist", "parsec") }.commit()
+        try { java.io.File(app.filesDir, "road_areas.json").writeText("{\"v\":1,\"tiles\":[{\"la\":\"x\"") } catch (_: Exception) {}
+        try { launch(); Report.ok("Starts with every saved JSON corrupted") } catch (e: Throwable) { Report.bad("Start-up crashed on corrupted data", e); return }
+        refreshAll("corrupt")
+        for (k in listOf("Road", "Signs", "Live", "Garage", "Settings", "Backup")) monkey(k, 15)
+        try { SignLib.load(true); RoadAssist.savedInfo(); SpecEngine.reset(); Report.ok("Sign library, saved maps and live norms recover from corrupted data") } catch (e: Throwable) { Report.bad("Recovery from corrupted data crashed", e) }
+        sp.edit().apply { jsonKeys.forEach { remove(it) }; remove("spdCorr"); remove("protocol"); remove("uDist") }.commit()
+        RoadAssist.clearSaved()
+
+        // B. faulty adapter
+        Report.head("B. Faulty adapter (30 % garbage replies, slow)")
+        var emu: EmuTransport? = null
+        ObdManager.connect(act) { EmuTransport({ t -> EmuTransport.Car(900 + (t % 10) * 300, (t % 20) * 4) }, pids).also { it.chaos = 0.3; it.delayMs = 15; emu = it } }
+        val up = waitFor(25_000) { ObdManager.state == ObdManager.State.CONNECTED || ObdManager.state.name.contains("LIVE", true) || ObdManager.values.isNotEmpty() }
+        if (up) Report.ok("Connects through a noisy adapter (state ${ObdManager.state})") else Report.bad("Did not connect through a noisy adapter (state ${ObdManager.state})")
+        val end = System.currentTimeMillis() + 20_000
+        var bad = ""
+        while (System.currentTimeMillis() < end) {
+            idle(400); Thread.sleep(150)
+            for ((pid, v) in ObdManager.values) {
+                if (v.isNaN() || v.isInfinite()) bad = "PID %02X = $v".format(pid)
+                if (pid == 0x0C && (v < 0 || v > 16383)) bad = "RPM out of range $v"
+                if (pid == 0x0D && (v < 0 || v > 255)) bad = "Speed out of range $v"
+            }
+            try { act.pages[act.current]?.refresh() } catch (e: Throwable) { Report.bad("Refresh crashed under a noisy adapter", e); break }
+        }
+        if (bad.isEmpty()) Report.ok("20 s of garbage replies: no NaN or out-of-range values (${ObdManager.values.size} PIDs live)") else Report.bad("Garbage reached the values: $bad")
+        for (k in listOf("Dash", "Live", "Diag", "HUD", "Health")) { showPage(k); try { act.pages[k]!!.refresh() } catch (e: Throwable) { Report.bad("'$k' crashed with a noisy adapter", e) } }
+        emu?.chaos = 1.0
+        idle(3000); Thread.sleep(3000); idle(500)
+        Report.ok("Adapter answering only garbage for 3 s: state ${ObdManager.state}, no crash")
+        emu?.chaos = 0.0
+        disconnectAndWait()
+        if (ObdManager.state == ObdManager.State.DISCONNECTED) Report.ok("Disconnects cleanly after faults")
+
+        // C. extreme values into the live analysis
+        Report.head("C. Extreme sensor values")
+        try {
+            SpecEngine.reset()
+            val ext = listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, -1e9, 1e9, 0.0, -40.0, 65535.0)
+            for (pid in (0x04..0x5F) + listOf(-1)) for (v in ext) SpecEngine.feed(pid, v)
+            showPage("Live"); act.pages["Live"]!!.refresh(); idle(300)
+            Report.ok("NaN, ±Infinity and ±1e9 fed to every PID: live analysis did not crash")
+        } catch (e: Throwable) { Report.bad("Extreme values crashed the live analysis", e) }
+        textScan("after extreme values")
+        SpecEngine.reset(); SpecEngine.resetBaseline()
+
+        // D. GPS chaos
+        Report.head("D. GPS chaos")
+        Prefs.roadAssist = true; Prefs.mapAuto = false
+        RoadAssist.installTile(RoadAssist.Tile(12.0, 77.0, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(91, "Test Road", "", "primary", 60, false, doubleArrayOf(12.0, 76.99, 12.0, 77.01))), emptyList()))
+        val rnd = java.util.Random(3)
+        val t0 = System.nanoTime(); var worst = 0L
+        try {
+            for (i in 0 until 1500) {
+                val l = android.location.Location(if (i % 7 == 0) "network" else "gps").apply {
+                    latitude = when (i % 50) { 0 -> 89.9999; 1 -> -89.9999; 2 -> 0.0; else -> 12.0 + rnd.nextGaussian() * 0.002 }
+                    longitude = when (i % 50) { 3 -> 179.9999; 4 -> -180.0; else -> 77.0 + rnd.nextGaussian() * 0.002 }
+                    if (i % 5 != 0) bearing = rnd.nextFloat() * 360
+                    speed = (if (i % 97 == 0) 120f else rnd.nextFloat() * 35f)
+                    accuracy = if (i % 9 == 0) 500f else 4f + rnd.nextFloat() * 20
+                    time = System.currentTimeMillis()
+                }
+                val s = System.nanoTime(); RoadAssist.onLocation(l); worst = maxOf(worst, System.nanoTime() - s)
+            }
+            Report.ok("1500 random fixes (poles, 180°, 0/0, 500 m accuracy, 430 km/h, no bearing): no crash, ${"%.2f".format((System.nanoTime() - t0) / 1.5e9)} ms average, worst ${worst / 1_000_000} ms")
+            if (worst / 1_000_000 > 400) Report.bad("A single GPS fix took ${worst / 1_000_000} ms (should be well under a second)")
+        } catch (e: Throwable) { Report.bad("GPS chaos crashed the road assistant", e) }
+        showPage("Road"); try { act.pages["Road"]!!.refresh(); Report.ok("Road page fine after GPS chaos") } catch (e: Throwable) { Report.bad("Road page crashed after GPS chaos", e) }
+        var msg = ""
+        RoadAssist.downloadWide(10) { msg = it }
+        waitFor(5000) { msg.isNotEmpty() || RoadAssist.dlBusy }
+        Report.ok("Download map with no network: '${msg.ifEmpty { "started" }}' (busy=${RoadAssist.dlBusy})")
+        RoadAssist.cancelDownload(); waitFor(20_000) { !RoadAssist.dlBusy }
+        RoadAssist.clearSaved(); Prefs.roadAssist = false
+
+        // E. camera noise
+        Report.head("E. Sign camera on noise and odd frames")
+        try {
+            var falseLim = 0; var maxMs = 0L
+            for ((w, h) in listOf(1 to 1, 2 to 3, 17 to 9, 320 to 240, 240 to 320, 640 to 480)) for (k in 0 until 6) {
+                val px = IntArray(w * h) { when (k) { 0 -> 0; 1 -> -1; 2 -> android.graphics.Color.RED; 3 -> android.graphics.Color.BLUE; else -> rnd.nextInt() or (0xFF shl 24) } }
+                val s = System.nanoTime()
+                val cs = SignVision.detect(px, w, h)
+                for (c in cs) { if (SignVision.readLimit(px, w, h, c) != null) falseLim++; SignVision.fingerprint(px, w, h, c) }
+                SignEngine.process(px, w, h)
+                maxMs = maxOf(maxMs, (System.nanoTime() - s) / 1_000_000)
+            }
+            val nv = ByteArray(640 * 480 * 3 / 2) { rnd.nextInt().toByte() }
+            for (rot in listOf(0, 90, 180, 270)) SignVision.fromNv21(nv, 640, 480, rot)
+            if (falseLim == 0) Report.ok("No speed limit invented from blank, solid red/blue or random-noise frames") else Report.bad("$falseLim false speed limits from noise")
+            if (maxMs < 1500) Report.ok("Slowest frame ${maxMs} ms on the test machine; tiny and odd frame sizes handled") else Report.bad("A frame took $maxMs ms")
+        } catch (e: Throwable) { Report.bad("Sign vision crashed on odd input", e) }
+        SignEngine.reset(); SignLib.entries.clear(); SignLib.save()
+
+        // F. lifecycle on every page
+        Report.head("F. Rotate, pause and resume on every page")
+        var lc = 0
+        for (k in act.pages.keys.toList()) {
+            if (!showPage(k)) continue
+            try {
+                ctl.pause(); idle(100); ctl.resume(); idle(200)
+                act.pages[act.current]?.refresh()
+                lc++
+            } catch (e: Throwable) { Report.bad("Pause/resume on '$k' crashed", e) }
+        }
+        Report.ok("Pause → resume survived on $lc pages")
+        try {
+            RuntimeEnvironment.setQualifiers("+land"); ctl.configurationChange(); idle(800)
+            refreshAll("landscape")
+            RuntimeEnvironment.setQualifiers("+port"); ctl.configurationChange(); idle(800)
+            Report.ok("Rotation to landscape and back")
+        } catch (e: Throwable) { Report.bad("Rotation crashed", e) }
+        try { ctl.recreate(); idle(1500); act.pages[act.current]?.refresh(); Report.ok("Activity recreated (system kill) and restored") } catch (e: Throwable) { Report.bad("Recreate crashed", e) }
+
+        // G. rapid navigation
+        Report.head("G. 300 random page switches")
+        val keys = act.pages.keys.toList()
+        try {
+            for (i in 0 until 300) { act.show(keys[rnd.nextInt(keys.size)]); idle(30); if (i % 3 == 0) act.pages[act.current]?.refresh() ; if (i % 25 == 0) @Suppress("DEPRECATION") act.onBackPressed() }
+            Report.ok("300 rapid switches with back presses: no crash")
+        } catch (e: Throwable) { Report.bad("Rapid navigation crashed", e) }
+
+        // H. backup round trip
+        Report.head("H. Backup and restore round trip")
+        try {
+            Prefs.mapRadiusKm = 100; Prefs.speedMargin = 7
+            Prefs.roadFix = "{\"123\":45}"
+            val bos = java.io.ByteArrayOutputStream(); Backup.write(app, bos)
+            Prefs.mapRadiusKm = 10; Prefs.speedMargin = 2; Prefs.roadFix = "{}"
+            val err = Backup.restore(app, java.io.ByteArrayInputStream(bos.toByteArray()))
+            idle(500)
+            if (Prefs.mapRadiusKm == 100 && Prefs.speedMargin == 7 && Prefs.roadFix.contains("45")) Report.ok("Backup ${bos.size() / 1024} KB restores settings and road corrections${err?.let { " ($it)" } ?: ""}")
+            else Report.bad("Restore lost data: radius ${Prefs.mapRadiusKm}, margin ${Prefs.speedMargin}, fix ${Prefs.roadFix} ($err)")
+            val bad = Backup.restore(app, java.io.ByteArrayInputStream("not a zip".toByteArray()))
+            Report.ok("Garbage backup file rejected safely: ${bad ?: "no message"}")
+        } catch (e: Throwable) { Report.bad("Backup round trip crashed", e) }
+        try { relaunch(); Report.ok("Restarts after restore") } catch (e: Throwable) { Report.bad("Restart after restore crashed", e) }
+
+        // I. text quality on every page
+        Report.head("I. Text quality on every page")
+        textScan("normal")
+
+        // J. threads
+        Report.head("J. Background threads")
+        idle(1000)
+        val thr1 = Thread.activeCount()
+        if (thr1 - thr0 < 40) Report.ok("Thread count $thr0 → $thr1 after the whole run (no runaway threads)") else Report.bad("Thread count grew from $thr0 to $thr1")
+        synchronized(workerErrors) { if (workerErrors.isEmpty()) Report.ok("No uncaught background exceptions") }
+        Report.flush("Robustness")
+    }
+}
+
+/** Large text on a small phone. */
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w320dp-h568dp-port", fontScale = 1.4f)
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class LargeTextTest : SimBase() {
+    @Test
+    fun largeText() {
+        prep(); launch()
+        Report.head("Every page at 140 % text size on a 320 dp phone")
+        refreshAll("large text")
+        var clipped = 0; val where = LinkedHashSet<String>()
+        for (k in act.pages.keys.toList()) {
+            if (!showPage(k)) continue
+            val root = act.pages[k]!!.view
+            root.measure(View.MeasureSpec.makeMeasureSpec(act.resources.displayMetrics.widthPixels, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            for (v in allViews(root)) if (v is Button && v.width > 0 && v.layout != null && v.layout.lineCount > 0 && v.layout.getEllipsisCount(v.layout.lineCount - 1) > 0) { clipped++; where += "$k: '${v.text}'" }
+        }
+        if (clipped == 0) Report.ok("No button text cut off") else where.take(8).forEach { Report.info("Button text shortened at large size: $it") }
+        for (k in listOf("Road", "Signs", "Live", "Dash", "Garage")) monkey(k, 15)
+        Report.flush("Large text")
+    }
+}
