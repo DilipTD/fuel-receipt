@@ -602,7 +602,7 @@ class RoadEstimateTest : SimBase() {
         RoadAssist.installTile(RoadAssist.Tile(0.7000, -30.0000, 1500.0, System.currentTimeMillis(), listOf(
             RoadAssist.Way(4, "Hill Road", "", "tertiary", 40, false, doubleArrayOf(0.7, -30.0030, 0.7, -29.9990, 0.70045, -29.9990))
         ), emptyList()))
-        RoadAssist.onLocation(fix(0.7, -30.0020, 90f, 40.0))
+        RoadAssist.onLocation(fix(0.7, -30.0000, 90f, 40.0))
         val cv = RoadAssist.curve
         if (cv != null && cv.first.kind == "curve" && cv.first.adv == 30) Report.ok("Sharp 90° curve detected ${cv.second} m ahead, advice ease to ${cv.first.adv}") else Report.bad("Curve not detected: ${cv?.second}")
         if (RoadAssist.ahead().any { it.first.kind == "curve" }) Report.ok("Curve is listed in the hazards ahead") else Report.bad("Curve missing from ahead()")

@@ -30,10 +30,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/*.apk CarOBD-Pro-v4.20.2.apk
+          cp app/build/outputs/apk/release/*.apk CarOBD-Pro-v4.20.3.apk
           TAG="car-obd-build-${{ github.run_number }}"
-          gh release create "$TAG" CarOBD-Pro-v4.20.2.apk --target "${{ github.sha }}" \
-            --title "Dr. Vittu OBDII Pro v4.20.2 (build ${{ github.run_number }})" --notes "Dr. Vittu OBDII Pro v4.20.2 – developed by Dilip Kumar TD." --prerelease
+          gh release create "$TAG" CarOBD-Pro-v4.20.3.apk --target "${{ github.sha }}" \
+            --title "Dr. Vittu OBDII Pro v4.20.3 (build ${{ github.run_number }})" --notes "Dr. Vittu OBDII Pro v4.20.3 – developed by Dilip Kumar TD." --prerelease
 
   simulate:
     runs-on: ubuntu-latest
