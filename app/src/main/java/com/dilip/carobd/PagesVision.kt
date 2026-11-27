@@ -87,13 +87,18 @@ class VisionOverlay(ctx: Context) : View(ctx) {
     private val tx = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD }
     private val big = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
 
+    /** Where the camera picture sits on screen (it may be larger than the screen when filling it). */
+    @Volatile var picX = 0f; @Volatile var picY = 0f; @Volatile var picW = 0f; @Volatile var picH = 0f
+
     private fun panel(c: Canvas, l: Float, t: Float, r: Float, b: Float, col: Int = Color.argb(150, 0, 0, 0)) { p.style = Paint.Style.FILL; p.color = col; c.drawRoundRect(l, t, r, b, 10 * d, 10 * d, p) }
 
     override fun onDraw(c: Canvas) {
         val fw = Adas.fw.takeIf { it > 0 } ?: SignEngine.frameW; val fh = Adas.fh.takeIf { it > 0 } ?: SignEngine.frameH
         val W = width.toFloat(); val H = height.toFloat()
         if (fw > 0 && fh > 0) {
-            val sx = W / fw; val sy = H / fh
+            val pw = if (picW > 0) picW else W; val ph = if (picH > 0) picH else H
+            val sx = pw / fw; val sy = ph / fh
+            c.save(); c.translate(picX, picY)
             val warn = Adas.level == 2 || Adas.departing != 0
             Adas.lane?.let { ln ->
                 val col = if (warn) Color.rgb(255, 70, 70) else if (Adas.level == 1) Color.rgb(255, 190, 0) else Color.rgb(0, 220, 150)
@@ -119,6 +124,7 @@ class VisionOverlay(ctx: Context) : View(ctx) {
                 p.color = when (dt.state) { 0 -> Ui.GOOD; 1 -> Ui.CYAN; 4 -> Ui.VIOLET; 3 -> Ui.DIM; else -> Ui.WARN }
                 c.drawRect(dt.c.x * sx, dt.c.y * sy, (dt.c.x + dt.c.w) * sx, (dt.c.y + dt.c.h) * sy, p)
             }
+            c.restore()
         }
         // ---- top: speed (centre), limit (right) ----
         val spd = RoadAssist.speedKmh
@@ -205,9 +211,11 @@ class VisionPage(a: MainActivity) : Page(a) {
         stage = FrameLayout(a)
         tv = TextureView(a)
         overlay = VisionOverlay(a)
-        stage.addView(tv, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
-        stage.addView(overlay, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
-        holder.addView(stage, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH, Gravity.CENTER))
+        stage.clipChildren = false
+        stage.addView(tv, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH, Gravity.CENTER))
+        holder.clipChildren = true
+        holder.addView(stage, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        holder.addView(overlay, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         // the page turns the screen to landscape; if the camera opened before that finished, reopen it the right way round
         holder.addOnLayoutChangeListener { _, l, t, rr, b, ol, ot, orr, ob ->
             if (rr - l == orr - ol && b - t == ob - ot) return@addOnLayoutChangeListener
@@ -292,7 +300,9 @@ class VisionPage(a: MainActivity) : Page(a) {
             Camera.getCameraInfo(id, info)
             val c = Camera.open(id)
             val p = c.parameters
-            val size = p.supportedPreviewSizes.filter { it.width <= 960 && it.height <= 720 }.maxByOrNull { it.width * it.height } ?: p.supportedPreviewSizes.first()
+            val dm = a.resources.displayMetrics
+            val want = maxOf(dm.widthPixels, dm.heightPixels).toDouble() / minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1)
+            val size = pickSize(p.supportedPreviewSizes, want)
             p.setPreviewSize(size.width, size.height)
             p.previewFormat = android.graphics.ImageFormat.NV21
             if (p.supportedFocusModes?.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO) == true) p.focusMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO
@@ -330,6 +340,15 @@ class VisionPage(a: MainActivity) : Page(a) {
         }
     }
 
+    /** Widest camera size whose shape is closest to the screen (16:9, 20:9 …), not bigger than 1280×720 so it stays fast. */
+    private fun pickSize(list: List<Camera.Size>, want: Double): Camera.Size {
+        val ok = list.filter { it.width <= 1280 && it.height <= 720 && it.width >= 320 }
+        if (ok.isEmpty()) return list.first()
+        val best = ok.minByOrNull { Math.abs(it.width.toDouble() / it.height - want) }!!
+        val ar = best.width.toDouble() / best.height
+        return ok.filter { Math.abs(it.width.toDouble() / it.height - ar) < 0.02 }.maxByOrNull { it.width * it.height } ?: best
+    }
+
     private fun displayDeg() = when (a.windowManager.defaultDisplay.rotation) { Surface.ROTATION_90 -> 90; Surface.ROTATION_180 -> 180; Surface.ROTATION_270 -> 270; else -> 0 }
 
     private fun applyParams() {
@@ -347,13 +366,16 @@ class VisionPage(a: MainActivity) : Page(a) {
         cam = null
     }
 
-    /** Fill the screen height and keep the picture undistorted (letterbox on the sides if needed). */
+    /** Fill the whole screen without stretching: the picture is scaled up and its edges trimmed if its shape differs. */
     private fun fit(iw: Int, ih: Int) {
         holder.post {
             val bw = holder.width; val bh = holder.height
             if (bw == 0 || bh == 0) return@post
-            val k = minOf(bw.toFloat() / iw, bh.toFloat() / ih)
-            stage.layoutParams = FrameLayout.LayoutParams((iw * k).toInt(), (ih * k).toInt(), Gravity.CENTER)
+            val k = maxOf(bw.toFloat() / iw, bh.toFloat() / ih)
+            val dw = iw * k; val dh = ih * k
+            tv.layoutParams = FrameLayout.LayoutParams(dw.toInt(), dh.toInt(), Gravity.CENTER)
+            overlay.picW = dw; overlay.picH = dh; overlay.picX = (bw - dw) / 2f; overlay.picY = (bh - dh) / 2f
+            overlay.invalidate()
         }
     }
 }

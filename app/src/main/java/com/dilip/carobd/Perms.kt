@@ -74,7 +74,7 @@ class PermissionsPage(a: MainActivity) : Page(a) {
         if (Build.VERSION.SDK_INT >= 33)
             permRow(Ic.BELL, "Notifications", "Fault, over-speed and reminder alerts, running-service notice", Perms.notifyOk(a),
                 listOf(Manifest.permission.POST_NOTIFICATIONS))
-        permRow(Ic.SCAN, "Camera", "Sign camera only – reads road signs on the phone, pictures are not saved or sent",
+        permRow(Ic.SCAN, "Camera", "ADAS only – reads road signs, lanes and the vehicle ahead on the phone, pictures are not saved or sent",
             a.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED, listOf(Manifest.permission.CAMERA))
         box.addView(ui.iconCard(Ic.GEAR, Ui.CYAN, "Open Android app settings", "Files and other system-level controls", Ui.CARD) { Perms.openSettings(a) }, ui.lp(6))
 

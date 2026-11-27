@@ -18,7 +18,7 @@ Readings, fault-code explanations, root-cause suggestions, health scores, range 
 
 ## Sign recognition is a driver aid, not a safety system
 
-The Sign camera, the full-screen Drive vision (lane lines, vehicle ahead, estimated distance, lane-departure and collision warnings) and the road warnings they give (for example stop, no entry, school, curves) are an aid only. Distance and lane position are estimated from one phone camera and can be wrong; pedestrians are not detected. They give spoken and on-screen warnings; the app never steers, brakes, accelerates or controls the car in any way. The recognition model was trained on German road signs and can miss signs, misread them or see signs that are not there, especially in glare, darkness, rain or at an angle, and some signs in other countries look different. Always watch the road and obey the real signs. Mount the phone firmly and do not touch it while driving.
+The ADAS camera, the full-screen Drive vision (lane lines, vehicle ahead, estimated distance, lane-departure and collision warnings) and the road warnings they give (for example stop, no entry, school, curves) are an aid only. Distance and lane position are estimated from one phone camera and can be wrong; pedestrians are not detected. They give spoken and on-screen warnings; the app never steers, brakes, accelerates or controls the car in any way. The recognition model was trained on German road signs and can miss signs, misread them or see signs that are not there, especially in glare, darkness, rain or at an angle, and some signs in other countries look different. Always watch the road and obey the real signs. Mount the phone firmly and do not touch it while driving.
 
 ## Speed limits and road data
 
