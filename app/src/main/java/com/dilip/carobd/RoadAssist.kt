@@ -429,17 +429,23 @@ object RoadAssist {
             cum += seg; pLa = la2; pLo = lo2
             if (cum > 240) break
         }
+        // turning at each vertex; sum the signed turns inside a 60 m window so both a hairpin and a gradual bend count
+        val vPos = ArrayList<Double>(); val vTurn = ArrayList<Double>()
+        for (i in 0 until brs.size - 1) { vPos += cums[i + 1]; vTurn += ((brs[i + 1] - brs[i] + 540) % 360) - 180 }
         var maxChg = 0.0; var bi = -1
-        for (i in brs.indices) for (j in i + 1 until brs.size) {
-            if (cums[j] - cums[i] > 80) break
-            val chg = angDiff(brs[i], brs[j])
-            if (chg > maxChg) { maxChg = chg; bi = j }
+        for (i in vPos.indices) {
+            var sum = 0.0
+            for (j in i until vPos.size) {
+                if (vPos[j] - vPos[i] > 60) break
+                sum += vTurn[j]
+                if (abs(sum) > maxChg) { maxChg = abs(sum); bi = i }
+            }
         }
         if (maxChg < 55 || bi < 0) return null
-        val d = cums[bi]
-        if (d < 15) return null
+        if (vPos[bi] < 25) return null
+        val d = vPos[bi] - 10
         val adv = if (maxChg < 70) 40 else if (maxChg < 100) 30 else 20
-        return Hazard("curve", vLa[bi], vLo[bi], "Sharp curve", false, adv) to d.toInt()
+        return Hazard("curve", vLa[bi + 1], vLo[bi + 1], "Sharp curve", false, adv) to d.toInt()
     }
 
     private fun limitOf(w: Way, near: Int, snap: List<Tile>): Lim {
