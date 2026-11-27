@@ -120,9 +120,9 @@ object SignNet {
     }
 
     /** Cuts a square (with a margin like the training pictures) around a candidate and shrinks it to 32×32. */
-    fun crop(px: IntArray, w: Int, h: Int, c: SignCand): FloatArray {
+    fun crop(px: IntArray, w: Int, h: Int, c: SignCand, margin: Double = 1.12): FloatArray {
         val cx = c.x + c.w / 2.0; val cy = c.y + c.h / 2.0
-        val side = max(c.w, c.h) * 1.12
+        val side = max(c.w, c.h) * margin
         val x0 = cx - side / 2; val y0 = cy - side / 2
         val out = FloatArray(3 * S * S)
         val ss = min(4, max(1, (side / S).toInt()))
@@ -141,12 +141,58 @@ object SignNet {
         return out
     }
 
-    /** Best sign for a candidate: class id and probability, or null when it looks like background or the network is unsure. */
-    fun classify(px: IntArray, w: Int, h: Int, c: SignCand, minProb: Float = 0.90f): Pair<SignInfo, Float>? {
+    /**
+     * Candidate sign regions from colour alone: red, blue or yellow pixels, joined up so a thin ring becomes one blob.
+     * Deliberately loose: the network (which also knows "not a sign") decides what is really a sign.
+     */
+    fun propose(px: IntArray, w: Int, h: Int, maxN: Int = 8): List<SignCand> {
+        val m = BooleanArray(w * h)
+        for (i in px.indices) {
+            val c = px[i]; val r = c shr 16 and 0xFF; val g = c shr 8 and 0xFF; val b = c and 0xFF
+            m[i] = (r > 60 && r > 1.35 * max(g, b)) || (b > 60 && b > 1.25 * max(r, g)) || (r > 110 && g > 90 && r > 1.5 * b && g > 1.3 * b)
+        }
+        // grow by 3 pixels in each direction (two passes)
+        val t = BooleanArray(w * h)
+        val R = 3
+        for (y in 0 until h) { var last = -100; for (x in 0 until w) { if (m[y * w + x]) last = x; if (x - last <= R) t[y * w + x] = true }
+            last = 1000; for (x in w - 1 downTo 0) { if (m[y * w + x]) last = x; if (last - x <= R) t[y * w + x] = true } }
+        val d = BooleanArray(w * h)
+        for (x in 0 until w) { var last = -100; for (y in 0 until h) { if (t[y * w + x]) last = y; if (y - last <= R) d[y * w + x] = true }
+            last = 1000; for (y in h - 1 downTo 0) { if (t[y * w + x]) last = y; if (last - y <= R) d[y * w + x] = true } }
+        val seen = BooleanArray(w * h); val stack = IntArray(w * h)
+        val out = ArrayList<SignCand>()
+        for (s0 in 0 until w * h) {
+            if (!d[s0] || seen[s0]) continue
+            var sp = 0; stack[sp++] = s0; seen[s0] = true
+            var minX = w; var maxX = 0; var minY = h; var maxY = 0; var n = 0
+            while (sp > 0) {
+                val p = stack[--sp]; val x = p % w; val y = p / w; n++
+                if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y
+                if (x > 0 && d[p - 1] && !seen[p - 1]) { seen[p - 1] = true; stack[sp++] = p - 1 }
+                if (x < w - 1 && d[p + 1] && !seen[p + 1]) { seen[p + 1] = true; stack[sp++] = p + 1 }
+                if (y > 0 && d[p - w] && !seen[p - w]) { seen[p - w] = true; stack[sp++] = p - w }
+                if (y < h - 1 && d[p + w] && !seen[p + w]) { seen[p + w] = true; stack[sp++] = p + w }
+            }
+            val bw = maxX - minX + 1; val bh = maxY - minY + 1
+            val side = max(bw, bh)
+            if (side < 14 || side > h || n < 80) continue
+            val cx = (minX + maxX + 1) / 2; val cy = (minY + maxY + 1) / 2
+            val x0 = (cx - side / 2).coerceIn(0, max(0, w - side)); val y0 = (cy - side / 2).coerceIn(0, max(0, h - side))
+            out += SignCand(x0, y0, min(side, w - x0), min(side, h - y0), 3, false)
+        }
+        return out.sortedByDescending { it.w * it.h }.take(maxN)
+    }
+
+    /** Best sign for a candidate, trying three crop sizes: class id and probability, or null when it looks like background or the network is unsure. */
+    fun classify(px: IntArray, w: Int, h: Int, c: SignCand, minProb: Float = 0.85f): Pair<SignInfo, Float>? {
         if (!ready) return null
-        val p = forward(crop(px, w, h, c))
-        var best = 0; for (i in 1 until N) if (p[i] > p[best]) best = i
-        if (best >= 43 || p[best] < minProb) return null
-        return KB[best] to p[best]
+        var bestI = -1; var bestP = 0f
+        for (mg in doubleArrayOf(0.9, 1.0, 1.1)) {
+            val p = forward(crop(px, w, h, c, mg))
+            var best = 0; for (i in 1 until N) if (p[i] > p[best]) best = i
+            if (best < 43 && p[best] > bestP) { bestP = p[best]; bestI = best }
+        }
+        if (bestI < 0 || bestP < minProb) return null
+        return KB[bestI] to bestP
     }
 }

@@ -1126,8 +1126,8 @@ class SignNetTest : SimBase() {
             for (i in 0 until 6) SignEngine.process(px, 320, 240)
             if (SignEngine.recent.any { it.name == SignNet.KB[cls].name }) found++
             else {
-                val cs = SignVision.detect(px, 320, 240)
-                val d = cs.joinToString { c -> val p = SignNet.forward(SignNet.crop(px, 320, 240, c)); var b = 0; for (k in 1 until 44) if (p[k] > p[b]) b = k; "k${c.kind}@${c.x},${c.y} ${c.w}x${c.h}->${b}:%.2f".format(p[b]) }
+                val cs = SignNet.propose(px, 320, 240)
+                val d = cs.joinToString { c -> val p = SignNet.forward(SignNet.crop(px, 320, 240, c, 1.0)); var b = 0; for (k in 1 until 44) if (p[k] > p[b]) b = k; "k${c.kind}@${c.x},${c.y} ${c.w}x${c.h}->${b}:%.2f".format(p[b]) }
                 Report.info("Scene ${SignNet.KB[cls].name}: ${cs.size} candidate(s) [$d] dets=${SignEngine.dets.size} seen=${SignEngine.recent.map { it.name }}")
             }
         }

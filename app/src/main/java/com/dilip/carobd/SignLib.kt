@@ -110,7 +110,7 @@ object SignEngine {
     private val lastAct = HashMap<Long, Long>()
 
     fun reset() {
-        bHist.clear(); recent.clear()
+        bHist.clear(); recent.clear(); lastBuiltin.clear()
         dets = emptyList(); pendingThumb = null; pendingFp = null; pendingHits = 0; limHist.clear(); knownHist.clear()
         lastLimit = 0; lastLimitAt = 0; lastKnown = ""; lastKnownAt = 0; applied = ""
     }
@@ -146,13 +146,18 @@ object SignEngine {
                     if (m.first.action != "ignore" && known == null) { known = m.first; knownSim = m.second; if (m.second < 0.97) SignLib.addSample(m.first, fp) }
                     continue
                 }
-                val bn = if (builtin) try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null } else null
-                if (bn != null) { out += Det(c, bn.first.name, 4); bIds += bn.first.id; bLast[bn.first.id] = bn.second; continue }
                 out += Det(c, "?", 2)
                 if (unk == null) unk = c to fp
-            } else if (builtin) {
-                val bn = try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null }
-                if (bn != null) { out += Det(c, bn.first.name, 4); bIds += bn.first.id; bLast[bn.first.id] = bn.second }
+            }
+        }
+        if (builtin) {
+            for (c in try { SignNet.propose(px, w, h) } catch (_: Throwable) { emptyList() }) {
+                val cxp = c.x + c.w / 2; val cyp = c.y + c.h / 2
+                if (out.any { it.state != 2 && cxp in it.c.x..it.c.x + it.c.w && cyp in it.c.y..it.c.y + it.c.h }) continue
+                val bn = try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null } ?: continue
+                out.removeAll { it.state == 2 && (it.c.x + it.c.w / 2) in c.x..c.x + c.w && (it.c.y + it.c.h / 2) in c.y..c.y + c.h }
+                out += Det(c, bn.first.name, 4); bIds += bn.first.id
+                if (out.none { it.state == 2 }) unk = null
             }
         }
         dets = out
