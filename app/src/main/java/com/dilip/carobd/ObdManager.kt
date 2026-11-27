@@ -111,6 +111,7 @@ object ObdManager {
         state = State.CONNECTING
         status = "Connecting…"
         values.clear(); texts.clear(); customValues.clear(); history.clear(); batteryV = null
+        SpecEngine.reset()
         AlertCenter.resetSession()
         jobs.clear()
         reloadVehicle()
@@ -679,6 +680,7 @@ object ObdManager {
                 values[p] = v
                 if (p == 0x5B && vehicle.isEv) values[0x2F] = v
                 history.getOrPut(p) { Ring() }.add(v.toFloat())
+                SpecEngine.feed(p, v)
                 if (p == 0x0D) PerfMeter.onSpeed(System.currentTimeMillis(), v)
             }
             def.text?.let { texts[p] = it(d) }

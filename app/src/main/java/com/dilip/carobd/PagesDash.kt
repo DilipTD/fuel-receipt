@@ -252,8 +252,12 @@ class DashPage(a: MainActivity) : Page(a) {
             "Fuel rate" to ui.f(m.fuelRate(), 2, " $u/h"), "Trip km" to ui.f(t?.distanceKm, 1)
         )
         for ((k, x) in s) vals[k]?.text = x
-        vals["STFT"]?.setTextColor(if (kotlin.math.abs(v[0x06] ?: 0.0) > 15) Ui.WARN else Ui.WHITE)
-        vals["LTFT"]?.setTextColor(if (kotlin.math.abs(v[0x07] ?: 0.0) > 15) Ui.WARN else Ui.WHITE)
+        val sc2 = SpecEngine.ctx()
+        for ((k, pid) in mapOf("Load" to 0x04, "MAP" to 0x0B, "MAF" to 0x10, "Intake air" to 0x0F, "Oil temp" to 0x5C, "Timing" to 0x0E, "STFT" to 0x06, "LTFT" to 0x07)) {
+            val raw = v[pid]
+            val stt = if (raw != null) SpecEngine.status(pid, raw, sc2) else null
+            vals[k]?.setTextColor(when { stt == null || stt.label == "Warming up" -> Ui.WHITE; stt.level >= 2 -> Ui.BAD; stt.level == 1 -> Ui.WARN; else -> Ui.WHITE })
+        }
 
         driveTv.text = if (t == null) "🚗 No trip running – starts automatically when the engine runs." else
             "🚗 Trip %s · %s · score %d · %s\nRapid acc %d · Hard brake %d · Sudden %d · Corner %d · Overspeed %d · Over-rev %d".format(

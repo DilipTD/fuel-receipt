@@ -483,3 +483,84 @@ class RoadAiTest : SimBase() {
         Report.flush("Road AI")
     }
 }
+
+
+/** Live data analysis: context-aware ranges, suggestions, own-car baseline, recording and the redesigned page. */
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class LiveSpecTest : SimBase() {
+    private fun ctx(vararg kv: Pair<Int, Double>) = SpecCtx(mapOf(*kv), ObdManager.vehicle, true, null)
+
+    @Test
+    fun liveSpec() {
+        prep()
+        launch()
+        Report.head("Live data analysis")
+        val base = arrayOf(0x0C to 800.0, 0x0D to 0.0, 0x05 to 90.0, 0x1F to 1200.0, 0x03 to 2.0)
+        fun c(vararg extra: Pair<Int, Double>) = ctx(*(base.filter { b -> extra.none { it.first == b.first } } + extra).toTypedArray())
+
+        var s = SpecEngine.status(0x05, 90.0, c())
+        if (s?.level == 0) Report.ok("Coolant 90 °C is in spec") else Report.bad("Coolant 90 → ${s?.label}")
+        s = SpecEngine.status(0x05, 118.0, c(0x05 to 118.0))
+        if (s?.level == 2) Report.ok("Coolant 118 °C is out of spec (${s.label})") else Report.bad("Coolant 118 → ${s?.label}")
+        s = SpecEngine.status(0x05, 50.0, c(0x05 to 50.0, 0x1F to 100.0))
+        if (s?.label == "Warming up") Report.ok("Cold coolant right after start = Warming up, not a fault") else Report.bad("Cold coolant → ${s?.label}")
+        s = SpecEngine.status(0x0C, 800.0, c())
+        if (s?.level == 0) Report.ok("Warm idle 800 rpm in spec") else Report.bad("Idle 800 → ${s?.label}")
+        s = SpecEngine.status(0x0C, 1250.0, c(0x0C to 1250.0))
+        if (s != null && s.level >= 1 && s.dir > 0) Report.ok("Warm idle 1250 rpm flagged high (${s.label})") else Report.bad("Idle 1250 → ${s?.label}")
+        val sCruise = SpecEngine.status(0x0C, 2500.0, c(0x0C to 2500.0, 0x0D to 80.0))
+        if (sCruise?.level == 0) Report.ok("2500 rpm at 80 km/h is normal while driving (same rpm would be wrong at idle)") else Report.bad("Cruise 2500 → ${sCruise?.label}")
+        s = SpecEngine.status(0x0B, 70.0, c(0x0B to 70.0))
+        if (s != null && s.level >= 1) Report.ok("MAP 70 kPa at warm idle flagged (${s.label})") else Report.bad("MAP idle 70 → ${s?.label}")
+        s = SpecEngine.status(0x0B, 70.0, c(0x0B to 70.0, 0x0D to 60.0, 0x0C to 2000.0))
+        if (s?.level == 0) Report.ok("MAP 70 kPa while driving is fine") else Report.bad("MAP driving → ${s?.label}")
+        s = SpecEngine.status(0x07, 25.0, c(0x07 to 25.0))
+        if (s?.level == 2) Report.ok("LTFT +25 % out of spec") else Report.bad("LTFT 25 → ${s?.label}")
+        s = SpecEngine.status(0x01, 130.0, c())
+        if (s?.level == 2) Report.ok("MIL bit → out of spec") else Report.bad("MIL → ${s?.label}")
+        s = SpecEngine.status(0x42, 12.5, c(0x42 to 12.5))
+        if (s != null && s.level >= 1) Report.ok("12.5 V while running = low charging (${s.label})") else Report.bad("Charging 12.5 → ${s?.label}")
+
+        val sg = SpecEngine.suggestions(c(0x07 to 16.0, 0x06 to 9.0, 0x0B to 70.0))
+        if (sg.any { it.title.contains("air leak") }) Report.ok("AI: LTFT +16 with high idle MAP → air-leak suggestion") else Report.bad("No air-leak suggestion: ${sg.map { it.title }}")
+        val sg2 = SpecEngine.suggestions(c(0x05 to 60.0, 0x1F to 1500.0))
+        if (sg2.any { it.title.contains("operating temperature") }) Report.ok("AI: thermostat suggestion after 25 min at 60 °C") else Report.bad("No thermostat suggestion: ${sg2.map { it.title }}")
+        val h = SpecEngine.health(c(0x07 to 25.0))
+        if (h.out >= 1 && h.ok >= 1) Report.ok("Health summary ${h.ok} ok / ${h.watch} watch / ${h.out} out") else Report.bad("Health ${h.ok}/${h.watch}/${h.out}")
+
+        // baseline
+        SpecEngine.learnGapMs = 0
+        SpecEngine.resetBaseline()
+        ObdManager.values.clear(); for ((k, v) in base) ObdManager.values[k] = v
+        for (i in 0 until 200) { ObdManager.values[0x0C] = 800.0 + (i % 5); SpecEngine.ctx(true); SpecEngine.feed(0x0C, 800.0 + (i % 5)) }
+        val b = SpecEngine.baseline(0x0C, c())
+        if (b != null && Math.abs(b.mean - 802.0) < 3) Report.ok("Learned warm idle ${"%.0f".format(b.mean)} rpm from ${b.n} samples") else Report.bad("Baseline not learned: ${b?.n} ${b?.mean}")
+        for (i in 0 until 120) { ObdManager.values[0x0C] = 920.0; SpecEngine.ctx(true); SpecEngine.feed(0x0C, 920.0) }
+        val ds = SpecEngine.status(0x0C, 920.0, c(0x0C to 920.0))
+        if (ds?.label == "Off your norm") Report.ok("920 rpm is inside the generic range but flagged: off your car's norm") else Report.bad("Drift not flagged: ${ds?.label}")
+        SpecEngine.resetBaseline(); SpecEngine.learnGapMs = 2000
+
+        // recording
+        SpecEngine.reset()
+        ObdManager.supported = setOf(0x05, 0x0C, 0x0D)
+        SpecEngine.startRecording()
+        ObdManager.values[0x05] = 118.0
+        SpecEngine.ctx(true); SpecEngine.feed(0x05, 118.0)
+        val csv = SpecEngine.stopRecording()
+        if (csv != null && csv.startsWith("seconds,") && csv.contains("Coolant")) Report.ok("Recording CSV written with flags column") else Report.bad("Recording CSV wrong: ${csv?.take(80)}")
+
+        // page
+        ObdManager.supported = setOf(0x05, 0x0C, 0x0D, 0x04, 0x07, 0x0B)
+        for ((k, v) in mapOf(0x05 to 118.0, 0x0C to 800.0, 0x0D to 0.0, 0x04 to 20.0, 0x07 to 22.0, 0x0B to 70.0, 0x1F to 1200.0, 0x03 to 2.0)) ObdManager.values[k] = v
+        showPage("Live")
+        try { act.pages["Live"]!!.refresh(); idle(100); act.pages["Live"]!!.refresh(); Report.ok("Live data page renders with range bars and suggestions") } catch (e: Throwable) { Report.bad("Live page crashed", e) }
+        try { val pdf = Reports.liveData(act); if (pdf != null) Report.ok("Live data PDF report built") else Report.bad("Live PDF null") } catch (e: Throwable) { Report.bad("Live PDF crashed", e) }
+        showPage("Dash")
+        try { act.pages["Dash"]!!.refresh(); Report.ok("Gauges page colours readings by spec") } catch (e: Throwable) { Report.bad("Dash crashed", e) }
+        ObdManager.values.clear(); ObdManager.supported = emptySet()
+        Report.flush("Live data analysis")
+    }
+}

@@ -164,6 +164,36 @@ object Reports {
         return b.save(ctx, nm("ai_diagnosis", "pdf"))
     }
 
+    fun liveData(ctx: Context): String? {
+        val c = SpecEngine.ctx(true)
+        if (c.v.isEmpty()) return null
+        val h = SpecEngine.health(c)
+        val b = PdfBuilder("Live Data Report", vehLine() + "  ·  " + d(System.currentTimeMillis()))
+        b.heading("Summary")
+        b.text("${h.ok} readings in the typical range, ${h.watch} to watch, ${h.out} out of spec.")
+        val sg = SpecEngine.suggestions(c)
+        if (sg.isNotEmpty()) {
+            b.heading("AI suggestions")
+            sg.forEachIndexed { i, s -> b.text("${i + 1}. ${if (s.sev >= 2) "NOW" else "SOON"} – ${s.title}\n    ${s.why}\n    What to do: ${s.fix}") }
+        }
+        b.heading("Readings")
+        val rows = c.v.toSortedMap().filter { !Pids.isBitmap(it.key) }.map { (p, v) ->
+            val st = SpecEngine.status(p, v, c)
+            val stat = SpecEngine.statOf(p)
+            listOf(Pids.nameOf(p), SpecEngine.fmt(p, v), st?.label ?: "–",
+                SpecEngine.specFor(p, c)?.let { SpecEngine.rangeText(p, it) } ?: "–",
+                if (stat != null) "${SpecEngine.fmt(p, stat.first)} / ${SpecEngine.fmt(p, stat.third)}" else "–")
+        }
+        b.table(listOf("Reading", "Value", "Status", "Normal range", "Min / max"), rows, listOf(1.6f, 0.9f, 0.9f, 1.6f, 1.3f))
+        val evs = SpecEngine.eventList()
+        if (evs.isNotEmpty()) {
+            b.heading("Out-of-spec log")
+            evs.takeLast(40).forEach { b.text("${SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it.t))}  ${it.name}: ${it.text}") }
+        }
+        b.text("Ranges are typical values for a healthy car, not factory data for one model. A guide – confirm with tests before replacing parts.")
+        return b.save(ctx, nm("live_data", "pdf"))
+    }
+
     fun seller(ctx: Context): String? {
         val v = ObdManager.vehicle; val u = v.spec.unit
         val b = PdfBuilder("Seller's Report", vehLine())

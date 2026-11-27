@@ -256,6 +256,14 @@ object Prefs {
     var roadUserHaz: String
         get() = sp.getString("roadUserHaz", "[]") ?: "[]"
         set(v) = sp.edit().putString("roadUserHaz", v).apply()
+    var liveBaseline: String
+        get() = sp.getString("liveBaseline", "{}") ?: "{}"
+        set(v) = sp.edit().putString("liveBaseline", v).apply()
+    var livePins: String
+        get() = sp.getString("livePins", "") ?: ""
+        set(v) = sp.edit().putString("livePins", v).apply()
+    var liveSortIssues: Boolean get() = b("liveSortIssues", true)
+        set(v) = putB("liveSortIssues", v)
     var resetProfiles: String
         get() = sp.getString("resetProfiles", "[]") ?: "[]"
         set(v) = sp.edit().putString("resetProfiles", v).apply()
