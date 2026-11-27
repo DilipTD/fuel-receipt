@@ -2,7 +2,11 @@ package com.dilip.carobd
 
 import android.content.Context
 import android.location.Location
+import android.os.Handler
+import android.os.Looper
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -11,13 +15,24 @@ import java.util.concurrent.Executors
 import kotlin.math.*
 
 /**
- * Road assistant: finds the road you are on (OpenStreetMap), its speed limit, your heading and nearby hazards
- * (speed breakers, speed cameras, school/hospital zones) and announces them – also in the background while the
- * foreground service is running.
+ * Road assistant. Downloads the OpenStreetMap roads and hazards around you into saved map areas (works offline afterwards),
+ * matches your GPS position to the right road using your driving direction, and announces limits and hazards – also in the
+ * background while the foreground service is running. You can correct a wrong limit and report your own hazards.
  */
 object RoadAssist {
-    class Info(val road: String, val ref: String, val highway: String, val limit: Int?, val estimated: Boolean, val fetched: Long)
-    class Hazard(val kind: String, val lat: Double, val lon: Double, val label: String)
+    class Info(val road: String, val ref: String, val highway: String, val limit: Int?, val estimated: Boolean, val fetched: Long,
+               val source: String = "osm", val wayId: Long = 0L)
+    class Hazard(val kind: String, val lat: Double, val lon: Double, val label: String, val mine: Boolean = false)
+    class Way(val id: Long, val name: String, val ref: String, val hw: String, val limit: Int, val oneway: Boolean, val pts: DoubleArray) {
+        val minLa: Double; val maxLa: Double; val minLo: Double; val maxLo: Double
+        init {
+            var a = 1e9; var b = -1e9; var c = 1e9; var d = -1e9
+            var i = 0
+            while (i < pts.size) { a = min(a, pts[i]); b = max(b, pts[i]); c = min(c, pts[i + 1]); d = max(d, pts[i + 1]); i += 2 }
+            minLa = a; maxLa = b; minLo = c; maxLo = d
+        }
+    }
+    class Tile(val la: Double, val lo: Double, val r: Double, val t: Long, val ways: List<Way>, val hz: List<Hazard>)
 
     @Volatile var info: Info? = null
     @Volatile var hazards: List<Hazard> = emptyList()
@@ -30,11 +45,23 @@ object RoadAssist {
     val log = ArrayDeque<Pair<Long, String>>()
 
     private val ex = Executors.newSingleThreadExecutor()
-    private var qLat = 0.0; private var qLon = 0.0; private var qT = 0L; private var busy = false; private var failUntil = 0L
-    private val cache = HashMap<String, Pair<Info?, List<Hazard>>>()
+    private val main = Handler(Looper.getMainLooper())
+    private val tiles = ArrayList<Tile>()
+    private var loaded = false
+    @Volatile private var busy = false
+    private var failUntil = 0L
+    private var lastFetchT = 0L
+    private var curWay = 0L
+    private var lastMatchT = 0L
+    private var hazT = 0L
     private var lastLimitSeen: Int? = null; private var limitStable = 0; private var lastAnnounced: Int? = null
     private var lastNotifLimit: Int? = -1
-    private val ctxLock = Any()
+
+    private const val FILE = "road_areas.json"
+    private const val TILE_R = 1500.0
+    private const val MAX_TILES = 12
+    private const val FRESH_MS = 45L * 86_400_000L
+    private val OK_ROADS = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 
     fun compass(deg: Float?): String {
         if (deg == null) return "—"
@@ -44,49 +71,152 @@ object RoadAssist {
 
     fun addLog(s: String) { synchronized(log) { log.addFirst(System.currentTimeMillis() to s); while (log.size > 30) log.removeLast() } }
 
-    fun onLocation(l: Location) {
-        if (!Prefs.roadAssist) return
-        lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
-        speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
-        if (l.hasBearing() && speedKmh > 4) heading = l.bearing
-        status = "Tracking"
-        maybeQuery(l)
-        evaluate()
+    /* ---------------- user data: limit corrections and own hazards ---------------- */
+
+    private fun fixes(): JSONObject = try { JSONObject(Prefs.roadFix) } catch (_: Exception) { JSONObject() }
+
+    fun setLimitFix(wayId: Long, limit: Int?) {
+        if (wayId == 0L) return
+        val o = fixes()
+        if (limit == null) o.remove(wayId.toString()) else o.put(wayId.toString(), limit)
+        Prefs.roadFix = o.toString()
+        lastMatchT = 0L
     }
 
-    private fun maybeQuery(l: Location) {
-        val now = System.currentTimeMillis()
-        if (busy || now < failUntil) return
-        val moved = Loc.dist(qLat, qLon, l.latitude, l.longitude) * 1000
-        if (qT != 0L && (moved < 100 || now - qT < 10_000) && now - qT < 60_000) return
-        val key = "%.3f,%.3f".format(Locale.US, l.latitude, l.longitude)
-        cache[key]?.let { (i, h) -> info = i; hazards = h; qLat = l.latitude; qLon = l.longitude; qT = now; return }
-        busy = true; qLat = l.latitude; qLon = l.longitude; qT = now
-        val la = l.latitude; val lo = l.longitude
-        ex.execute {
-            try {
-                val r = fetch(la, lo)
-                if (r != null) {
-                    info = r.first; hazards = r.second
-                    if (cache.size > 300) cache.clear()
-                    if (r.first != null) cache[key] = r
-                    status = if (r.first == null) "No road data here" else "Tracking"
-                } else { failUntil = System.currentTimeMillis() + 45_000; status = "Offline – using last data" }
-            } catch (_: Exception) {
-                failUntil = System.currentTimeMillis() + 45_000
-            } finally { busy = false }
+    private fun userHazards(): List<Hazard> = try {
+        val a = JSONArray(Prefs.roadUserHaz)
+        (0 until a.length()).map { val o = a.getJSONObject(it); Hazard(o.getString("k"), o.getDouble("a"), o.getDouble("o"), o.optString("b", labelFor(o.getString("k"))), true) }
+    } catch (_: Exception) { emptyList() }
+
+    fun labelFor(kind: String) = when (kind) {
+        "bump" -> "Speed breaker"; "camera" -> "Speed camera"; "pothole" -> "Pothole"; "curve" -> "Sharp curve"
+        "school" -> "School zone"; "hospital" -> "Hospital zone"; "rail" -> "Level crossing"; "toll" -> "Toll plaza"; else -> "Hazard"
+    }
+
+    fun reportHazard(kind: String): Boolean {
+        if (lastFix == 0L || (lat == 0.0 && lon == 0.0)) return false
+        val a = try { JSONArray(Prefs.roadUserHaz) } catch (_: Exception) { JSONArray() }
+        val out = JSONArray()
+        val start = max(0, a.length() - 399)
+        for (i in start until a.length()) out.put(a.get(i))
+        out.put(JSONObject().put("k", kind).put("a", lat).put("o", lon).put("b", labelFor(kind)))
+        Prefs.roadUserHaz = out.toString(); hazT = 0L
+        addLog("You reported: ${labelFor(kind)}")
+        return true
+    }
+
+    /** Removes your own hazards within 80 m; returns how many. */
+    fun removeMyHazardsHere(): Int {
+        val keep = JSONArray(); var n = 0
+        val a = try { JSONArray(Prefs.roadUserHaz) } catch (_: Exception) { JSONArray() }
+        for (i in 0 until a.length()) {
+            val o = a.getJSONObject(i)
+            if (Loc.dist(lat, lon, o.getDouble("a"), o.getDouble("o")) * 1000 < 80) n++ else keep.put(o)
+        }
+        Prefs.roadUserHaz = keep.toString(); hazT = 0L
+        return n
+    }
+
+    /* ---------------- saved map areas ---------------- */
+
+    private fun file(): File? = try { File(ObdManager.app.filesDir, FILE) } catch (_: Exception) { null }
+
+    private fun loadTiles() {
+        if (loaded) return
+        loaded = true
+        val f = file() ?: return
+        if (!f.exists()) return
+        try {
+            val root = JSONObject(f.readText())
+            val ta = root.getJSONArray("tiles")
+            for (i in 0 until ta.length()) {
+                val o = ta.getJSONObject(i)
+                val ways = ArrayList<Way>()
+                val wa = o.getJSONArray("ways")
+                for (k in 0 until wa.length()) {
+                    val w = wa.getJSONObject(k); val p = w.getJSONArray("p")
+                    ways += Way(w.getLong("i"), w.optString("n"), w.optString("f"), w.optString("h"), w.optInt("l", -1), w.optInt("o") == 1,
+                        DoubleArray(p.length()) { p.getDouble(it) })
+                }
+                val hz = ArrayList<Hazard>(); val ha = o.getJSONArray("hz")
+                for (k in 0 until ha.length()) { val h = ha.getJSONObject(k); hz += Hazard(h.getString("k"), h.getDouble("a"), h.getDouble("o"), h.optString("b", labelFor(h.getString("k")))) }
+                tiles += Tile(o.getDouble("la"), o.getDouble("lo"), o.getDouble("r"), o.getLong("t"), ways, hz)
+            }
+        } catch (_: Exception) {
+            tiles.clear()
         }
     }
 
-    private fun fetch(la: Double, lo: Double): Pair<Info?, List<Hazard>>? {
-        val q = "[out:json][timeout:8];(way(around:25,$la,$lo)[\"highway\"];" +
-                "node(around:350,$la,$lo)[\"highway\"=\"speed_camera\"];node(around:300,$la,$lo)[\"traffic_calming\"];" +
-                "node(around:300,$la,$lo)[\"amenity\"~\"^(school|hospital)\$\"];);out tags geom 60;"
+    private fun saveTiles() {
+        val f = file() ?: return
+        try {
+            val ta = JSONArray()
+            for (t in tiles) {
+                val wa = JSONArray()
+                for (w in t.ways) {
+                    val p = JSONArray(); w.pts.forEach { p.put(Math.round(it * 1e5) / 1e5) }
+                    wa.put(JSONObject().put("i", w.id).put("n", w.name).put("f", w.ref).put("h", w.hw).put("l", w.limit).put("o", if (w.oneway) 1 else 0).put("p", p))
+                }
+                val ha = JSONArray()
+                t.hz.forEach { ha.put(JSONObject().put("k", it.kind).put("a", it.lat).put("o", it.lon).put("b", it.label)) }
+                ta.put(JSONObject().put("la", t.la).put("lo", t.lo).put("r", t.r).put("t", t.t).put("ways", wa).put("hz", ha))
+            }
+            f.writeText(JSONObject().put("v", 1).put("tiles", ta).toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun savedInfo(): String {
+        synchronized(tiles) { loadTiles() }
+        val kb = (file()?.length() ?: 0L) / 1024
+        val n = synchronized(tiles) { tiles.size }
+        return if (n == 0) "No saved map yet – drive with internet, or download this area" else "$n saved area(s) · ${if (kb > 1024) "%.1f MB".format(kb / 1024.0) else "$kb KB"} · works offline"
+    }
+
+    fun clearSaved() { synchronized(tiles) { tiles.clear(); file()?.delete() }; info = null }
+
+    private fun covered(la: Double, lo: Double, margin: Double, fresh: Boolean): Boolean = synchronized(tiles) {
+        val now = System.currentTimeMillis()
+        tiles.any { (!fresh || now - it.t < FRESH_MS) && Loc.dist(la, lo, it.la, it.lo) * 1000 <= it.r - margin }
+    }
+
+    private fun addTile(t: Tile) = synchronized(tiles) {
+        tiles.removeAll { Loc.dist(it.la, it.lo, t.la, t.lo) * 1000 < 300 }
+        tiles += t
+        while (tiles.size > MAX_TILES) tiles.remove(tiles.minByOrNull { it.t })
+        saveTiles()
+    }
+
+    /** Used by tests and offline import. */
+    fun installTile(t: Tile) = addTile(t)
+
+    /** Download an area around the current position for offline use. */
+    fun downloadArea(radius: Double = 3000.0, cb: (String) -> Unit) {
+        if (busy) { cb("Another download is running"); return }
+        val la = if (lastFix != 0L) lat else Loc.here(ObdManager.app, true)?.first
+        val lo = if (lastFix != 0L) lon else Loc.here(ObdManager.app, true)?.second
+        if (la == null || lo == null) { cb("No position yet – wait for GPS"); return }
+        busy = true; status = "Downloading map…"
+        ex.execute {
+            val msg = try {
+                val t = fetchTile(la, lo, radius)
+                if (t == null) "Download failed – check internet and try again" else { addTile(t); "Saved ${t.ways.size} roads and ${t.hz.size} hazards around you" }
+            } catch (e: Exception) { "Download failed: ${e.message}" } finally { busy = false; status = "Tracking" }
+            main.post { cb(msg) }
+        }
+    }
+
+    private fun fetchTile(la: Double, lo: Double, r: Double): Tile? {
+        val ri = r.toInt()
+        val q = "[out:json][timeout:50];(way(around:$ri,$la,$lo)[\"highway\"~\"^($OK_ROADS)\$\"];" +
+                "node(around:$ri,$la,$lo)[\"highway\"=\"speed_camera\"];node(around:$ri,$la,$lo)[\"traffic_calming\"];" +
+                "node(around:$ri,$la,$lo)[\"amenity\"~\"^(school|hospital)\$\"];node(around:$ri,$la,$lo)[\"railway\"=\"level_crossing\"];" +
+                "node(around:$ri,$la,$lo)[\"barrier\"=\"toll_booth\"];);out tags geom;"
         var body: String? = null
         for (host in listOf("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")) {
             try {
                 val c = URL("$host?data=" + URLEncoder.encode(q, "UTF-8")).openConnection() as HttpURLConnection
-                c.connectTimeout = 6000; c.readTimeout = 9000
+                c.connectTimeout = 8000; c.readTimeout = 55000
                 c.setRequestProperty("User-Agent", "CarOBDPro/${AppInfo.VERSION} (Android)")
                 if (c.responseCode == 200) body = c.inputStream.bufferedReader().use { it.readText() }
                 c.disconnect()
@@ -95,41 +225,127 @@ object RoadAssist {
             }
         }
         val els = JSONObject(body ?: return null).optJSONArray("elements") ?: return null
-        var best: Pair<Double, JSONObject>? = null
-        val hz = ArrayList<Hazard>()
-        val okRoads = setOf("motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service", "living_street",
-            "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link")
+        val ways = ArrayList<Way>(); val hz = ArrayList<Hazard>()
         for (i in 0 until els.length()) {
             val e = els.getJSONObject(i); val tags = e.optJSONObject("tags") ?: JSONObject()
             if (e.getString("type") == "way") {
-                if (tags.optString("highway") !in okRoads) continue
                 val g = e.optJSONArray("geometry") ?: continue
-                var dMin = 1e9
-                for (k in 0 until g.length() - 1) {
-                    val a = g.getJSONObject(k); val b = g.getJSONObject(k + 1)
-                    dMin = min(dMin, segDist(la, lo, a.getDouble("lat"), a.getDouble("lon"), b.getDouble("lat"), b.getDouble("lon")))
-                }
-                if (g.length() == 1) dMin = 0.0
-                if (best == null || dMin < best.first) best = dMin to e
+                if (g.length() < 2) continue
+                val pts = DoubleArray(g.length() * 2)
+                for (k in 0 until g.length()) { val p = g.getJSONObject(k); pts[k * 2] = p.getDouble("lat"); pts[k * 2 + 1] = p.getDouble("lon") }
+                val ow = tags.optString("oneway").let { it == "yes" || it == "1" || it == "true" } || tags.optString("junction") == "roundabout"
+                val lim = parseLimit(tags.optString("maxspeed").ifBlank { tags.optString("maxspeed:forward") }) ?: -1
+                ways += Way(e.getLong("id"), tags.optString("name"), tags.optString("ref"), tags.optString("highway"), lim, ow, pts)
             } else {
                 val nl = e.optDouble("lat", Double.NaN); val no = e.optDouble("lon", Double.NaN)
                 if (nl.isNaN()) continue
+                val tc = tags.optString("traffic_calming")
                 when {
                     tags.optString("highway") == "speed_camera" -> hz += Hazard("camera", nl, no, "Speed camera")
-                    tags.has("traffic_calming") -> hz += Hazard("bump", nl, no, if (tags.optString("traffic_calming").contains("bump") || tags.optString("traffic_calming").contains("hump") || tags.optString("traffic_calming") == "table") "Speed breaker" else "Traffic calming")
+                    tc.isNotEmpty() -> hz += Hazard("bump", nl, no, if (tc.contains("bump") || tc.contains("hump") || tc == "table" || tc == "cushion") "Speed breaker" else "Traffic calming")
                     tags.optString("amenity") == "school" -> hz += Hazard("school", nl, no, "School zone")
                     tags.optString("amenity") == "hospital" -> hz += Hazard("hospital", nl, no, "Hospital zone")
+                    tags.optString("railway") == "level_crossing" -> hz += Hazard("rail", nl, no, "Level crossing")
+                    tags.optString("barrier") == "toll_booth" -> hz += Hazard("toll", nl, no, "Toll plaza")
                 }
             }
         }
-        val tg = best?.second?.optJSONObject("tags")
-        val info = if (tg == null) null else {
-            val hw = tg.optString("highway")
-            val tagged = parseLimit(tg.optString("maxspeed"))
-            val est = estimate(hw)
-            Info(tg.optString("name"), tg.optString("ref"), hw, tagged ?: est, tagged == null, System.currentTimeMillis())
+        return Tile(la, lo, r, System.currentTimeMillis(), ways, hz)
+    }
+
+    /* ---------------- live tracking ---------------- */
+
+    fun onLocation(l: Location) {
+        if (!Prefs.roadAssist) return
+        lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
+        speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
+        if (l.hasBearing() && speedKmh > 4) heading = l.bearing
+        synchronized(tiles) { loadTiles() }
+        maybeFetch()
+        matchRoad(l)
+        refreshHazards()
+        evaluate()
+    }
+
+    private fun maybeFetch() {
+        val now = System.currentTimeMillis()
+        if (busy || now < failUntil || now - lastFetchT < 20_000) return
+        var cLa = lat; var cLo = lon
+        if (covered(lat, lon, 250.0, true)) {
+            // already covered here: prefetch the area ahead while driving
+            val h = heading ?: return
+            if (speedKmh < 20) return
+            val d = 700.0
+            val aLa = lat + d * cos(Math.toRadians(h.toDouble())) / 110540.0
+            val aLo = lon + d * sin(Math.toRadians(h.toDouble())) / (111320.0 * cos(Math.toRadians(lat)))
+            if (covered(aLa, aLo, 100.0, true)) return
+            cLa = aLa; cLo = aLo
         }
-        return info to hz
+        busy = true; lastFetchT = now
+        if (info == null) status = "Loading map…"
+        ex.execute {
+            try {
+                val t = fetchTile(cLa, cLo, TILE_R)
+                if (t != null) { addTile(t); status = "Tracking"; lastMatchT = 0L }
+                else { failUntil = System.currentTimeMillis() + 45_000; status = if (covered(lat, lon, 0.0, false)) "Offline – using saved map" else "Offline – no saved map here" }
+            } catch (_: Exception) {
+                failUntil = System.currentTimeMillis() + 45_000
+            } finally { busy = false }
+        }
+    }
+
+    private fun matchRoad(l: Location) {
+        val snap = synchronized(tiles) { tiles.toList() }
+        val now = System.currentTimeMillis()
+        val tol = max(35.0, (if (l.hasAccuracy()) l.accuracy else 10f) * 1.5 + 15)
+        val dLat = tol / 110540.0; val dLon = tol / (111320.0 * cos(Math.toRadians(lat)))
+        val hd = if (speedKmh > 6) heading else null
+        var best: Way? = null; var bestCost = 1e9; var bestDist = 0.0
+        for (t in snap) {
+            if (Loc.dist(lat, lon, t.la, t.lo) * 1000 > t.r + 500) continue
+            for (w in t.ways) {
+                if (lat < w.minLa - dLat || lat > w.maxLa + dLat || lon < w.minLo - dLon || lon > w.maxLo + dLon) continue
+                var dMin = 1e9; var bear = 0.0
+                var k = 0
+                while (k < w.pts.size - 2) {
+                    val d = segDist(lat, lon, w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3])
+                    if (d < dMin) { dMin = d; bear = bearingTo(w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3]) }
+                    k += 2
+                }
+                if (dMin > tol) continue
+                var cost = dMin
+                if (hd != null) {
+                    val diff = abs(((bear - hd + 540) % 360) - 180)
+                    cost += (if (w.oneway) diff else min(diff, 180 - diff)) * 0.4
+                }
+                if (w.id == curWay) cost -= 10
+                if (cost < bestCost) { bestCost = cost; best = w; bestDist = dMin }
+            }
+        }
+        if (best == null) {
+            if (snap.isNotEmpty() && now - lastMatchT > 10_000) { info = null; curWay = 0L; status = if (snap.any { Loc.dist(lat, lon, it.la, it.lo) * 1000 <= it.r }) "No road data here" else status }
+            return
+        }
+        curWay = best.id; lastMatchT = now
+        val fix = fixes().optInt(best.id.toString(), -1).takeIf { it > 0 }
+        val tagged = best.limit.takeIf { it > 0 }
+        val limit = fix ?: tagged ?: estimate(best.hw)
+        info = Info(best.name, best.ref, best.hw, limit, fix == null && tagged == null, now, if (fix != null) "you" else if (tagged != null) "osm" else "est", best.id)
+        if (!busy) status = if (covered(lat, lon, 0.0, true)) "Tracking" else "Tracking (saved map)"
+    }
+
+    private fun refreshHazards() {
+        val now = System.currentTimeMillis()
+        if (now - hazT < 3000) return
+        hazT = now
+        val out = ArrayList<Hazard>(); val seen = HashSet<String>()
+        val snap = synchronized(tiles) { tiles.toList() }
+        for (z in snap.flatMap { it.hz } + userHazards()) {
+            if (abs(z.lat - lat) > 0.008 || abs(z.lon - lon) > 0.01) continue
+            if (Loc.dist(lat, lon, z.lat, z.lon) * 1000 > 700) continue
+            if (seen.add("${z.kind}${"%.4f".format(Locale.US, z.lat)}${"%.4f".format(Locale.US, z.lon)}")) out += z
+        }
+        hazards = out
     }
 
     private fun parseLimit(s: String): Int? {
@@ -164,7 +380,7 @@ object RoadAssist {
             val d = Loc.dist(lat, lon, z.lat, z.lon) * 1000
             val br = bearingTo(lat, lon, z.lat, z.lon)
             val diff = abs(((br - h + 540) % 360) - 180)
-            if (diff <= 65 && d <= (if (z.kind == "camera") 350 else 260)) z to d.toInt() else null
+            if (diff <= 65 && d <= (if (z.kind == "camera") 350 else if (z.kind == "toll" || z.kind == "rail") 300 else 260)) z to d.toInt() else null
         }.sortedBy { it.second }
     }
 
@@ -177,7 +393,7 @@ object RoadAssist {
         if (lim != null && lim == lastLimitSeen) limitStable++ else { lastLimitSeen = lim; limitStable = 1 }
         if (lim != null && limitStable >= 2 && lim != lastAnnounced && spd > 6) {
             lastAnnounced = lim
-            val txt = "Speed limit $lim" + if (i.estimated) ", estimated" else ""
+            val txt = "Speed limit $lim" + if (i.estimated) ", estimated" else if (i.source == "you") ", as you set" else ""
             Alerts.announce("road-limit", txt, 15_000); addLog(txt + if (i.road.isNotEmpty()) " · ${i.road}" else "")
         }
         // over-speed
@@ -191,8 +407,10 @@ object RoadAssist {
             val slow = z.kind == "school" || z.kind == "hospital"
             if (slow && spd < 30) continue
             val txt = when (z.kind) {
-                "camera" -> "Speed camera ahead"; "bump" -> "${z.label} ahead, slow down"
-                "school" -> "School zone ahead, drive carefully"; else -> "Hospital zone ahead, keep quiet and slow"
+                "camera" -> "Speed camera ahead"; "bump", "pothole" -> "${z.label} ahead, slow down"
+                "curve" -> "Sharp curve ahead, slow down"; "rail" -> "Level crossing ahead, be ready to stop"; "toll" -> "Toll plaza ahead"
+                "school" -> "School zone ahead, drive carefully"; "hospital" -> "Hospital zone ahead, keep quiet and slow"
+                else -> "${z.label} ahead"
             }
             Alerts.announce(key, txt, 300_000); addLog("$txt · ${d} m")
         }

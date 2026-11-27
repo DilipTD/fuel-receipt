@@ -1,6 +1,7 @@
 package com.dilip.carobd
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.*
 import android.view.Gravity
@@ -65,6 +66,7 @@ class RoadPage(a: MainActivity) : Page(a) {
     private lateinit var hazBox: LinearLayout
     private lateinit var logBox: LinearLayout
     private lateinit var headTv: TextView
+    private lateinit var mapTv: TextView
     private var logSig = ""
 
     override fun build(): View { box = ui.col(); return ui.scroll(box) }
@@ -107,6 +109,21 @@ class RoadPage(a: MainActivity) : Page(a) {
 
         box.addView(ui.section("Ahead", Ic.WARN))
         hazBox = ui.vbox(); box.addView(hazBox)
+        box.addView(ui.row(
+            ui.btn("Correct this limit", Ui.CARD) { correctLimit() },
+            ui.btn("Report hazard here", Ui.CARD) { reportHazard() }), ui.lp(8))
+        box.addView(ui.section("Offline map", Ic.DATABASE))
+        mapTv = ui.tv(RoadAssist.savedInfo(), 12.5f, Ui.DIM)
+        box.addView(mapTv, ui.lp(4))
+        box.addView(ui.row(
+            ui.btn("Download this area", Ui.ACC) {
+                ui.toast("Downloading… this can take up to a minute")
+                RoadAssist.downloadArea { m -> ui.toast(m); mapTv.text = RoadAssist.savedInfo() }
+            },
+            ui.btn("Clear saved maps", Ui.CARD) {
+                AlertDialog.Builder(a).setTitle("Clear saved maps?").setMessage("Road data will be downloaded again when needed.")
+                    .setPositiveButton("Clear") { _, _ -> RoadAssist.clearSaved(); mapTv.text = RoadAssist.savedInfo() }.setNegativeButton("Cancel", null).show()
+            }), ui.lp(8))
         box.addView(ui.section("Announcements", Ic.VOICE))
         logBox = ui.vbox(); box.addView(logBox)
 
@@ -126,9 +143,31 @@ class RoadPage(a: MainActivity) : Page(a) {
             marginBtn.text = "Over-speed warning at limit + ${Units.sStr(Prefs.speedMargin.toDouble())}"
         }
         box.addView(marginBtn, ui.lp(8))
-        box.addView(ui.tv("Limits and hazards come from OpenStreetMap and can be missing or out of date – estimated limits (grey, \"est.\") are guesses from the road type. Always follow the road signs. Needs GPS and internet.", 11.5f, Ui.DIM), ui.lp(10))
+        box.addView(ui.tv("Limits and hazards come from OpenStreetMap and can be missing or out of date – estimated limits (grey, \"est.\") are guesses from the road type. Always follow the road signs. GPS is needed; internet is only needed the first time in an area (use Download this area before a trip).", 11.5f, Ui.DIM), ui.lp(10))
         logSig = ""
         refresh()
+    }
+
+    private fun correctLimit() {
+        val i = RoadAssist.info
+        if (i == null || i.wayId == 0L) { ui.toast("No road matched yet"); return }
+        val opts = listOf(20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120)
+        val items = opts.map { Units.sStr(it.toDouble()) }.toMutableList()
+        if (i.source == "you") items.add("Remove my correction")
+        AlertDialog.Builder(a).setTitle("Real speed limit on ${i.road.ifEmpty { "this road" }}").setItems(items.toTypedArray()) { _, k ->
+            if (k < opts.size) { RoadAssist.setLimitFix(i.wayId, opts[k]); ui.toast("Saved – I will use ${Units.sStr(opts[k].toDouble())} here") }
+            else { RoadAssist.setLimitFix(i.wayId, null); ui.toast("Correction removed") }
+        }.show()
+    }
+
+    private fun reportHazard() {
+        val kinds = listOf("bump", "pothole", "curve", "camera", "school", "rail")
+        val items = kinds.map { RoadAssist.labelFor(it) }.toMutableList()
+        items.add("Remove my hazards within 80 m")
+        AlertDialog.Builder(a).setTitle("Report at your position").setItems(items.toTypedArray()) { _, k ->
+            if (k < kinds.size) ui.toast(if (RoadAssist.reportHazard(kinds[k])) "Saved – I will warn you here next time" else "No GPS position yet")
+            else ui.toast("Removed ${RoadAssist.removeMyHazardsHere()} hazard(s)")
+        }.show()
     }
 
     override fun refresh() {
@@ -146,7 +185,7 @@ class RoadPage(a: MainActivity) : Page(a) {
             i == null -> if (r.lastFix == 0L) Gps.statusText(a) else r.status
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
-        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
+        subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else if (i.source == "you") "limit ${Units.sStr(i.limit!!.toDouble())} (set by you)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
         aiTv.text = when {
             i == null -> "Drive with GPS on – I will find the road, its limit and hazards."
             sign.over -> "You are ${Units.sStr(spd - (i.limit ?: 0))} over the limit – ease off."
@@ -156,7 +195,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         hazBox.removeAllViews()
         val ahead = r.ahead()
         if (ahead.isEmpty()) hazBox.addView(ui.iconCard(Ic.CHECK, Ui.GOOD, "Nothing ahead", "No speed breakers, cameras or school zones in your direction"))
-        else for ((z, d) in ahead.take(4)) hazBox.addView(ui.iconCard(when (z.kind) { "camera" -> Ic.SCAN; "bump" -> Ic.WARN; else -> Ic.USER }, Ui.WARN, z.label, "$d m ahead"), ui.lp(6))
+        else for ((z, d) in ahead.take(4)) hazBox.addView(ui.iconCard(when (z.kind) { "camera" -> Ic.SCAN; "school", "hospital" -> Ic.USER; else -> Ic.WARN }, Ui.WARN, z.label + if (z.mine) " (yours)" else "", "$d m ahead"), ui.lp(6))
         val sig = synchronized(r.log) { r.log.size.toString() + (r.log.firstOrNull()?.first ?: 0) }
         if (sig != logSig) {
             logSig = sig; logBox.removeAllViews()

@@ -246,6 +246,12 @@ object Prefs {
     var lastDiagReport: String
         get() = sp.getString("lastDiag", "") ?: ""
         set(v) = sp.edit().putString("lastDiag", v).apply()
+    var roadFix: String
+        get() = sp.getString("roadFix", "{}") ?: "{}"
+        set(v) = sp.edit().putString("roadFix", v).apply()
+    var roadUserHaz: String
+        get() = sp.getString("roadUserHaz", "[]") ?: "[]"
+        set(v) = sp.edit().putString("roadUserHaz", v).apply()
     var resetProfiles: String
         get() = sp.getString("resetProfiles", "[]") ?: "[]"
         set(v) = sp.edit().putString("resetProfiles", v).apply()
