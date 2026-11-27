@@ -1508,6 +1508,10 @@ class SetupWizardTest : SimBase() {
     }
 }
 
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class PerceptionTest : SimBase() {
     private fun frame(w: Int, h: Int, bg: Int = 0x808080) = IntArray(w * h) { bg or 0xFF000000.toInt() }
     private fun rect(px: IntArray, w: Int, x0: Int, y0: Int, x1: Int, y1: Int, c: Int) { for (y in y0 until y1) for (x in x0 until x1) px[y * w + x] = c or 0xFF000000.toInt() }
