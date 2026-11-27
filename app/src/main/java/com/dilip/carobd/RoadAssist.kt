@@ -448,7 +448,7 @@ object RoadAssist {
         // do not hop to another road (service road, ramp) for a single fix: need two in a row unless we have clearly left the current one
         if (curWay != 0L && cand.w.id != curWay && info?.basis?.startsWith("Last road") != true) {
             val cw = snap.firstNotNullOfOrNull { t -> t.ways.firstOrNull { it.id == curWay } }
-            if (cw != null && wayDist(cw, lat, lon) <= tol * 0.8) {
+            if (cw != null && wayDist(cw, lat, lon) <= tol * 0.8 && !(cw.oneway && hd != null && wayWrongWay(cw, hd))) {
                 if (pendWay == cand.w.id) pendN++ else { pendWay = cand.w.id; pendN = 1 }
                 if (pendN < 3) return
             }
@@ -481,6 +481,17 @@ object RoadAssist {
 
     private var pendWay = 0L
     private var pendN = 0
+
+    /** True when we are travelling against a one-way road. */
+    private fun wayWrongWay(w: Way, hd: Float): Boolean {
+        var bd = 1e9; var bb = 0.0; var k = 0
+        while (k < w.pts.size - 2) {
+            val d = segDist(lat, lon, w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3])
+            if (d < bd) { bd = d; bb = bearingTo(w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3]) }
+            k += 2
+        }
+        return angDiff(bb, hd.toDouble()) > 110
+    }
 
     private fun wayDist(w: Way, la: Double, lo: Double): Double {
         var d = 1e9; var k = 0
