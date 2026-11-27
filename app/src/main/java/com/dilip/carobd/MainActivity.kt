@@ -38,7 +38,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Signs" to "Sign camera", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Signs" to "Sign camera", "Welcome" to "Welcome", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
@@ -185,6 +185,7 @@ class MainActivity : Activity() {
         pages["About"] = AboutPage(this)
         pages["Legal"] = LegalPage(this)
         pages["Perms"] = PermissionsPage(this)
+        pages["Welcome"] = WelcomePage(this)
         pages["Docs"] = DocsPage(this)
         pages["Health"] = HealthPage(this)
         pages["Car"] = CarDashPage(this)
@@ -198,7 +199,8 @@ class MainActivity : Activity() {
             content.addView(p.view, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         }
         val firstRun = Prefs.lastAddr.isEmpty() && Prefs.lastType != 2
-        show(if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
+        Prefs.initSetup()
+        show(if (!Prefs.setupDone && ObdManager.state != ObdManager.State.CONNECTED) "Welcome" else if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
         intent?.getStringExtra("open")?.let { show(it) }
         if (Legal.needsConsent(this)) Legal.consent(this) { requestPermsOnce() } else requestPermsOnce()
         Maint.schedule(this)

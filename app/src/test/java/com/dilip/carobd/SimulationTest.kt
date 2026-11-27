@@ -984,3 +984,56 @@ class VehicleClassTest : SimBase() {
         Report.flush("Vehicle class")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class WelcomeTest : SimBase() {
+    @Test
+    fun welcome() {
+        val app = RuntimeEnvironment.getApplication()
+        Prefs.init(app)
+        Report.head("First-run Welcome page")
+        // fresh install: nothing saved yet
+        app.getSharedPreferences("car_obd", 0).edit().clear().commit()
+        Prefs.initSetup()
+        if (!Prefs.setupDone) Report.ok("Fresh install: setup guide is due") else Report.bad("Fresh install should show the setup guide")
+        app.getSharedPreferences("car_obd", 0).edit().clear().putInt("consentV", 1).commit()
+        Prefs.initSetup()
+        if (Prefs.setupDone) Report.ok("Existing user (already accepted privacy text) is not shown the guide again") else Report.bad("Existing user would see the guide")
+        prep(); launch()
+        Prefs.setupDone = false
+        showPage("Welcome")
+        try { act.pages["Welcome"]!!.onShow(); act.pages["Welcome"]!!.refresh(); Report.ok("Welcome page renders") } catch (e: Throwable) { Report.bad("Welcome page crashed", e) }
+        monkey("Welcome", 40)
+        if (act.current == "Welcome") {
+            Report.ok("Welcome page survives random taps")
+        }
+        // backup with offline map, restore into an empty map store
+        Report.head("Backup includes offline maps")
+        Prefs.roadAssist = true
+        RoadAssist.clearSaved()
+        RoadAssist.installTile(RoadAssist.Tile(10.0, 77.0, 12000.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(5, "Map Road", "NH9", "trunk", 80, false, doubleArrayOf(10.0, 76.99, 10.0, 77.01), 0, 60, -1)
+        ), emptyList(), true))
+        val bos = java.io.ByteArrayOutputStream(); Backup.write(app, bos)
+        var hasMap = false
+        java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(bos.toByteArray())).use { z -> var e = z.nextEntry; while (e != null) { if (e.name == "maps/road_areas.json") hasMap = true; e = z.nextEntry } }
+        if (hasMap) Report.ok("Backup file contains the offline map") else Report.bad("Offline map missing from the backup")
+        RoadAssist.clearSaved()
+        if (!RoadAssist.savedInfo().contains("wide")) Report.ok("Map store emptied before restore") else Report.bad("Map store not emptied")
+        val err = Backup.restore(app, java.io.ByteArrayInputStream(bos.toByteArray()))
+        if (RoadAssist.savedInfo().contains("wide highway") && Prefs.setupDone) Report.ok("Restore brings the offline map back and ends the first-run guide (${RoadAssist.savedInfo()})") else Report.bad("Map not restored: ${RoadAssist.savedInfo()} ($err), setupDone=${Prefs.setupDone}")
+        // a backup from an older version: odd value types and no maps
+        val old = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(old).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("settings.json"))
+            z.write("""{"car_obd":{"speedMargin":{"t":"s","v":"oops"},"unitDist":{"t":"zzz"},"mapAuto":{"t":"b","v":false},"junk":5}}""".toByteArray()); z.closeEntry()
+        }
+        val e2 = Backup.restore(app, java.io.ByteArrayInputStream(old.toByteArray()))
+        if (e2 == null && !Prefs.mapAuto) Report.ok("Older/odd backup restores what it can without failing") else Report.bad("Older backup restore: $e2, mapAuto=${Prefs.mapAuto}")
+        RoadAssist.clearSaved(); Prefs.roadAssist = false
+        Report.flush("Welcome")
+    }
+}

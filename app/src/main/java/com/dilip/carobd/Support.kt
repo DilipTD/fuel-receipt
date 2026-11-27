@@ -133,6 +133,13 @@ object Prefs {
     /** Vehicle class used to pick the right road speed limit: Car, Truck or Bus. Stored per vehicle. */
     fun vehicleClass(id: Long): String = sp.getString("vclass_$id", "Car") ?: "Car"
     fun setVehicleClass(id: Long, c: String) = sp.edit().putString("vclass_$id", c).apply()
+    /** Setup guide shown once. Existing users (who already accepted the privacy text or connected) do not see it. */
+    var setupDone: Boolean
+        get() = sp.getBoolean("setupDone", true)
+        set(v) = sp.edit().putBoolean("setupDone", v).apply()
+    fun initSetup() {
+        if (!sp.contains("setupDone")) sp.edit().putBoolean("setupDone", consentVersion > 0 || lastAddr.isNotEmpty()).apply()
+    }
     var welcomed: Boolean
         get() = sp.getBoolean("welcomed", false)
         set(v) = sp.edit().putBoolean("welcomed", v).apply()

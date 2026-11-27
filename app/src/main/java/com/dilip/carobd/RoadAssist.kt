@@ -237,6 +237,12 @@ object RoadAssist {
         }
     }
 
+    /** The saved offline map file (for backup), or null. */
+    fun mapFile(): File? = file()?.takeIf { it.exists() && it.length() > 20 }
+
+    /** After a restore: drop the in-memory copy so the restored file is read. */
+    fun reloadMaps() { synchronized(tiles) { tiles.clear(); estCache.clear(); loaded = false }; info = null; next = null; curve = null; curWay = 0L; lastMatchT = 0L }
+
     fun savedInfo(): String {
         synchronized(tiles) { loadTiles() }
         val kb = (file()?.length() ?: 0L) / 1024

@@ -115,6 +115,7 @@ class MorePage(a: MainActivity) : Page(a) {
             Triple("Help & FAQ", Ui.CYAN) { a.show("Faq") },
             Triple("Settings", Color.parseColor("#90A4AE")) { a.show("Settings") },
             Triple("Permissions", Ui.ORANGE) { a.show("Perms") },
+            Triple("Setup guide", Ui.GOOD) { a.show("Welcome") },
             Triple("Privacy & legal", Ui.GOOD) { a.show("Legal") },
             Triple("About", Ui.VIOLET) { a.show("About") }
         )
@@ -126,7 +127,7 @@ class MorePage(a: MainActivity) : Page(a) {
     private fun iconOf(l: String): Ic = when {
         l.startsWith("Live") -> Ic.CHART; l.startsWith("Sign camera") -> Ic.SCAN; l.startsWith("Road") -> Ic.NAV; l.startsWith("Backup") -> Ic.DATABASE; l.startsWith("Diag") -> Ic.PULSE; l.startsWith("Drive") -> Ic.GAUGE
         l.startsWith("Car health") -> Ic.SHIELD; l.startsWith("Driving") -> Ic.USER; l.startsWith("Maint") -> Ic.WRENCH; l.startsWith("Service reset") -> Ic.REFRESH
-        l.startsWith("Garage") -> Ic.CAR; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
+        l.startsWith("Garage") -> Ic.CAR; l.startsWith("Setup") -> Ic.CHECK; l.startsWith("Alerts") -> Ic.BELL; l.startsWith("Perf") -> Ic.TIMER
         l.startsWith("Battery") -> Ic.BATTERY; l.startsWith("HUD") -> Ic.MONITOR; l.startsWith("Parking") -> Ic.PIN
         l.startsWith("Connect") -> Ic.PLUG; l.startsWith("Settings") -> Ic.GEAR; l.startsWith("About") -> Ic.INFO; l.startsWith("Privacy") -> Ic.SHIELD; l.startsWith("Permissions") -> Ic.SLIDERS; l.startsWith("Home Assistant") -> Ic.HOME; l.startsWith("Documents") -> Ic.DOC
         l.startsWith("Reports") -> Ic.DOC; l.startsWith("Calc") -> Ic.CHART; l.startsWith("Help") -> Ic.INFO

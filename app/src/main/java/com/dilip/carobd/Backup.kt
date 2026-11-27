@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream
 /** Full backup: database (vehicles, trips, routes, fuel, service, codes, alerts) + all settings/parameters, in one .carobd file. */
 object Backup {
     private val prefFiles = listOf("car_obd", "nav_places")
-    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere", "mqttPass")
+    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere", "mqttPass", "welcomed", "permsPrompted", "setupDone")
 
     fun fileName() = "carobd_backup_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) + ".carobd"
 
@@ -33,6 +33,9 @@ object Backup {
             if (hasDb) { z.putNextEntry(ZipEntry("carobd.db")); tmp.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             Receipts.dir(ctx).listFiles()?.forEach { r -> z.putNextEntry(ZipEntry("receipts/" + r.name)); r.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             Docs.dir(ctx).listFiles()?.forEach { r -> z.putNextEntry(ZipEntry("docs/" + r.name)); r.inputStream().use { it.copyTo(z) }; z.closeEntry() }
+            RoadAssist.mapFile()?.takeIf { it.length() < 60L * 1024 * 1024 }?.let { m ->
+                try { z.putNextEntry(ZipEntry("maps/road_areas.json")); m.inputStream().use { it.copyTo(z) }; z.closeEntry() } catch (_: Exception) {}
+            }
             val all = JSONObject()
             for (n in prefFiles) {
                 val o = JSONObject()
@@ -59,6 +62,7 @@ object Backup {
         val tmpDb = File(ctx.cacheDir, "restore.db"); var settings: JSONObject? = null
         val gotReceipts = ArrayList<String>()
         val gotDocs = ArrayList<String>()
+        var gotMaps = false
         val buf = input.buffered(); buf.mark(20)
         val head = ByteArray(16); val n = buf.read(head); buf.reset()
         val legacy = n >= 15 && String(head, Charsets.US_ASCII).startsWith("SQLite format 3")
@@ -69,7 +73,8 @@ object Backup {
                 while (e != null) {
                     when (e.name) {
                         "carobd.db" -> tmpDb.outputStream().use { z.copyTo(it) }
-                        "settings.json" -> settings = JSONObject(String(z.readBytes()))
+                        "settings.json" -> settings = try { JSONObject(String(z.readBytes())) } catch (_: Exception) { null }
+                        "maps/road_areas.json" -> { File(ctx.cacheDir, "restore_maps.json").outputStream().use { z.copyTo(it) }; gotMaps = true }
                         else -> if (e.name.startsWith("docs/") && !e.isDirectory) {
                             val nm = e.name.substringAfter("docs/").replace("/", "").replace("..", "")
                             if (nm.isNotEmpty()) { File(ctx.cacheDir, "dc_$nm").outputStream().use { z.copyTo(it) }; gotDocs += nm }
@@ -92,6 +97,12 @@ object Backup {
         } catch (ex: Exception) { return "Restore failed: ${ex.message}" } finally { Db.reopen(ctx); ObdManager.reloadVehicle() }
         for (nm in gotReceipts) try { File(ctx.cacheDir, "rc_$nm").let { it.copyTo(File(Receipts.dir(ctx), nm), true); it.delete() } } catch (_: Exception) {}
         for (nm in gotDocs) try { File(ctx.cacheDir, "dc_$nm").let { it.copyTo(File(Docs.dir(ctx), nm), true); it.delete() } } catch (_: Exception) {}
+        if (gotMaps) try {
+            val mf = File(ctx.cacheDir, "restore_maps.json")
+            val dst = File(ctx.filesDir, "road_areas.json")
+            if (mf.length() > 20) { mf.copyTo(dst, true) }
+            mf.delete()
+        } catch (_: Exception) {}
         settings?.let { all ->
             for (name in prefFiles) {
                 val o = all.optJSONObject(name) ?: continue
@@ -99,18 +110,21 @@ object Backup {
                 val keep = if (name == "car_obd") skipKeys.associateWith { sp.all[it] } else emptyMap()
                 val ed = sp.edit().clear()
                 for (k in o.keys()) {
-                    val e = o.getJSONObject(k)
-                    when (e.getString("t")) {
-                        "b" -> ed.putBoolean(k, e.getBoolean("v")); "i" -> ed.putInt(k, e.getInt("v")); "l" -> ed.putLong(k, e.getLong("v"))
-                        "f" -> ed.putFloat(k, e.getDouble("v").toFloat()); "s" -> ed.putString(k, e.getString("v"))
-                        "set" -> ed.putStringSet(k, (0 until e.getJSONArray("v").length()).map { e.getJSONArray("v").getString(it) }.toSet())
-                    }
+                    try {
+                        val e = o.getJSONObject(k)
+                        when (e.getString("t")) {
+                            "b" -> ed.putBoolean(k, e.getBoolean("v")); "i" -> ed.putInt(k, e.getInt("v")); "l" -> ed.putLong(k, e.getLong("v"))
+                            "f" -> ed.putFloat(k, e.getDouble("v").toFloat()); "s" -> ed.putString(k, e.getString("v"))
+                            "set" -> ed.putStringSet(k, (0 until e.getJSONArray("v").length()).map { e.getJSONArray("v").getString(it) }.toSet())
+                        }
+                    } catch (_: Exception) { /* one odd value from an older version must not stop the restore */ }
                 }
-                for ((k, v) in keep) when (v) { is String -> ed.putString(k, v); is Long -> ed.putLong(k, v) }
+                for ((k, v) in keep) when (v) { is String -> ed.putString(k, v); is Long -> ed.putLong(k, v); is Boolean -> ed.putBoolean(k, v) }
                 ed.commit()
             }
         }
-        try { RoadAssist.reloadUserData(); SignLib.load(true) } catch (_: Exception) {}
+        try { RoadAssist.reloadUserData(); if (gotMaps) RoadAssist.reloadMaps(); SignLib.load(true) } catch (_: Exception) {}
+        Prefs.setupDone = true
         return null
     }
 
@@ -170,7 +184,7 @@ class BackupPage(a: MainActivity) : Page(a) {
             .setPositiveButton("Restore") { _, _ ->
                 work("Restoring…") {
                     val err = a.contentResolver.openInputStream(uri)?.use { Backup.restore(a.applicationContext, it) } ?: "Cannot open the file"
-                    if (err == null) a.runOnUiThread { Prefs.activeVehicle.let { }; a.recreate() }
+                    if (err == null) a.runOnUiThread { a.recreate() }
                     err
                 }
             }.setNegativeButton("Cancel", null).show()
