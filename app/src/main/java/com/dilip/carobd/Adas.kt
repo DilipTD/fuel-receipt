@@ -37,7 +37,7 @@ object Adas {
 
     fun reset() {
         lane = null; veh = null; offset = 0.0; departing = 0; closing = 0.0; ttc = 99.0; headway = 99.0; level = 0
-        base = 0.0; baseReady = false; hist.clear(); vMiss = 0; lastVeh = null; depCount = 0; lastDep = 0; frames = 0
+        Perception.reset(); base = 0.0; baseReady = false; hist.clear(); vMiss = 0; lastVeh = null; depCount = 0; lastDep = 0; frames = 0
     }
 
     private fun luma(c: Int) = ((c shr 16 and 0xFF) * 299 + (c shr 8 and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
@@ -250,5 +250,6 @@ object Adas {
             vMiss++
             if (vMiss >= 3) { veh = null; lastVeh = null; level = 0; ttc = 99.0; headway = 99.0; closing = 0.0; hist.clear() }
         }
+        try { Perception.process(px, w, h, now) } catch (_: Throwable) {}
     }
 }

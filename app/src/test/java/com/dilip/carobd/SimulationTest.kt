@@ -1507,3 +1507,48 @@ class SetupWizardTest : SimBase() {
         Report.flush("Setup wizard")
     }
 }
+
+class PerceptionTest : SimBase() {
+    private fun frame(w: Int, h: Int, bg: Int = 0x808080) = IntArray(w * h) { bg or 0xFF000000.toInt() }
+    private fun rect(px: IntArray, w: Int, x0: Int, y0: Int, x1: Int, y1: Int, c: Int) { for (y in y0 until y1) for (x in x0 until x1) px[y * w + x] = c or 0xFF000000.toInt() }
+    private fun disc(px: IntArray, w: Int, cx: Int, cy: Int, r: Int, c: Int) { for (y in cy - r..cy + r) for (x in cx - r..cx + r) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) px[y * w + x] = c or 0xFF000000.toInt() }
+
+    @Test
+    fun perception() {
+        val app = RuntimeEnvironment.getApplication(); Prefs.init(app)
+        Report.head("Traffic light and pedestrian detection (synthetic pictures)")
+        val w = 320; val h = 240
+        for ((name, col, want) in listOf(Triple("red", 0xFF2020, 1), Triple("amber", 0xFFB400, 2), Triple("green", 0x20E070, 3))) {
+            val px = frame(w, h); rect(px, w, 150, 20, 175, 85, 0x181818); disc(px, w, 162, 34, 7, col)
+            val d = Perception.detectLight(px, w, h)
+            if (d != null && d.first == want) Report.ok("$name light recognised") else Report.bad("$name light not recognised (got ${d?.first})")
+        }
+        val none = frame(w, h); val dn = Perception.detectLight(none, w, h)
+        if (dn == null) Report.ok("Plain scene: no false traffic light") else Report.bad("False traffic light on plain scene")
+        val red = frame(w, h); disc(red, w, 60, 40, 7, 0xFF2020)
+        if (Perception.detectLight(red, w, h) == null) Report.ok("Red spot without a dark housing (e.g. a sign or sky) ignored") else Report.bad("Red spot without housing accepted")
+        // pedestrian: person-shaped block moves between frames
+        Perception.reset(); Prefs.adasPed = true; Prefs.adasLight = true
+        var hit = false
+        for (i in 0 until 8) {
+            val px = frame(w, h); rect(px, w, 120 + i * 6, 120, 134 + i * 6, 175, 0x202830)
+            Perception.process(px, w, h, 1000L + i * 250)
+            if (Perception.pedNear) hit = true
+        }
+        if (hit) Report.ok("Walking person-shaped object flagged as pedestrian") else Report.bad("Moving person-shaped object not flagged")
+        Perception.reset()
+        var fp = false
+        for (i in 0 until 8) { val px = frame(w, h, 0x808080 + (i % 2) * 0x050505); Perception.process(px, w, h, 1000L + i * 250); if (Perception.pedNear) fp = true }
+        if (!fp) Report.ok("Still scene: no false pedestrian") else Report.bad("False pedestrian on still scene")
+        Perception.reset()
+        var fp2 = false
+        for (i in 0 until 8) { val px = frame(w, h); rect(px, w, 0, 0, w, h, if (i % 2 == 0) 0x404040 else 0xB0B0B0); Perception.process(px, w, h, 1000L + i * 250); if (Perception.pedNear) fp2 = true }
+        if (!fp2) Report.ok("Whole picture changing (car moving): no false pedestrian") else Report.bad("False pedestrian when whole scene changed")
+        // hazard picker draws every symbol
+        prep(); launch()
+        try { HazardQuick.show(act); Report.ok("Hazard picker with symbols opens"); val bmp = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)
+            for (k in HazardQuick.kinds) HazardQuick.drawSymbol(android.graphics.Canvas(bmp), k, 60f, 60f, 40f, android.graphics.Color.CYAN)
+            Report.ok("All ${HazardQuick.kinds.size} hazard symbols draw") } catch (e: Throwable) { Report.bad("Hazard picker crashed", e) }
+        dismissDialogs()
+    }
+}

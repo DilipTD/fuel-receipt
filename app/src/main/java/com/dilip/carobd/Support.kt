@@ -163,6 +163,12 @@ object Prefs {
     var adasLane: Boolean
         get() = sp.getBoolean("adasLane", true)
         set(v) = sp.edit().putBoolean("adasLane", v).apply()
+    var adasLight: Boolean
+        get() = sp.getBoolean("adasLight", true)
+        set(v) = sp.edit().putBoolean("adasLight", v).apply()
+    var adasPed: Boolean
+        get() = sp.getBoolean("adasPed", true)
+        set(v) = sp.edit().putBoolean("adasPed", v).apply()
     var adasFcw: Boolean
         get() = sp.getBoolean("adasFcw", true)
         set(v) = sp.edit().putBoolean("adasFcw", v).apply()

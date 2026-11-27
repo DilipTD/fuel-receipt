@@ -118,6 +118,19 @@ class VisionOverlay(ctx: Context) : View(ctx) {
                 panel(c, x, y - 22 * d, x + tw + 12 * d, y - 2 * d)
                 c.drawText(lab, x + 6 * d, y - 6 * d, tx)
             }
+            Perception.lightBox?.let { b ->
+                val col = when (Perception.light) { 1 -> Color.rgb(255, 60, 60); 2 -> Color.rgb(255, 190, 0); else -> Color.rgb(40, 220, 120) }
+                p.style = Paint.Style.STROKE; p.strokeWidth = 3 * d; p.color = col
+                val cx = (b.x + b.w / 2f) * sx; val cy = (b.y + b.h / 2f) * sy; val r = Math.max(b.w * sx, b.h * sy) * 1.3f + 6 * d
+                c.drawCircle(cx, cy, r, p)
+                val lab = when (Perception.light) { 1 -> "RED"; 2 -> "AMBER"; else -> "GREEN" }
+                tx.textSize = 15 * d; tx.color = col; panel(c, cx - 30 * d, cy + r + 2 * d, cx + 30 * d, cy + r + 24 * d); c.drawText(lab, cx - 24 * d, cy + r + 19 * d, tx)
+            }
+            for (b in Perception.peds) {
+                p.style = Paint.Style.STROKE; p.strokeWidth = 3 * d; p.color = Color.rgb(255, 120, 60)
+                c.drawRect(b.x * sx, b.y * sy, (b.x + b.w) * sx, (b.y + b.h) * sy, p)
+                tx.textSize = 13 * d; tx.color = Color.rgb(255, 150, 90); c.drawText("PED?", b.x * sx, b.y * sy - 4 * d, tx)
+            }
             // signs found in this picture (thin boxes)
             p.style = Paint.Style.STROKE; p.strokeWidth = 2 * d
             for (dt in SignEngine.dets) {
@@ -162,7 +175,9 @@ class VisionOverlay(ctx: Context) : View(ctx) {
         val fcwCol = if (!Prefs.adasFcw) Ui.DIM else when (Adas.level) { 2 -> Ui.BAD; 1 -> Ui.WARN; else -> if (Adas.veh != null) Ui.GOOD else Ui.DIM }
         chips += Triple("FCWS", if (!Prefs.adasFcw) "off" else if (Adas.level == 2) "BRAKE" else if (Adas.veh != null) (if (Adas.ttc < 50) "%.1f s".format(Adas.ttc) else "ok") else "clear", fcwCol)
         chips += Triple("FVDW", if (Adas.headway < 50) "%.1f s".format(Adas.headway) else "--", if (Adas.level == 1) Ui.WARN else if (Adas.headway < 50) Ui.GOOD else Ui.DIM)
-        chips += Triple("PED", "n/a", Ui.DIM)
+        chips += Triple("PED", if (!Prefs.adasPed) "off" else if (Perception.pedNear) "AHEAD" else "clear", if (Perception.pedNear) Ui.BAD else if (!Prefs.adasPed) Ui.DIM else Ui.GOOD)
+        chips += Triple("TLS", if (!Prefs.adasLight) "off" else when (Perception.light) { 1 -> "RED"; 2 -> "AMBER"; 3 -> "GREEN"; else -> "--" },
+            when (Perception.light) { 1 -> Ui.BAD; 2 -> Ui.WARN; 3 -> Ui.GOOD; else -> Ui.DIM })
         var bx = 8 * d
         val by = H - 52 * d
         for ((n, v, col) in chips) {
@@ -172,9 +187,9 @@ class VisionOverlay(ctx: Context) : View(ctx) {
             bx += 82 * d
         }
         // ---- warning banner ----
-        val msg = when { Adas.level == 2 -> "COLLISION WARNING"; Adas.departing < 0 -> "DRIFTING LEFT"; Adas.departing > 0 -> "DRIFTING RIGHT"; Adas.level == 1 -> "KEEP YOUR DISTANCE"; else -> "" }
+        val msg = when { Adas.level == 2 -> "COLLISION WARNING"; Perception.pedNear -> "PEDESTRIAN AHEAD"; Perception.started -> "VEHICLE AHEAD MOVING"; Perception.light == 3 && RoadAssist.speedKmh < 8 -> "GREEN – GO"; Adas.departing < 0 -> "DRIFTING LEFT"; Adas.departing > 0 -> "DRIFTING RIGHT"; Adas.level == 1 -> "KEEP YOUR DISTANCE"; else -> "" }
         if (msg.isNotEmpty()) {
-            val col = if (Adas.level == 1 && Adas.departing == 0) Color.rgb(255, 170, 0) else Color.rgb(230, 40, 50)
+            val col = if (Perception.light == 3 && msg == "GREEN – GO") Color.rgb(31, 164, 99) else if (Adas.level == 1 && Adas.departing == 0 || Perception.started) Color.rgb(255, 170, 0) else Color.rgb(230, 40, 50)
             val tw = big.apply { textSize = 22 * d }.measureText(msg)
             panel(c, W / 2 - tw / 2 - 16 * d, H * 0.30f, W / 2 + tw / 2 + 16 * d, H * 0.30f + 44 * d, col)
             big.color = Color.WHITE; c.drawText(msg, W / 2, H * 0.30f + 31 * d, big)
@@ -244,6 +259,8 @@ class VisionPage(a: MainActivity) : Page(a) {
 
         panelBox = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.argb(210, 10, 15, 20)); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)); visibility = View.GONE }
         panelBox.addView(ui.check("Lane departure warning", Prefs.adasLane).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLane = v } })
+        panelBox.addView(ui.check("Traffic light (red · amber · green) and “go” prompt", Prefs.adasLight).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLight = v } })
+        panelBox.addView(ui.check("Pedestrian warning (moving people, beta)", Prefs.adasPed).apply { setOnCheckedChangeListener { _, v -> Prefs.adasPed = v } })
         panelBox.addView(ui.check("Collision and following-distance warning", Prefs.adasFcw).apply { setOnCheckedChangeListener { _, v -> Prefs.adasFcw = v } })
         panelBox.addView(ui.check("Speak warnings", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } })
         panelBox.addView(ui.tv("Where the car bonnet starts in the picture (rows below are ignored)", 12f, Ui.DIM))
