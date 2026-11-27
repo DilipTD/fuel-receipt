@@ -892,7 +892,7 @@ class RobustnessTest : SimBase() {
         Report.head("H. Backup and restore round trip")
         try {
             Prefs.mapRadiusKm = 100; Prefs.speedMargin = 7
-            Prefs.roadFix = "{\"123\":45}"
+            Prefs.roadFix = "{\"123\":45}"; Prefs.signLib = "[]"
             val bos = java.io.ByteArrayOutputStream(); Backup.write(app, bos)
             Prefs.mapRadiusKm = 10; Prefs.speedMargin = 2; Prefs.roadFix = "{}"
             val err = Backup.restore(app, java.io.ByteArrayInputStream(bos.toByteArray()))

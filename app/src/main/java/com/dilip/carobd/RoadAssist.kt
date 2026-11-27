@@ -111,6 +111,9 @@ object RoadAssist {
 
     private var camMap: HashMap<Long, Int>? = null
 
+    /** After a restore: forget cached corrections so the restored ones are used. */
+    fun reloadUserData() { camMap = null; hazT = 0L; lastMatchT = 0L }
+
     private fun cams(): HashMap<Long, Int> = camMap ?: HashMap<Long, Int>().also { m ->
         try { val o = JSONObject(Prefs.roadCam); for (k in o.keys()) m[k.toLong()] = o.getInt(k) } catch (_: Exception) {}
         camMap = m

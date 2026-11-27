@@ -21,14 +21,16 @@ object Backup {
 
     fun write(ctx: Context, out: OutputStream) {
         val tmp = File(ctx.cacheDir, "snap.db")
+        // a fresh install may not have created the database file yet
+        if (!Db.file(ctx).exists()) try { Db.reopen(ctx); Db.count("trips") } catch (_: Exception) {}
         Db.close()
-        try { Db.file(ctx).copyTo(tmp, overwrite = true) } finally { Db.reopen(ctx) }
+        val hasDb = try { Db.file(ctx).exists() && run { Db.file(ctx).copyTo(tmp, overwrite = true); true } } catch (_: Exception) { false } finally { Db.reopen(ctx) }
         ZipOutputStream(out.buffered()).use { z ->
             z.putNextEntry(ZipEntry("manifest.json"))
             z.write(JSONObject().put("app", "CarOBD").put("version", AppInfo.VERSION).put("time", System.currentTimeMillis())
                 .put("trips", Db.count("trips")).put("fuel", Db.count("fuel")).put("vehicles", Db.count("vehicles")).toString().toByteArray())
             z.closeEntry()
-            z.putNextEntry(ZipEntry("carobd.db")); tmp.inputStream().use { it.copyTo(z) }; z.closeEntry()
+            if (hasDb) { z.putNextEntry(ZipEntry("carobd.db")); tmp.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             Receipts.dir(ctx).listFiles()?.forEach { r -> z.putNextEntry(ZipEntry("receipts/" + r.name)); r.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             Docs.dir(ctx).listFiles()?.forEach { r -> z.putNextEntry(ZipEntry("docs/" + r.name)); r.inputStream().use { it.copyTo(z) }; z.closeEntry() }
             val all = JSONObject()
@@ -80,9 +82,9 @@ object Backup {
                 }
             }
         } catch (ex: Exception) { tmpDb.delete(); return "Not a Car OBD backup file" }
-        if (!tmpDb.exists() || tmpDb.length() < 100 || !tmpDb.inputStream().use { s -> ByteArray(16).also { s.read(it) } }.let { String(it, Charsets.US_ASCII).startsWith("SQLite format 3") })
-            { tmpDb.delete(); return "Not a Car OBD backup file" }
-        try {
+        val dbOk = tmpDb.exists() && tmpDb.length() >= 100 && tmpDb.inputStream().use { s -> ByteArray(16).also { s.read(it) } }.let { String(it, Charsets.US_ASCII).startsWith("SQLite format 3") }
+        if (!dbOk && settings == null) { tmpDb.delete(); return "Not a Car OBD backup file" }
+        if (dbOk) try {
             Db.close()
             val f = Db.file(ctx)
             File(f.path + "-wal").delete(); File(f.path + "-shm").delete()
@@ -108,6 +110,7 @@ object Backup {
                 ed.commit()
             }
         }
+        try { RoadAssist.reloadUserData(); SignLib.load(true) } catch (_: Exception) {}
         return null
     }
 
