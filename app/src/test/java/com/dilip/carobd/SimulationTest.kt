@@ -1090,7 +1090,7 @@ class SignNetTest : SimBase() {
     fun signNet() {
         prep(); launch()
         Report.head("Standard sign recogniser")
-        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        val ctx = org.robolectric.RuntimeEnvironment.getApplication()
         if (SignNet.load(ctx)) Report.ok("Model loads from the app (offline, no network)") else { Report.bad("Model did not load: ${SignNet.error}"); Report.flush("Standard sign recogniser"); return }
         val v = vectors()
         var right = 0; var maxDiff = 0f
