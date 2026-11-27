@@ -1025,6 +1025,23 @@ class WelcomeTest : SimBase() {
         if (!RoadAssist.savedInfo().contains("wide")) Report.ok("Map store emptied before restore") else Report.bad("Map store not emptied")
         val err = Backup.restore(app, java.io.ByteArrayInputStream(bos.toByteArray()))
         if (RoadAssist.savedInfo().contains("wide highway") && Prefs.setupDone) Report.ok("Restore brings the offline map back and ends the first-run guide (${RoadAssist.savedInfo()})") else Report.bad("Map not restored: ${RoadAssist.savedInfo()} ($err), setupDone=${Prefs.setupDone}")
+        // same-version backup file written to a real file, then restored twice from its Uri
+        Report.head("Backup file round trip (same version)")
+        try {
+            val bf = java.io.File(app.cacheDir, "same_version.carobd")
+            val u = android.net.Uri.fromFile(bf)
+            val e1 = Backup.toUri(app, u, "test")
+            if (e1 == null && bf.length() > 100) Report.ok("Backup written and read back (${bf.length()} bytes)") else Report.bad("Backup write failed: $e1")
+            val r1 = Backup.restoreUri(app, u)
+            if (r1 == null) Report.ok("Restore from the same backup file works") else Report.bad("Restore of own backup failed: $r1")
+            val r2 = Backup.restoreUri(app, u)
+            if (r2 == null) Report.ok("Restoring the same file a second time works") else Report.bad("Second restore failed: $r2")
+            val empty = java.io.File(app.cacheDir, "empty.carobd"); empty.writeBytes(ByteArray(0))
+            val r3 = Backup.restoreUri(app, android.net.Uri.fromFile(empty))
+            if (r3 != null && r3.contains("empty")) Report.ok("Empty file gives a clear message") else Report.bad("Empty file message: $r3")
+            val r4 = Backup.restoreUri(app, android.net.Uri.fromFile(java.io.File(app.cacheDir, "missing.carobd")))
+            if (r4 != null) Report.ok("Missing file gives a message: ${r4.take(60)}") else Report.bad("Missing file not reported")
+        } catch (e: Throwable) { Report.bad("Backup round trip crashed", e) }
         // a backup from an older version: odd value types and no maps
         val old = java.io.ByteArrayOutputStream()
         java.util.zip.ZipOutputStream(old).use { z ->

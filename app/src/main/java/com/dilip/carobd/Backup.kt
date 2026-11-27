@@ -128,21 +128,72 @@ object Backup {
         return null
     }
 
+    /** Checks that a finished backup file really is a readable zip with the data inside. */
+    fun verify(f: File): String? = try {
+        var db = false; var set = false
+        java.util.zip.ZipFile(f).use { z -> val en = z.entries(); while (en.hasMoreElements()) { val n = en.nextElement().name; if (n == "carobd.db") db = true; if (n == "settings.json") set = true } }
+        if (db || set) null else "The backup has no data inside"
+    } catch (e: Exception) { "The backup file could not be read back (${e.message})" }
+
+    /**
+     * Builds the backup in a local file first, checks it, then copies it to the chosen place.
+     * Cloud providers (Google Drive, OneDrive…) cope badly with a zip being streamed straight into them.
+     */
+    fun toUriSafe(ctx: Context, uri: Uri): String? {
+        val tmp = File(ctx.cacheDir, "backup_out.carobd")
+        try {
+            tmp.outputStream().use { write(ctx, it) }
+            verify(tmp)?.let { return it }
+            var lastErr = ""
+            for (mode in listOf("wt", "w")) {
+                try {
+                    val os = ctx.contentResolver.openOutputStream(uri, mode) ?: continue
+                    os.use { o -> tmp.inputStream().use { it.copyTo(o) }; o.flush() }
+                    // read it back: the same size means the provider really stored it
+                    val back = try { ctx.contentResolver.openInputStream(uri)?.use { i -> var n = 0L; val b = ByteArray(65536); while (true) { val k = i.read(b); if (k < 0) break; n += k }; n } } catch (_: Exception) { null }
+                    if (back == null || back == tmp.length()) return null
+                    lastErr = "stored ${back} of ${tmp.length()} bytes"
+                } catch (e: Exception) { lastErr = e.message ?: "error" }
+            }
+            return "The place you chose would not accept the file ($lastErr). Try another location, or Backup to this phone."
+        } catch (e: Exception) { return "Backup failed: ${e.message}" }
+        finally { tmp.delete() }
+    }
+
+    /** Copies a chosen file to a local temporary file so a slow or cloud-backed file can be read completely. */
+    fun fetch(ctx: Context, uri: Uri): Pair<File?, String?> {
+        val tmp = File(ctx.cacheDir, "backup_in.carobd")
+        return try {
+            val ins = ctx.contentResolver.openInputStream(uri) ?: return null to "The phone could not open that file. If it is in Google Drive, open it once in the Drive app (or save it to this phone) and try again."
+            ins.use { i -> tmp.outputStream().use { i.copyTo(it) } }
+            when {
+                tmp.length() == 0L -> { tmp.delete(); null to "The file is empty (0 bytes). It may still be uploading, or was saved incompletely. Make a new backup and try again." }
+                else -> tmp to null
+            }
+        } catch (e: java.io.FileNotFoundException) { null to "The file is not available (${e.message}). If it is in a cloud app, make it available offline or copy it to this phone first." }
+        catch (e: Exception) { null to "Could not read the file: ${e.message ?: e.javaClass.simpleName}" }
+    }
+
+    /** Restores from a chosen file; returns an error text or null. */
+    fun restoreUri(ctx: Context, uri: Uri): String? {
+        val (f, err) = fetch(ctx, uri)
+        if (f == null) return err
+        return try { f.inputStream().use { restore(ctx, it) } } finally { f.delete() }
+    }
+
     /** Writes to the linked cloud file (Google Drive, OneDrive, Dropbox … chosen in the system picker). */
     fun toCloud(ctx: Context): String? {
         val u = Prefs.cloudUri.ifEmpty { return "No cloud file linked yet" }
-        return try {
-            val os = ctx.contentResolver.openOutputStream(Uri.parse(u), "wt") ?: return "Cloud file not available"
-            os.use { write(ctx, it) }
-            Prefs.lastBackupT = System.currentTimeMillis(); Prefs.lastBackupWhere = "Cloud · " + Prefs.cloudName
-            null
-        } catch (e: Exception) { "Cloud backup failed: ${e.message}" }
+        val e = toUriSafe(ctx, Uri.parse(u))
+        if (e == null) { Prefs.lastBackupT = System.currentTimeMillis(); Prefs.lastBackupWhere = "Cloud · " + Prefs.cloudName }
+        return e?.let { "Cloud backup failed: $it" }
     }
 
-    fun toUri(ctx: Context, uri: Uri, label: String): String? = try {
-        ctx.contentResolver.openOutputStream(uri, "wt")?.use { write(ctx, it) } ?: throw Exception("cannot open file")
-        Prefs.lastBackupT = System.currentTimeMillis(); Prefs.lastBackupWhere = label; null
-    } catch (e: Exception) { "Backup failed: ${e.message}" }
+    fun toUri(ctx: Context, uri: Uri, label: String): String? {
+        val e = toUriSafe(ctx, uri)
+        if (e == null) { Prefs.lastBackupT = System.currentTimeMillis(); Prefs.lastBackupWhere = label }
+        return e
+    }
 
     /** Daily automatic backup to the linked cloud file. */
     fun auto(ctx: Context) {
@@ -183,7 +234,7 @@ class BackupPage(a: MainActivity) : Page(a) {
             // chosen on the first setup screen of a fresh install: nothing to lose, no extra question
             Prefs.restoreFromSetup = false
             work("Restoring your backup…") {
-                val err = a.contentResolver.openInputStream(uri)?.use { Backup.restore(a.applicationContext, it) } ?: "Cannot open the file"
+                val err = Backup.restoreUri(a.applicationContext, uri)
                 if (err == null) { Prefs.setupAfterRestore = true; Prefs.consentVersion = LegalText.VERSION; a.runOnUiThread { a.recreate() } }
                 err
             }
@@ -193,7 +244,7 @@ class BackupPage(a: MainActivity) : Page(a) {
             .setMessage("Trips, fuel log, service records, vehicles and settings on this phone will be replaced.")
             .setPositiveButton("Restore") { _, _ ->
                 work("Restoring…") {
-                    val err = a.contentResolver.openInputStream(uri)?.use { Backup.restore(a.applicationContext, it) } ?: "Cannot open the file"
+                    val err = Backup.restoreUri(a.applicationContext, uri)
                     if (err == null) a.runOnUiThread { a.recreate() }
                     err
                 }
