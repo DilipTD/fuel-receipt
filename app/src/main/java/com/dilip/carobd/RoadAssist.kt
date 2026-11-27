@@ -95,6 +95,14 @@ object RoadAssist {
         return n[((deg + 22.5f) / 45f).toInt() % 8]
     }
 
+    /** Position of the car now, moved [meters] ahead along the heading (where a sign it sees really stands). */
+    fun hereAhead(meters: Double): Pair<Double, Double>? {
+        if (lastFix == 0L || System.currentTimeMillis() - lastFix > 15_000 || (lat == 0.0 && lon == 0.0)) return null
+        val h = heading
+        if (h == null || speedKmh < 5) return lat to lon
+        return (lat + meters * cos(Math.toRadians(h.toDouble())) / 110540.0) to (lon + meters * sin(Math.toRadians(h.toDouble())) / (111320.0 * cos(Math.toRadians(lat))))
+    }
+
     /** Which saved map covers the current position: town, wide (highways only) or none. */
     fun coverage(): String = if (covered(lat, lon, 0.0, false)) "town" else if (coveredWide(lat, lon)) "wide" else "none"
 
@@ -769,7 +777,7 @@ object RoadAssist {
         hazT = now
         val out = ArrayList<Hazard>(); val seen = HashSet<String>()
         val snap = synchronized(tiles) { tiles.toList() }
-        for (z in snap.flatMap { it.hz } + userHazards()) {
+        for (z in snap.flatMap { it.hz } + userHazards() + SignMap.hazards(lat, lon)) {
             if (abs(z.lat - lat) > 0.008 || abs(z.lon - lon) > 0.01) continue
             if (Loc.dist(lat, lon, z.lat, z.lon) * 1000 > 700) continue
             if (seen.add("${z.kind}${"%.4f".format(Locale.US, z.lat)}${"%.4f".format(Locale.US, z.lon)}")) out += z
@@ -838,9 +846,10 @@ object RoadAssist {
                 "camera" -> "Speed camera ahead"; "bump", "pothole" -> "${z.label} ahead, slow down"
                 "curve" -> "Sharp curve ahead" + (if (z.adv > 0) ", ease to ${z.adv}" else ", slow down"); "rail" -> "Level crossing ahead, be ready to stop"; "toll" -> "Toll plaza ahead"
                 "school" -> "School zone ahead, drive carefully"; "hospital" -> "Hospital zone ahead, keep quiet and slow"
+                "sign" -> z.label
                 else -> "${z.label} ahead"
             }
-            Alerts.announce(key, txt, 300_000)
+            if (z.kind == "sign") Alerts.announce("signtxt-${z.label}", txt, 60_000) else Alerts.announce(key, txt, 300_000)
             if (announced.add(key)) { alertsN++; addLog("$txt · ${d} m") }
         }
         // limit change ahead

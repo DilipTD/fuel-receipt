@@ -41,11 +41,11 @@ class SignOverlay(ctx: Context) : View(ctx) {
         if (fw == 0 || fh == 0) return
         val sx = width.toFloat() / fw; val sy = height.toFloat() / fh
         for (dt in SignEngine.dets) {
-            val col = when (dt.state) { 0 -> Ui.GOOD; 1 -> Ui.CYAN; 3 -> Ui.DIM; else -> Ui.WARN }
+            val col = when (dt.state) { 0 -> Ui.GOOD; 1 -> Ui.CYAN; 3 -> Ui.DIM; 4 -> Ui.VIOLET; else -> Ui.WARN }
             box.color = col
             val x = dt.c.x * sx; val y = dt.c.y * sy
             c.drawRect(x, y, x + dt.c.w * sx, y + dt.c.h * sy, box)
-            val lab = when (dt.state) { 3 -> "ignored"; 2 -> "? tap to teach"; else -> dt.label }
+            val lab = when (dt.state) { 3 -> "ignored"; 2 -> "? tap to teach"; 4 -> "\u2713 " + dt.label; else -> dt.label }
             val tw = txt.measureText(lab)
             bg.color = Ui.alpha(Color.BLACK, 170)
             c.drawRect(x, y - 20 * d, x + tw + 10 * d, y, bg)
@@ -138,7 +138,7 @@ class SignPage(a: MainActivity) : Page(a) {
         fullBtn = ui.btn("Bigger", Ui.CARD) { full = !full; fullBtn.text = if (full) "Smaller" else "Bigger"; holder.layoutParams = (holder.layoutParams as LinearLayout.LayoutParams).apply { height = holderH() }; settingsBox.visibility = if (full) View.GONE else View.VISIBLE; if (running) fit(if (rot % 180 == 0) pw else ph, if (rot % 180 == 0) ph else pw) }
         c.addView(startBtn, ui.lp(8))
         c.addView(ui.row(torchBtn, zoomBtn, fullBtn), ui.lp(6))
-        overlay.onTap = { dt -> a.runOnUiThread { when (dt.state) { 2 -> if (SignEngine.hasPending()) teachDialog(null) else ui.toast("Hold steady on the sign for a moment, then tap again"); 1, 3 -> SignLib.entries.firstOrNull { it.name == dt.label || (dt.state == 3) && it.action == "ignore" }?.let { teachDialog(it) }; else -> ui.toast("Speed limit ${dt.label} read from the sign") } } }
+        overlay.onTap = { dt -> a.runOnUiThread { when (dt.state) { 2 -> if (SignEngine.hasPending()) teachDialog(null) else ui.toast("Hold steady on the sign for a moment, then tap again"); 4 -> ui.toast("Standard sign: ${dt.label}"); 1, 3 -> SignLib.entries.firstOrNull { it.name == dt.label || (dt.state == 3) && it.action == "ignore" }?.let { teachDialog(it) }; else -> ui.toast("Speed limit ${dt.label} read from the sign") } } }
         c.addView(statusTv, ui.lp(6))
         resultBox = ui.vbox()
         c.addView(resultBox, ui.lp(6))
@@ -147,7 +147,14 @@ class SignPage(a: MainActivity) : Page(a) {
 
         settingsBox.addView(ui.section("Settings", Ic.SLIDERS))
         settingsBox.addView(ui.check("Apply speed-limit signs to the road automatically", Prefs.signAuto).apply { setOnCheckedChangeListener { _, v -> Prefs.signAuto = v } }, ui.lp(2))
+        settingsBox.addView(ui.check("Recognise standard signs (stop, no entry, school, curves...)", Prefs.signBuiltin).apply { setOnCheckedChangeListener { _, v -> Prefs.signBuiltin = v } }, ui.lp(2))
         settingsBox.addView(ui.check("Speak warnings for signs I taught", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } }, ui.lp(2))
+
+        settingsBox.addView(ui.section("Standard signs and sign map", Ic.DATABASE))
+        mapTv = ui.card("", 12.5f, Ui.WHITE)
+        settingsBox.addView(mapTv, ui.lp(4))
+        settingsBox.addView(ui.btn("Clear sign map", Ui.BAD) { SignMap.clear(); SignEngine.recent.clear(); ui.toast("Sign map cleared"); refresh() }, ui.lp(6))
+        settingsBox.addView(ui.card("Driver aid, not a safety system. Standard signs are recognised by a small model trained on German road signs, and Indian signs that look different may not be recognised. It only gives spoken and on-screen warnings; it never steers, brakes or controls the car. Always watch the road and follow the real signs.", 11.5f, Ui.WARN), ui.lp(6))
 
         settingsBox.addView(ui.section("Signs I taught", Ic.DATABASE))
         libBox = ui.vbox()
@@ -160,6 +167,8 @@ class SignPage(a: MainActivity) : Page(a) {
     override fun onShow() { libVer = -1; resSig = ""; renderLib() }
     override fun onHide() { stop() }
 
+    private lateinit var mapTv: TextView
+
     private fun toggle() { if (running) stop() else start() }
 
     private fun start() {
@@ -170,6 +179,7 @@ class SignPage(a: MainActivity) : Page(a) {
         }
         running = true; camErr = ""
         SignEngine.reset()
+        try { SignNet.load(a.application) } catch (_: Throwable) {}
         a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         startBtn.text = "Stop camera"
         if (surface != null) openCamera()
@@ -334,6 +344,12 @@ class SignPage(a: MainActivity) : Page(a) {
             else -> "${SignEngine.dets.size} sign(s) in view"
         }
         overlay.invalidate()
+        if (::mapTv.isInitialized) {
+            val rec = SignEngine.recent.take(4).joinToString("\n") { "• " + it.name }
+            mapTv.text = (if (!SignNet.ready && Prefs.signBuiltin) "Standard sign model loads when the camera starts.\n" else "") +
+                "Sign map: ${SignMap.count()} saved, ${SignMap.confirmedCount()} confirmed (seen on 2 or more passes) and used to warn ahead.\n" +
+                (if (rec.isEmpty()) "No standard signs seen yet." else "Recently seen:\n$rec")
+        }
         val sig = "${SignEngine.lastLimit}|${SignEngine.lastLimitAt / 2000}|${SignEngine.lastKnown}|${SignEngine.hasPending()}|${SignEngine.applied}|${RoadAssist.info?.road}"
         if (sig == resSig) return
         resSig = sig

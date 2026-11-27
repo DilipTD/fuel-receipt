@@ -110,11 +110,22 @@ object SignEngine {
     private val lastAct = HashMap<Long, Long>()
 
     fun reset() {
+        bHist.clear(); recent.clear()
         dets = emptyList(); pendingThumb = null; pendingFp = null; pendingHits = 0; limHist.clear(); knownHist.clear()
         lastLimit = 0; lastLimitAt = 0; lastKnown = ""; lastKnownAt = 0; applied = ""
     }
 
     fun hasPending() = pendingThumb != null && System.currentTimeMillis() - pendingAt < 6000
+
+    class Seen(val name: String, val kind: Char, val t: Long)
+    val recent = java.util.concurrent.CopyOnWriteArrayList<Seen>()
+    private val bHist = ArrayDeque<Set<Int>>()
+    private val bLast = HashMap<Int, Float>()
+    var builtinSeen = 0
+
+    private fun note(name: String, kind: Char, now: Long) {
+        recent.add(0, Seen(name, kind, now)); while (recent.size > 8) recent.removeAt(recent.size - 1); builtinSeen++
+    }
 
     fun process(px: IntArray, w: Int, h: Int) {
         frameW = w; frameH = h
@@ -122,30 +133,63 @@ object SignEngine {
         val out = ArrayList<Det>()
         var lim = 0; var known: SignEntry? = null; var knownSim = 0.0
         var unk: Pair<SignCand, FloatArray>? = null
+        val builtin = Prefs.signBuiltin && SignNet.ready
+        val bIds = HashSet<Int>()
         for (c in SignVision.detect(px, w, h)) {
-            val lr = SignVision.readLimit(px, w, h, c)
-            if (lr != null) { out += Det(c, lr.value.toString(), 0); if (lim == 0) lim = lr.value; continue }
-            val fp = SignVision.fingerprint(px, w, h, c)
-            val m = SignLib.match(fp, c.kind)
-            if (m != null) {
-                out += Det(c, m.first.name, if (m.first.action == "ignore") 3 else 1)
-                if (m.first.action != "ignore" && known == null) { known = m.first; knownSim = m.second; if (m.second < 0.97) SignLib.addSample(m.first, fp) }
-                continue
+            if (c.kind != 2) {
+                val lr = SignVision.readLimit(px, w, h, c)
+                if (lr != null) { out += Det(c, lr.value.toString(), 0); if (lim == 0) lim = lr.value; continue }
+                val fp = SignVision.fingerprint(px, w, h, c)
+                val m = SignLib.match(fp, c.kind)
+                if (m != null) {
+                    out += Det(c, m.first.name, if (m.first.action == "ignore") 3 else 1)
+                    if (m.first.action != "ignore" && known == null) { known = m.first; knownSim = m.second; if (m.second < 0.97) SignLib.addSample(m.first, fp) }
+                    continue
+                }
+                val bn = if (builtin) try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null } else null
+                if (bn != null) { out += Det(c, bn.first.name, 4); bIds += bn.first.id; bLast[bn.first.id] = bn.second; continue }
+                out += Det(c, "?", 2)
+                if (unk == null) unk = c to fp
+            } else if (builtin) {
+                val bn = try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null }
+                if (bn != null) { out += Det(c, bn.first.name, 4); bIds += bn.first.id; bLast[bn.first.id] = bn.second }
             }
-            out += Det(c, "?", 2)
-            if (unk == null) unk = c to fp
         }
         dets = out
         limHist.addLast(lim); while (limHist.size > 5) limHist.removeFirst()
         if (lim > 0 && limHist.count { it == lim } >= 2) onLimit(lim, now)
         knownHist.addLast(known?.id ?: 0L); while (knownHist.size > 5) knownHist.removeFirst()
         if (known != null && knownHist.count { it == known.id } >= 2) onKnown(known, now)
+        bHist.addLast(bIds); while (bHist.size > 6) bHist.removeFirst()
+        for (id in bIds) if (bHist.count { id in it } >= 3) onBuiltin(SignNet.KB[id], now)
         val u = unk
         if (u != null) {
             val pf = pendingFp
             if (pf != null && SignVision.similarity(pf, u.second) > 0.9) pendingHits++ else { pendingFp = u.second; pendingHits = 1 }
             if (pendingHits >= 3) { pendingKind = u.first.kind; pendingThumb = SignVision.thumb(px, w, h, u.first); pendingAt = now; pendingFp = u.second }
         } else if (now - pendingAt > 6000) { pendingThumb = null; pendingFp = null; pendingHits = 0 }
+    }
+
+    private val lastBuiltin = HashMap<Int, Long>()
+
+    /** A standard sign seen on at least 3 of the last 6 pictures. */
+    private fun onBuiltin(s: SignInfo, now: Long) {
+        lastKnown = s.name; lastKnownAt = now
+        if (now - (lastBuiltin[s.id] ?: 0L) < 45_000) return
+        lastBuiltin[s.id] = now
+        note(s.name, s.kind, now)
+        val heavyOnly = s.id == 10 || s.id == 16 || s.id == 42
+        val heavy = try { Prefs.vehicleClass(ObdManager.vehicle.id) != "Car" } catch (_: Throwable) { false }
+        when (s.kind) {
+            'L' -> onLimit(s.value, now)
+            'W', 'R' -> {
+                if (heavyOnly && !heavy) { RoadAssist.addLog("Sign: ${s.name}"); return }
+                if (Prefs.signSpeak) Alerts.announce("signtxt-${s.say}", s.say, 60_000)
+                RoadAssist.addLog("Sign: ${s.name}")
+                SignMap.observe(s, now)
+            }
+            else -> RoadAssist.addLog("Sign: ${s.name}")
+        }
     }
 
     private fun onLimit(v: Int, now: Long) {
@@ -176,4 +220,67 @@ object SignEngine {
     }
 
     fun dismissPending() { pendingThumb = null; pendingFp = null; pendingHits = 0 }
+}
+
+
+/**
+ * Signs seen by the camera, saved with their position so the road assistant can warn before you see them next time.
+ * A sign counts as confirmed after it has been seen on two separate passes (or many times in one).
+ */
+object SignMap {
+    class Obs(val cls: Int, var lat: Double, var lon: Double, var n: Int, var passes: Int, var t: Long)
+    private var list: ArrayList<Obs>? = null
+    @Volatile var version = 0
+
+    private fun load(): ArrayList<Obs> {
+        list?.let { return it }
+        val out = ArrayList<Obs>()
+        try {
+            val a = org.json.JSONArray(Prefs.signMap)
+            for (i in 0 until a.length()) { val o = a.getJSONObject(i); out += Obs(o.getInt("c"), o.getDouble("a"), o.getDouble("o"), o.optInt("n", 1), o.optInt("p", 1), o.optLong("t", 0L)) }
+        } catch (_: Exception) {}
+        list = out; return out
+    }
+
+    private fun save() {
+        val l = load()
+        val a = org.json.JSONArray()
+        for (o in l) a.put(org.json.JSONObject().put("c", o.cls).put("a", o.lat).put("o", o.lon).put("n", o.n).put("p", o.passes).put("t", o.t))
+        Prefs.signMap = a.toString(); version++
+    }
+
+    fun reload() { list = null; version++ }
+
+    @Synchronized fun observe(s: SignInfo, now: Long) {
+        val pos = RoadAssist.hereAhead(25.0) ?: return
+        val l = load()
+        val e = l.filter { it.cls == s.id }.minByOrNull { Loc.dist(pos.first, pos.second, it.lat, it.lon) }
+        if (e != null && Loc.dist(pos.first, pos.second, e.lat, e.lon) * 1000 < 45) {
+            e.lat = (e.lat * e.n + pos.first) / (e.n + 1); e.lon = (e.lon * e.n + pos.second) / (e.n + 1)
+            if (now - e.t > 180_000) e.passes++
+            e.n++; e.t = now
+        } else {
+            l += Obs(s.id, pos.first, pos.second, 1, 1, now)
+            while (l.size > 1500) l.remove(l.minByOrNull { it.t })
+        }
+        save()
+    }
+
+    fun confirmed(o: Obs) = o.passes >= 2 || o.n >= 6
+    fun count() = load().size
+    fun confirmedCount() = load().count { confirmed(it) }
+    fun clear() { list = ArrayList(); save() }
+
+    /** Confirmed signs near the car, as hazards for the road assistant. */
+    fun hazards(lat: Double, lon: Double): List<RoadAssist.Hazard> {
+        val out = ArrayList<RoadAssist.Hazard>()
+        for (o in load()) {
+            if (!confirmed(o)) continue
+            if (Math.abs(o.lat - lat) > 0.008 || Math.abs(o.lon - lon) > 0.01) continue
+            val k = SignNet.KB.getOrNull(o.cls) ?: continue
+            if (k.say.isEmpty()) continue
+            out += RoadAssist.Hazard("sign", o.lat, o.lon, k.say)
+        }
+        return out
+    }
 }

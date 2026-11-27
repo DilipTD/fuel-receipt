@@ -140,6 +140,12 @@ object Prefs {
     fun initSetup() {
         if (!sp.contains("setupDone")) sp.edit().putBoolean("setupDone", consentVersion > 0 || lastAddr.isNotEmpty()).apply()
     }
+    var signMap: String
+        get() = sp.getString("signMap", "[]") ?: "[]"
+        set(v) = sp.edit().putString("signMap", v).apply()
+    var signBuiltin: Boolean
+        get() = sp.getBoolean("signBuiltin", true)
+        set(v) = sp.edit().putBoolean("signBuiltin", v).apply()
     var welcomed: Boolean
         get() = sp.getBoolean("welcomed", false)
         set(v) = sp.edit().putBoolean("welcomed", v).apply()

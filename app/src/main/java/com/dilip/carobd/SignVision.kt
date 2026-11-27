@@ -69,6 +69,7 @@ object SignVision {
             mask[i] = when {
                 r > 120 && r > g * 1.7 && r > b * 1.6 -> 1
                 b > 90 && b > r * 1.6 && b > g * 1.15 -> 2
+                r > 150 && g > 120 && b < 95 && r > b * 2 && g > b * 1.6 && abs(r - g) < 90 -> 3
                 else -> 0
             }
         }
@@ -103,9 +104,10 @@ object SignVision {
             }
             val bf = if (tot > 0) bright.toDouble() / tot else 0.0
             val ok = if (m == 1) ((fill in 0.12..0.62 && bf > 0.40) || (fill in 0.45..0.95 && bf in 0.05..0.45))
+            else if (m == 3) (fill in 0.25..0.95 && bf <= 0.6)
             else (fill in 0.35..0.95 && bf in 0.04..0.55)
             if (!ok) continue
-            out += SignCand(minX, minY, bw, bh, if (m == 1) 0 else 1, m == 1 && fill < 0.62 && bf > 0.40)
+            out += SignCand(minX, minY, bw, bh, if (m == 1) 0 else if (m == 3) 2 else 1, m == 1 && fill < 0.62 && bf > 0.40)
         }
         return out.sortedByDescending { it.w * it.h }.take(4)
     }

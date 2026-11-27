@@ -1067,3 +1067,86 @@ class DriveLogTest : SimBase() {
         Report.flush("Drive report")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class SignNetTest : SimBase() {
+    private class Vec(val n: Int, val img: Array<FloatArray>, val y: IntArray, val ref: Array<FloatArray>)
+
+    private fun vectors(): Vec {
+        val b = java.nio.ByteBuffer.wrap(javaClass.classLoader!!.getResourceAsStream("signnet_vectors.bin")!!.readBytes()).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val n = b.int
+        val raw = ByteArray(n * 3072); b.get(raw)
+        val ys = ByteArray(n); b.get(ys)
+        val img = Array(n) { i -> FloatArray(3072).also { f ->
+            for (p in 0 until 1024) for (c in 0 until 3) f[c * 1024 + p] = (raw[i * 3072 + p * 3 + c].toInt() and 0xFF) / 255f } }
+        val ref = Array(n) { FloatArray(44) { b.float } }
+        return Vec(n, img, IntArray(n) { ys[it].toInt() and 0xFF }, ref)
+    }
+
+    @Test
+    fun signNet() {
+        prep(); launch()
+        Report.head("Standard sign recogniser")
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        if (SignNet.load(ctx)) Report.ok("Model loads from the app (offline, no network)") else { Report.bad("Model did not load: ${SignNet.error}"); Report.flush("Standard sign recogniser"); return }
+        val v = vectors()
+        var right = 0; var maxDiff = 0f
+        for (i in 0 until v.n) {
+            val p = SignNet.forward(v.img[i])
+            var best = 0; for (k in 1 until 44) if (p[k] > p[best]) best = k
+            if (best == v.y[i]) right++
+            for (k in 0 until 44) maxDiff = maxOf(maxDiff, Math.abs(p[k] - v.ref[i][k]))
+        }
+        if (maxDiff < 0.02f) Report.ok("Kotlin runner matches the trained network (largest difference %.4f over %d pictures)".format(maxDiff, v.n)) else Report.bad("Kotlin runner differs from the trained network by %.3f".format(maxDiff))
+        val acc = right * 100.0 / v.n
+        if (acc >= 94.0) Report.ok("Recognises %d of %d held-out German sign pictures (%.1f%%)".format(right, v.n, acc)) else Report.bad("Only %d of %d correct (%.1f%%)".format(right, v.n, acc))
+        val bg = FloatArray(3072) { 0.4f + 0.2f * ((it * 7919) % 13) / 13f }
+        val pb = SignNet.forward(bg)
+        var bb = 0; for (k in 1 until 44) if (pb[k] > pb[bb]) bb = k
+        if (bb == 43 || pb[bb] < 0.9f) Report.ok("Plain background is not taken for a sign") else Report.bad("Background read as ${SignNet.KB[bb].name} (%.2f)".format(pb[bb]))
+
+        // scene test: pictures enlarged and placed on a road-like background, through the whole engine
+        SignLib.load(true); SignLib.entries.clear(); SignLib.save()
+        var found = 0; var tried = 0
+        val want = listOf(14, 17, 13, 27, 28, 25, 11, 18)
+        for (cls in want) {
+            val idx = (0 until v.n).firstOrNull { v.y[it] == cls } ?: continue
+            tried++
+            val small = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888)
+            val sp = IntArray(1024) { p -> android.graphics.Color.rgb((v.img[idx][p] * 255).toInt(), (v.img[idx][1024 + p] * 255).toInt(), (v.img[idx][2048 + p] * 255).toInt()) }
+            small.setPixels(sp, 0, 32, 0, 0, 32, 32)
+            val big = android.graphics.Bitmap.createScaledBitmap(small, 72, 72, true)
+            val bm = android.graphics.Bitmap.createBitmap(320, 240, android.graphics.Bitmap.Config.ARGB_8888)
+            val cv = android.graphics.Canvas(bm); cv.drawColor(android.graphics.Color.rgb(96, 110, 100)); cv.drawBitmap(big, 150f, 80f, null)
+            val px = IntArray(320 * 240); bm.getPixels(px, 0, 320, 0, 0, 320, 240)
+            SignEngine.reset()
+            for (i in 0 until 6) SignEngine.process(px, 320, 240)
+            if (SignEngine.recent.any { it.name == SignNet.KB[cls].name }) found++
+        }
+        if (tried > 0 && found * 2 >= tried) Report.ok("Whole camera path found $found of $tried standard signs in a synthetic scene (stop, no entry, yield, school and others)") else Report.bad("Scene test found only $found of $tried standard signs")
+        Report.info("Scene test uses enlarged 32x32 pictures, so real camera results will be lower; glare, night and angle reduce them")
+
+        // sign map: seen on two separate passes becomes a confirmed warning
+        Prefs.signMap = "[]"; SignMap.reload()
+        RoadAssist.lat = 12.9000; RoadAssist.lon = 77.6000; RoadAssist.speedKmh = 40.0; RoadAssist.heading = 90f; RoadAssist.lastFix = System.currentTimeMillis()
+        val stop = SignNet.KB[14]
+        SignMap.observe(stop, 1_000_000L)
+        if (SignMap.count() == 1 && SignMap.confirmedCount() == 0) Report.ok("First sighting is saved but not yet trusted") else Report.bad("First sighting: ${SignMap.count()} / ${SignMap.confirmedCount()}")
+        RoadAssist.lastFix = System.currentTimeMillis()
+        SignMap.observe(stop, 1_000_000L + 400_000L)
+        if (SignMap.count() == 1 && SignMap.confirmedCount() == 1) Report.ok("Second pass merges into one confirmed sign") else Report.bad("Second pass: ${SignMap.count()} / ${SignMap.confirmedCount()}")
+        val hz = SignMap.hazards(12.9000, 77.6000)
+        if (hz.size == 1 && hz[0].kind == "sign" && hz[0].label.isNotEmpty()) Report.ok("Confirmed sign becomes a road warning: ${hz[0].label}") else Report.bad("Hazards from sign map: ${hz.size}")
+        if (SignMap.hazards(13.5, 77.6).isEmpty()) Report.ok("Far-away signs are not warned about") else Report.bad("Far sign leaked into hazards")
+        SignMap.clear()
+        if (SignMap.count() == 0) Report.ok("Sign map can be cleared") else Report.bad("Clear failed")
+
+        showPage("Signs")
+        try { act.pages["Signs"]!!.refresh(); Report.ok("Sign page renders with the standard sign option") } catch (t: Throwable) { Report.bad("Sign page crashed", t) }
+        SignLib.entries.clear(); SignLib.save(); SignEngine.reset()
+        Report.flush("Standard sign recogniser")
+    }
+}
