@@ -31,9 +31,13 @@ class SignOverlay(ctx: Context) : View(ctx) {
     private val box = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3 * d }
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; textSize = 15 * d }
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val big = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
+    var onTap: ((SignEngine.Det) -> Unit)? = null
+    var hud = true
 
     override fun onDraw(c: Canvas) {
         val fw = SignEngine.frameW; val fh = SignEngine.frameH
+        if (hud) drawHud(c)
         if (fw == 0 || fh == 0) return
         val sx = width.toFloat() / fw; val sy = height.toFloat() / fh
         for (dt in SignEngine.dets) {
@@ -41,13 +45,43 @@ class SignOverlay(ctx: Context) : View(ctx) {
             box.color = col
             val x = dt.c.x * sx; val y = dt.c.y * sy
             c.drawRect(x, y, x + dt.c.w * sx, y + dt.c.h * sy, box)
-            val lab = if (dt.state == 3) "ignored" else dt.label
+            val lab = when (dt.state) { 3 -> "ignored"; 2 -> "? tap to teach"; else -> dt.label }
             val tw = txt.measureText(lab)
             bg.color = Ui.alpha(Color.BLACK, 170)
             c.drawRect(x, y - 20 * d, x + tw + 10 * d, y, bg)
             txt.color = col
             c.drawText(lab, x + 5 * d, y - 5 * d, txt)
         }
+    }
+
+    /** Heads-up display: your speed, the road limit and the last sign read. */
+    private fun drawHud(c: Canvas) {
+        val spd = RoadAssist.speedKmh
+        val lim = RoadAssist.info?.limit
+        val over = lim != null && spd > lim + Prefs.speedMargin
+        bg.color = Ui.alpha(Color.BLACK, 150)
+        c.drawRoundRect(8 * d, 8 * d, 120 * d, 62 * d, 12 * d, 12 * d, bg)
+        big.color = if (over) Color.rgb(255, 80, 80) else Color.WHITE
+        big.textSize = 30 * d; c.drawText("%.0f".format(Units.spd(spd)), 64 * d, 42 * d, big)
+        big.textSize = 11 * d; big.color = Ui.DIM; c.drawText(Units.spdLabel, 64 * d, 57 * d, big)
+        val cx = width - 38 * d; val cy = 40 * d
+        val shown = if (SignEngine.lastLimit > 0 && System.currentTimeMillis() - SignEngine.lastLimitAt < 20_000) SignEngine.lastLimit else lim
+        if (shown != null) {
+            bg.color = Color.rgb(205, 20, 30); c.drawCircle(cx, cy, 30 * d, bg)
+            bg.color = Color.WHITE; c.drawCircle(cx, cy, 22 * d, bg)
+            big.color = Color.BLACK; big.textSize = (if (shown >= 100) 19 else 24) * d
+            c.drawText(shown.toString(), cx, cy + 8 * d, big)
+            if (SignEngine.lastLimit > 0 && shown == SignEngine.lastLimit) { big.color = Ui.GOOD; big.textSize = 10 * d; c.drawText("CAMERA", cx, cy + 44 * d, big) }
+        }
+    }
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (e.action != android.view.MotionEvent.ACTION_UP) return true
+        val fw = SignEngine.frameW; val fh = SignEngine.frameH
+        if (fw == 0 || fh == 0) return true
+        val fx = e.x * fw / width; val fy = e.y * fh / height
+        SignEngine.dets.firstOrNull { fx >= it.c.x - 6 && fx <= it.c.x + it.c.w + 6 && fy >= it.c.y - 6 && fy <= it.c.y + it.c.h + 6 }?.let { onTap?.invoke(it) }
+        return true
     }
 }
 
@@ -74,6 +108,14 @@ class SignPage(a: MainActivity) : Page(a) {
     private var libVer = -1
     private var resSig = ""
     private var pw = 640; private var ph = 480
+    private var full = false
+    private var torch = false
+    private var zoomLvl = 0
+    private lateinit var torchBtn: android.widget.Button
+    private lateinit var zoomBtn: android.widget.Button
+    private lateinit var fullBtn: android.widget.Button
+    private lateinit var settingsBox: LinearLayout
+    private fun holderH() = (a.resources.displayMetrics.heightPixels * (if (full) 0.78 else 0.46)).toInt()
 
     override fun build(): View {
         val c = ui.col()
@@ -89,21 +131,28 @@ class SignPage(a: MainActivity) : Page(a) {
             override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean { closeCamera(); surface = null; return true }
             override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
         }
-        c.addView(holder, LinearLayout.LayoutParams(Ui.MATCH, ui.dp(250)).apply { topMargin = ui.dp(4) })
+        c.addView(holder, LinearLayout.LayoutParams(Ui.MATCH, holderH()).apply { topMargin = ui.dp(4) })
         startBtn = ui.btn("Start camera", Ui.ACC) { toggle() }
+        torchBtn = ui.btn("Light off", Ui.CARD) { torch = !torch; torchBtn.text = if (torch) "Light on" else "Light off"; applyParams() }
+        zoomBtn = ui.btn("Zoom 1×", Ui.CARD) { zoomLvl = (zoomLvl + 1) % 4; zoomBtn.text = "Zoom ${zoomLvl + 1}×"; applyParams() }
+        fullBtn = ui.btn("Bigger", Ui.CARD) { full = !full; fullBtn.text = if (full) "Smaller" else "Bigger"; holder.layoutParams = (holder.layoutParams as LinearLayout.LayoutParams).apply { height = holderH() }; settingsBox.visibility = if (full) View.GONE else View.VISIBLE; if (running) fit(if (rot % 180 == 0) pw else ph, if (rot % 180 == 0) ph else pw) }
         c.addView(startBtn, ui.lp(8))
+        c.addView(ui.row(torchBtn, zoomBtn, fullBtn), ui.lp(6))
+        overlay.onTap = { dt -> a.runOnUiThread { when (dt.state) { 2 -> if (SignEngine.hasPending()) teachDialog(null) else ui.toast("Hold steady on the sign for a moment, then tap again"); 1, 3 -> SignLib.entries.firstOrNull { it.name == dt.label || (dt.state == 3) && it.action == "ignore" }?.let { teachDialog(it) }; else -> ui.toast("Speed limit ${dt.label} read from the sign") } } }
         c.addView(statusTv, ui.lp(6))
         resultBox = ui.vbox()
         c.addView(resultBox, ui.lp(6))
 
-        c.addView(ui.section("Settings", Ic.SLIDERS))
-        c.addView(ui.check("Apply speed-limit signs to the road automatically", Prefs.signAuto).apply { setOnCheckedChangeListener { _, v -> Prefs.signAuto = v } }, ui.lp(2))
-        c.addView(ui.check("Speak warnings for signs I taught", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } }, ui.lp(2))
+        settingsBox = ui.vbox(); c.addView(settingsBox)
 
-        c.addView(ui.section("Signs I taught", Ic.DATABASE))
+        settingsBox.addView(ui.section("Settings", Ic.SLIDERS))
+        settingsBox.addView(ui.check("Apply speed-limit signs to the road automatically", Prefs.signAuto).apply { setOnCheckedChangeListener { _, v -> Prefs.signAuto = v } }, ui.lp(2))
+        settingsBox.addView(ui.check("Speak warnings for signs I taught", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } }, ui.lp(2))
+
+        settingsBox.addView(ui.section("Signs I taught", Ic.DATABASE))
         libBox = ui.vbox()
-        c.addView(libBox)
-        c.addView(ui.tv("Everything works offline. Camera pictures are analysed on the phone and are not saved or sent anywhere; only the small picture of a sign you teach is kept. The taught signs are part of Backup & cloud, so they come back after a restore.\n\n" +
+        settingsBox.addView(libBox)
+        settingsBox.addView(ui.tv("Everything works offline. Camera pictures are analysed on the phone and are not saved or sent anywhere; only the small picture of a sign you teach is kept. The taught signs are part of Backup & cloud, so they come back after a restore.\n\n" +
                 "Mount the phone firmly behind the windscreen, with the screen on. The camera cannot run with the screen off, and a hot dashboard can make the phone slow down. It is a helper – always follow the real signs.", 11.5f, Ui.DIM), ui.lp(12))
         return ui.scroll(c)
     }
@@ -171,10 +220,22 @@ class SignPage(a: MainActivity) : Page(a) {
             }
             c.startPreview()
             cam = c
+            applyParams()
         } catch (e: Throwable) {
             camErr = "Camera unavailable: ${e.message ?: "in use by another app"}"
             running = false; cam = null; startBtn.text = "Start camera"
         }
+    }
+
+    private fun applyParams() {
+        val c = cam ?: return
+        try {
+            val p = c.parameters
+            if (p.isZoomSupported) p.zoom = (p.maxZoom * zoomLvl / 3).coerceIn(0, p.maxZoom)
+            val fm = p.supportedFlashModes
+            if (fm != null) p.flashMode = if (torch && fm.contains(Camera.Parameters.FLASH_MODE_TORCH)) Camera.Parameters.FLASH_MODE_TORCH else Camera.Parameters.FLASH_MODE_OFF
+            c.parameters = p
+        } catch (_: Throwable) {}
     }
 
     private fun closeCamera() {

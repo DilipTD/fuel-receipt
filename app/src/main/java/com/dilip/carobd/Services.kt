@@ -183,7 +183,12 @@ object Gps : LocationListener {
         return if (ageMs < 5000) l else null
     }
 
+    @Volatile private var gpsAt = 0L
     override fun onLocationChanged(location: Location) {
+        val now = SystemClock.elapsedRealtime()
+        if (location.provider == LocationManager.GPS_PROVIDER) gpsAt = now
+        // network guesses are only a first position; once satellites are tracking they would make the position jump
+        else if (now - gpsAt < 15_000) return
         last = location
         ObdManager.onGps(location)
         try { RoadAssist.onLocation(location) } catch (_: Exception) {}

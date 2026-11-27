@@ -11,8 +11,8 @@ android {
         applicationId = "com.dilip.carobd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 40
-        versionName = "4.21.1"
+        versionCode = 41
+        versionName = "4.22.0"
     }
 
     buildTypes {

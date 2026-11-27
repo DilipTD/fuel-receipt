@@ -342,6 +342,8 @@ object RoadAssist {
 
     fun onLocation(l: Location) {
         if (!Prefs.roadAssist) return
+        // a poor fix (cell/Wi-Fi guess, tunnel, urban canyon) must not move us onto another road
+        if (l.hasAccuracy() && l.accuracy > 60f && info != null && lastFix != 0L && System.currentTimeMillis() - lastFix < 8000) return
         prevFix = lastFix
         lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
         speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
@@ -418,7 +420,8 @@ object RoadAssist {
                     val diff = abs(((bear - hd + 540) % 360) - 180)
                     cost += (if (w.oneway) diff else min(diff, 180 - diff)) * 0.4
                 }
-                if (w.id == prefer) cost -= 10
+                if (speedKmh > 45) cost += when (w.hw) { "residential" -> 18.0; "unclassified" -> 12.0; "tertiary" -> 6.0; "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link" -> 6.0; else -> 0.0 }
+                if (w.id == prefer) cost -= 22
                 if (cost < bestCost) { bestCost = cost; best = w; bestDist = dMin }
             }
         }
@@ -432,9 +435,25 @@ object RoadAssist {
         val hd = if (speedKmh > 6) heading else null
         val cand = scan(snap, lat, lon, hd, tol, curWay)
         if (cand == null) {
+            val ci = info
+            if (ci != null && speedKmh > 8 && now - lastMatchT < 45_000) {
+                // off the mapped road (diversion, new road, GPS gap): keep the last limit for a while, flagged as a carry-over
+                if (!ci.basis.startsWith("Last road")) info = Info(ci.road, ci.ref, ci.highway, ci.limit, true, ci.fetched, "est", ci.wayId, 30, "Last road limit – current road not on the map", ci.lanes, ci.oneway, ci.lit, ci.urban)
+                next = null; curve = null
+                return
+            }
             if (snap.isNotEmpty() && now - lastMatchT > 10_000) { info = null; curWay = 0L; next = null; curve = null; status = if (snap.any { Loc.dist(lat, lon, it.la, it.lo) * 1000 <= it.r }) "No road data here" else status }
             return
         }
+        // do not hop to another road (service road, ramp) for a single fix: need two in a row unless we have clearly left the current one
+        if (curWay != 0L && cand.w.id != curWay && info?.basis?.startsWith("Last road") != true) {
+            val cw = snap.firstNotNullOfOrNull { t -> t.ways.firstOrNull { it.id == curWay } }
+            if (cw != null && wayDist(cw, lat, lon) <= tol * 0.8) {
+                if (pendWay == cand.w.id) pendN++ else { pendWay = cand.w.id; pendN = 1 }
+                if (pendN < 3) return
+            }
+        }
+        pendWay = 0L; pendN = 0
         val best = cand.w
         val changed = best.id != curWay
         curWay = best.id; lastMatchT = now
@@ -458,6 +477,15 @@ object RoadAssist {
         }
         next = nx
         curve = detectCurve(w, hd)
+    }
+
+    private var pendWay = 0L
+    private var pendN = 0
+
+    private fun wayDist(w: Way, la: Double, lo: Double): Double {
+        var d = 1e9; var k = 0
+        while (k < w.pts.size - 2) { d = min(d, segDist(la, lo, w.pts[k], w.pts[k + 1], w.pts[k + 2], w.pts[k + 3])); k += 2 }
+        return d
     }
 
     private fun angDiff(a: Double, b: Double) = abs(((a - b + 540) % 360) - 180)
