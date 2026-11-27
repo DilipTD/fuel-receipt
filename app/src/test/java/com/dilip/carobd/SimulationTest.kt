@@ -449,27 +449,27 @@ class RoadAiTest : SimBase() {
         launch()
         Report.head("Road AI")
         Prefs.roadAssist = true
-        val t = RoadAssist.Tile(12.9700, 77.5900, 1500.0, System.currentTimeMillis(), listOf(
-            RoadAssist.Way(1, "Main Road", "", "primary", 60, false, doubleArrayOf(12.9690, 77.5890, 12.9690, 77.5920)),
-            RoadAssist.Way(2, "Flyover", "", "motorway_link", 40, true, doubleArrayOf(12.96925, 77.5890, 12.96925, 77.5920))
-        ), listOf(RoadAssist.Hazard("bump", 12.96915, 77.5912, "Speed breaker")))
+        val t = RoadAssist.Tile(0.5010, -30.0000, 1500.0, System.currentTimeMillis(), listOf(
+            RoadAssist.Way(1, "Main Road", "", "primary", 60, false, doubleArrayOf(0.5000, -30.0010, 0.5000, -29.9980)),
+            RoadAssist.Way(2, "Flyover", "", "motorway_link", 40, true, doubleArrayOf(0.50025, -30.0010, 0.50025, -29.9980))
+        ), listOf(RoadAssist.Hazard("bump", 0.50015, -29.9988, "Speed breaker")))
         RoadAssist.installTile(t)
-        RoadAssist.onLocation(fix(12.96912, 77.5900, 90f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -30.0000, 90f, 30.0))
         val east = RoadAssist.info
         if (east?.road == "Flyover") Report.ok("Heading east on the one-way flyover → matched the flyover (limit ${east.limit})") else Report.bad("East match wrong: ${east?.road}")
-        RoadAssist.onLocation(fix(12.96912, 77.5900, 270f, 30.0))
-        RoadAssist.onLocation(fix(12.96912, 77.5900, 270f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -30.0000, 270f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -30.0000, 270f, 30.0))
         val west = RoadAssist.info
         if (west?.road == "Main Road") Report.ok("Heading west → matched Main Road, not the one-way flyover") else Report.bad("West match wrong: ${west?.road}")
         RoadAssist.setLimitFix(1, 45)
-        RoadAssist.onLocation(fix(12.96912, 77.5900, 270f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -30.0000, 270f, 30.0))
         val fx = RoadAssist.info
         if (fx?.limit == 45 && fx.source == "you" && !fx.estimated) Report.ok("User limit correction applied (45)") else Report.bad("Correction not applied: ${fx?.limit} ${fx?.source}")
         RoadAssist.setLimitFix(1, null)
         if (RoadAssist.reportHazard("pothole")) Report.ok("Own hazard saved") else Report.bad("Own hazard not saved")
-        RoadAssist.onLocation(fix(12.96912, 77.5902, 90f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -29.9998, 90f, 30.0))
         Thread.sleep(3200)
-        RoadAssist.onLocation(fix(12.96912, 77.5902, 90f, 30.0))
+        RoadAssist.onLocation(fix(0.50022, -29.9998, 90f, 30.0))
         val hz = RoadAssist.hazards
         if (hz.any { it.kind == "bump" } && hz.any { it.mine }) Report.ok("Hazards include the map speed breaker and my pothole (${hz.size})") else Report.bad("Hazards missing: ${hz.map { it.kind }}")
         val ahead = RoadAssist.ahead()
