@@ -380,11 +380,12 @@ object RoadAssist {
             return
         }
         val best = cand.w
+        val changed = best.id != curWay
         curWay = best.id; lastMatchT = now
         val lim = limitOf(best, cand.near, snap)
         info = Info(best.name, best.ref, best.hw, lim.limit, lim.src == "est", now, lim.src, best.id, lim.conf, lim.basis, best.lanes, best.oneway, best.lit, cand.near >= 14)
         if (!busy) status = if (covered(lat, lon, 0.0, true)) "Tracking" else "Tracking (saved map)"
-        if (now - aheadT > 1200) { aheadT = now; lookAhead(snap, best, hd) }
+        if (changed || now - aheadT > 1200) { aheadT = now; lookAhead(snap, best, hd) }
     }
 
     /** Next speed-limit change and sharp curves on the road ahead. */
