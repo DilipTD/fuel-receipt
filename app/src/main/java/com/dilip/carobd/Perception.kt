@@ -105,13 +105,13 @@ object Perception {
             for (y in y0 until y1) if (mot[y * gw + x]) { colSum++; if (y < top) top = y; if (y > bot) bot = y }
             if (colSum >= 3) {
                 var xe = x; var t = top; var b = bot; var gap = 0
-                while (xe + 1 < x1 && gap < 2) {
+                while (xe + 1 < x1 && gap < 4) {
                     val nx = xe + 1; var cs = 0
                     for (y in y0 until y1) if (mot[y * gw + nx]) { cs++; if (y < t) t = y; if (y > b) b = y }
                     if (cs >= 2) { xe = nx; gap = 0 } else { xe = nx; gap++ }
                 }
                 val bw = xe - gap - x + 1; val bh = b - t + 1
-                if (bw in 2..(gw / 7) && bh >= gh * 0.10 && bh.toDouble() / bw in 1.4..5.0) out += Box(x * 4, t * 4, bw * 4, bh * 4)
+                if (bw in 2..(gw / 7) && bh >= gh * 0.10 && bh.toDouble() / bw in 1.2..6.0) out += Box(x * 4, t * 4, bw * 4, bh * 4)
                 x = xe + 1
             } else x++
         }
