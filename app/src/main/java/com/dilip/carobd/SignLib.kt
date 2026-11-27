@@ -115,7 +115,12 @@ object SignEngine {
         lastLimit = 0; lastLimitAt = 0; lastKnown = ""; lastKnownAt = 0; applied = ""
     }
 
-    fun hasPending() = pendingThumb != null && System.currentTimeMillis() - pendingAt < 6000
+    /** An unknown sign is waiting to be taught (not one the built-in model already named). */
+    fun hasPending() = canTeach() && pendingFromBuiltin.isEmpty()
+    /** Any sign held steady can be taught, including one the built-in model named (to replace its name or action). */
+    fun canTeach() = pendingThumb != null && System.currentTimeMillis() - pendingAt < 6000
+    @Volatile var pendingFromBuiltin = ""
+    private var pendingBuiltinName = ""
 
     class Seen(val name: String, val kind: Char, val t: Long, val id: Int = -1)
     val recent = java.util.concurrent.CopyOnWriteArrayList<Seen>()
@@ -133,6 +138,7 @@ object SignEngine {
         val out = ArrayList<Det>()
         var lim = 0; var known: SignEntry? = null; var knownSim = 0.0
         var unk: Pair<SignCand, FloatArray>? = null
+        pendingBuiltinName = ""
         val builtin = Prefs.signBuiltin && SignNet.ready
         val bIds = HashSet<Int>()
         for (c in SignVision.detect(px, w, h)) {
@@ -155,9 +161,11 @@ object SignEngine {
                 val cxp = c.x + c.w / 2; val cyp = c.y + c.h / 2
                 if (out.any { it.state != 2 && cxp in it.c.x..it.c.x + it.c.w && cyp in it.c.y..it.c.y + it.c.h }) continue
                 val bn = try { SignNet.classify(px, w, h, c) } catch (_: Throwable) { null } ?: continue
-                out.removeAll { it.state == 2 && (it.c.x + it.c.w / 2) in c.x..c.x + c.w && (it.c.y + it.c.h / 2) in c.y..c.y + c.h }
+                val covered = out.filter { it.state == 2 && (it.c.x + it.c.w / 2) in c.x..c.x + c.w && (it.c.y + it.c.h / 2) in c.y..c.y + c.h }
+                out.removeAll(covered)
                 out += Det(c, bn.first.name, 4); bIds += bn.first.id
-                if (out.none { it.state == 2 }) unk = null
+                // keep it teachable: if the built-in name is wrong for your country, you can teach your own (taught signs are checked first)
+                if (covered.isNotEmpty() && unk != null && covered.any { it.c === unk!!.first }) pendingBuiltinName = bn.first.name
             }
         }
         dets = out
@@ -171,7 +179,7 @@ object SignEngine {
         if (u != null) {
             val pf = pendingFp
             if (pf != null && SignVision.similarity(pf, u.second) > 0.9) pendingHits++ else { pendingFp = u.second; pendingHits = 1 }
-            if (pendingHits >= 3) { pendingKind = u.first.kind; pendingThumb = SignVision.thumb(px, w, h, u.first); pendingAt = now; pendingFp = u.second }
+            if (pendingHits >= 3) { pendingFromBuiltin = pendingBuiltinName; pendingKind = u.first.kind; pendingThumb = SignVision.thumb(px, w, h, u.first); pendingAt = now; pendingFp = u.second }
         } else if (now - pendingAt > 6000) { pendingThumb = null; pendingFp = null; pendingHits = 0 }
     }
 
@@ -220,7 +228,7 @@ object SignEngine {
     fun teach(name: String, action: String, value: Int, arg: String): SignEntry? {
         val fp = pendingFp ?: return null
         val e = SignLib.add(name, action, value, arg, pendingKind, fp, pendingThumb)
-        pendingThumb = null; pendingFp = null; pendingHits = 0
+        pendingThumb = null; pendingFp = null; pendingHits = 0; pendingFromBuiltin = ""
         return e
     }
 

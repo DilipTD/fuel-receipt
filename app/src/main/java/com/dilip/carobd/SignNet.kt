@@ -147,10 +147,19 @@ object SignNet {
      */
     fun propose(px: IntArray, w: Int, h: Int, maxN: Int = 8): List<SignCand> {
         if (w < 32 || h < 32 || px.size < w * h) return emptyList()
+        // 3x3 average first, so camera noise on grey road does not look like sign colour
+        val sr = IntArray(w * h); val sg = IntArray(w * h); val sb = IntArray(w * h)
+        for (y in 0 until h) { val o = y * w
+            for (x in 0 until w) { var r = 0; var g = 0; var b = 0
+                for (dx in -1..1) { val c = px[o + (x + dx).coerceIn(0, w - 1)]; r += c shr 16 and 0xFF; g += c shr 8 and 0xFF; b += c and 0xFF }
+                sr[o + x] = r; sg[o + x] = g; sb[o + x] = b } }
         val m = BooleanArray(w * h)
-        for (i in px.indices) {
-            val c = px[i]; val r = c shr 16 and 0xFF; val g = c shr 8 and 0xFF; val b = c and 0xFF
-            m[i] = (r > 60 && r > 1.35 * max(g, b)) || (b > 60 && b > 1.25 * max(r, g)) || (r > 110 && g > 90 && r > 1.5 * b && g > 1.3 * b)
+        for (y in 0 until h) for (x in 0 until w) {
+            var r = 0; var g = 0; var b = 0
+            for (dy in -1..1) { val i = (y + dy).coerceIn(0, h - 1) * w + x; r += sr[i]; g += sg[i]; b += sb[i] }
+            r /= 9; g /= 9; b /= 9
+            val sat = max(r, max(g, b)) - min(r, min(g, b))
+            m[y * w + x] = sat > 28 && ((r > 60 && r > 1.35 * max(g, b)) || (b > 60 && b > 1.25 * max(r, g)) || (r > 110 && g > 90 && r > 1.5 * b && g > 1.3 * b))
         }
         // grow by 3 pixels in each direction (two passes)
         val t = BooleanArray(w * h)

@@ -681,7 +681,7 @@ class SignVisionTest : SimBase() {
         SignEngine.reset()
         val (p1, w, h) = scene { warnSign(it, 160f, 120f, 34f, 255) }
         for (i in 0 until 6) SignEngine.process(p1, w, h)
-        if (SignEngine.hasPending()) Report.ok("Unknown sign becomes a Teach card after stable frames") else Report.bad("Unknown sign never became pending (dets=${SignEngine.dets.size})")
+        if (SignEngine.canTeach()) Report.ok("Sign held steady can be taught" + (if (SignEngine.pendingFromBuiltin.isNotEmpty()) " (built-in model calls it ${SignEngine.pendingFromBuiltin}; teaching overrides it)" else " (new sign card)")) else Report.bad("Unknown sign never became pending (dets=${SignEngine.dets.size})")
         val e = SignEngine.teach("Test hazard", "warn", 0, "Careful ahead")
         if (e != null && SignLib.entries.size == 1) Report.ok("Taught once and stored in the library") else Report.bad("Teach failed")
         SignEngine.reset()
