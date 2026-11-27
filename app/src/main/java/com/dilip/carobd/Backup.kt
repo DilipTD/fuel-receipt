@@ -145,6 +145,7 @@ object Backup {
             tmp.outputStream().use { write(ctx, it) }
             verify(tmp)?.let { return it }
             var lastErr = ""
+            if (uri.scheme == "file") { tmp.copyTo(File(uri.path!!), overwrite = true); return null }
             for (mode in listOf("wt", "w")) {
                 try {
                     val os = ctx.contentResolver.openOutputStream(uri, mode) ?: continue
@@ -164,6 +165,7 @@ object Backup {
     fun fetch(ctx: Context, uri: Uri): Pair<File?, String?> {
         val tmp = File(ctx.cacheDir, "backup_in.carobd")
         return try {
+            if (uri.scheme == "file") { File(uri.path!!).copyTo(tmp, overwrite = true); return if (tmp.length() == 0L) { tmp.delete(); null to "The file is empty (0 bytes). It may still be uploading, or was saved incompletely. Make a new backup and try again." } else tmp to null }
             val ins = ctx.contentResolver.openInputStream(uri) ?: return null to "The phone could not open that file. If it is in Google Drive, open it once in the Drive app (or save it to this phone) and try again."
             ins.use { i -> tmp.outputStream().use { i.copyTo(it) } }
             when {
