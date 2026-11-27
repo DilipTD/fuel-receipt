@@ -1550,5 +1550,6 @@ class PerceptionTest : SimBase() {
             for (k in HazardQuick.kinds) HazardQuick.drawSymbol(android.graphics.Canvas(bmp), k, 60f, 60f, 40f, android.graphics.Color.CYAN)
             Report.ok("All ${HazardQuick.kinds.size} hazard symbols draw") } catch (e: Throwable) { Report.bad("Hazard picker crashed", e) }
         dismissDialogs()
+        Report.flush("Traffic light, pedestrian and hazard symbols")
     }
 }
