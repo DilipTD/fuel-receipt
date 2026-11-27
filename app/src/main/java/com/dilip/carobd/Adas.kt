@@ -65,47 +65,52 @@ object Adas {
         return res
     }
 
+    private val rnd = java.util.Random(7)
+
+    /** Best line x = a + b*y among the points with slope sign [sgn], by random pairs (RANSAC), then refitted. */
+    private fun ransac(pts: List<Pair<Float, Float>>, sgn: Int, tol: Float): Pair<Float, Float>? {
+        if (pts.size < 5) return null
+        var best: List<Pair<Float, Float>>? = null
+        for (k in 0 until 160) {
+            val p1 = pts[rnd.nextInt(pts.size)]; val p2 = pts[rnd.nextInt(pts.size)]
+            val dy = p2.first - p1.first
+            if (abs(dy) < 8f) continue
+            val b = (p2.second - p1.second) / dy
+            if (b * sgn < 0.02f || abs(b) > 3f) continue
+            val a = p1.second - b * p1.first
+            val inl = pts.filter { abs(a + b * it.first - it.second) < tol }
+            if (best == null || inl.size > best.size) best = inl
+        }
+        val bi = best ?: return null
+        if (bi.size < 5 || bi.map { it.first }.distinct().size < 4) return null
+        return fit(bi, tol * 1.5f)
+    }
+
     fun detectLane(px: IntArray, w: Int, h: Int, hood: Float): Lane? {
         val y0 = (h * 0.52f).toInt(); val y1 = (h * (hood - 0.04f)).toInt().coerceAtLeast(y0 + 20)
         val cx = w / 2
-        val left = ArrayList<Pair<Float, Float>>(); val right = ArrayList<Pair<Float, Float>>()
+        val pts = ArrayList<Pair<Float, Float>>()
         var y = y1
         val step = max(3, (y1 - y0) / 14)
         while (y >= y0) {
-            // road brightness near the middle of this row
             var sum = 0; var n = 0
             for (x in cx - w / 10..cx + w / 10 step 3) { sum += luma(px[y * w + x.coerceIn(0, w - 1)]); n++ }
             val roadL = sum / max(1, n)
-            // the lane gets narrower towards the horizon, so only look as far out as a plausible lane
-            val t = (y - y0).toFloat() / max(1, y1 - y0)
-            val reach = (w * (0.10f + 0.40f * t)).toInt()
-            val inner = (w * 0.03f).toInt()
-            fun scan(dir: Int): Int? {
-                var x = cx + dir * inner; var run = 0; var start = -1
-                val lim = if (dir < 0) max(1, cx - reach) else min(w - 2, cx + reach)
-                while (x != lim) {
-                    if (isMark(px[y * w + x], roadL)) { if (run == 0) start = x; run++ } else if (run > 0) { if (run in 2..(w / 14)) return (start + x - dir) / 2; run = 0 }
-                    x += dir
-                }
-                return null
+            val maxRun = max(4, w / 14)
+            var run = 0; var start = 0
+            for (x in (w * 0.02f).toInt() until (w * 0.98f).toInt()) {
+                if (isMark(px[y * w + x], roadL)) { if (run == 0) start = x; run++ }
+                else if (run > 0) { if (run in 2..maxRun) pts += y.toFloat() to ((start + x - 1) / 2f); run = 0 }
             }
-            scan(-1)?.let { left += y.toFloat() to it.toFloat() }
-            scan(1)?.let { right += y.toFloat() to it.toFloat() }
             y -= step
         }
-        val tol = w * 0.035f
-        val fl = fit(left, tol)?.takeIf { it.second < -0.02f && it.second > -3f }
-        val fr = fit(right, tol)?.takeIf { it.second > 0.02f && it.second < 3f }
-        leftHits = if (fl != null) min(leftHits + 1, 5) else max(leftHits - 1, 0)
-        rightHits = if (fr != null) min(rightHits + 1, 5) else max(rightHits - 1, 0)
-        if (fl == null || fr == null) {
-            // one line only: still useful for the departure warning
-            return null
-        }
+        val tol = w * 0.03f
+        val fl = ransac(pts, -1, tol); val fr = ransac(pts.filter { p -> fl == null || abs(fl.first + fl.second * p.first - p.second) > tol * 2 }, 1, tol)
+        if (fl == null || fr == null) return null
         val yb = y1.toFloat(); val yt = y0.toFloat()
         val xl = fl.first + fl.second * yb; val xr = fr.first + fr.second * yb
         val wd = xr - xl
-        if (wd < w * 0.22f || wd > w * 0.95f || xl > cx + w * 0.05f || xr < cx - w * 0.05f) return null
+        if (wd < w * 0.22f || wd > w * 0.95f) return null
         return Lane(xl, xr, yb, fl.first + fl.second * yt, fr.first + fr.second * yt, yt)
     }
 

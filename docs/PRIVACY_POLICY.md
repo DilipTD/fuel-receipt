@@ -32,7 +32,7 @@ All of this is stored only on your device (in the app's private storage).
 
 • To announce speed limits, speed breakers, cameras and school/hospital zones while you drive.
 
-• To read road signs with the optional Sign camera. Pictures are analysed on the phone and are not saved or sent. Standard signs (stop, no entry, school, curves and similar) are recognised by a small model that is built into the app and runs offline. Only the small picture of a sign you choose to teach is kept.
+• To read road signs, find lane lines and the vehicle ahead with the optional Sign camera and Drive vision. Pictures are analysed on the phone and are not saved, recorded or sent. Standard signs (stop, no entry, school, curves and similar) are recognised by a small model that is built into the app and runs offline. Only the small picture of a sign you choose to teach is kept.
 
 • To save a sign map: when a standard sign is recognised, the sign type and its approximate position are saved on the phone so the road assistant can warn you before you reach it next time. No pictures are stored in the sign map. You can clear it on the Signs page, and it is part of your own backup.
 
