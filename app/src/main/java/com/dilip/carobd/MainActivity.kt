@@ -35,7 +35,7 @@ class MainActivity : Activity() {
     private val navIcons = HashMap<String, IconDrawable>()
     private val navLabels = HashMap<String, TextView>()
     private val titles = mapOf(
-        "Connect" to "Connect", "Home" to "Home", "Nav" to "Navigate", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
+        "Connect" to "Connect", "Home" to "Home", "Road" to "Road assistant", "Backup" to "Backup & cloud", "TripReplay" to "Driving replay", "Dash" to "Gauges", "Live" to "Live data", "Trips" to "Trips", "Diag" to "Diagnostics",
         "More" to "My car", "Garage" to "Garage", "Fuel" to "Fuel log", "Maint" to "Maintenance", "Analysis" to "Analysis",
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
@@ -55,7 +55,7 @@ class MainActivity : Activity() {
     var btAdapter: BluetoothAdapter? = null
     var selectedTripId = 0L
     var selectedFuelId = 0L
-    private val tabs = listOf("Home", "Trips", "Fuel", "Nav", "More")
+    private val tabs = listOf("Home", "Trips", "Fuel", "More")
     private val handler = Handler(Looper.getMainLooper())
 
     private val tick = object : Runnable {
@@ -125,8 +125,8 @@ class MainActivity : Activity() {
             setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(12))
             addView(nav, FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         }
-        val tabIcons = mapOf("Home" to Ic.HOME, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "Nav" to Ic.NAV, "More" to Ic.GRID)
-        val tabNames = mapOf("Home" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "Nav" to "Navigate", "More" to "More")
+        val tabIcons = mapOf("Home" to Ic.HOME, "Trips" to Ic.ROUTE, "Fuel" to Ic.FUEL, "More" to Ic.GRID)
+        val tabNames = mapOf("Home" to "Home", "Trips" to "Drives", "Fuel" to "Fuel", "More" to "More")
         for (name in tabs) {
             val dr = IconDrawable(tabIcons[name] ?: Ic.GRID, Ui.DIM, ui.dp(24))
             val lbl = ui.tv(tabNames[name] ?: name, 10.5f, Ui.DIM).apply { gravity = Gravity.CENTER }
@@ -156,7 +156,6 @@ class MainActivity : Activity() {
 
         pages["Connect"] = ConnectPage(this)
         pages["Home"] = HomePage(this)
-        pages["Nav"] = NavPage(this)
         pages["Road"] = RoadPage(this)
         pages["Backup"] = BackupPage(this)
         pages["TripReplay"] = TripReplayPage(this)

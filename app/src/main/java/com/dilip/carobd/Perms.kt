@@ -66,7 +66,7 @@ class PermissionsPage(a: MainActivity) : Page(a) {
         box.addView(ui.tv("Turn things on or off. Android permissions are changed through Android's own screen; the switches below are the app's own features.", 12f, Ui.DIM), ui.lp(2))
 
         box.addView(ui.section("Android permissions", Ic.SHIELD))
-        permRow(Ic.PIN, "Location", "Trip routes, speed, road assistant, weather, fuel station", Perms.locationOk(a),
+        permRow(Ic.PIN, "Location", "Trip routes, speed, road assistant, parking, fuel station", Perms.locationOk(a),
             listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         if (Build.VERSION.SDK_INT >= 31)
             permRow(Ic.BLUETOOTH, "Nearby devices (Bluetooth)", "Find and connect to your OBD adapter", Perms.bluetoothOk(a),

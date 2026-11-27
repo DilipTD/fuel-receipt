@@ -44,18 +44,6 @@ object RoadAssist {
 
     fun addLog(s: String) { synchronized(log) { log.addFirst(System.currentTimeMillis() to s); while (log.size > 30) log.removeLast() } }
 
-    /** Limit lowered for weather (AI suggestion). */
-    fun suggested(limit: Int?): Pair<Int, String>? {
-        if (limit == null) return null
-        val w = Weather.last ?: return null
-        return when {
-            w.code in 95..99 -> (limit * 0.75).toInt() to "thunderstorm"
-            w.code in 45..48 -> (limit * 0.7).toInt() to "fog"
-            w.precip > 0.2 || w.code in 51..67 || w.code in 80..82 -> (limit * 0.85).toInt() to "wet road"
-            else -> null
-        }
-    }
-
     fun onLocation(l: Location) {
         if (!Prefs.roadAssist) return
         lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
@@ -69,7 +57,7 @@ object RoadAssist {
     private fun maybeQuery(l: Location) {
         val now = System.currentTimeMillis()
         if (busy || now < failUntil) return
-        val moved = Nav.dist(qLat, qLon, l.latitude, l.longitude) * 1000
+        val moved = Loc.dist(qLat, qLon, l.latitude, l.longitude) * 1000
         if (qT != 0L && (moved < 100 || now - qT < 10_000) && now - qT < 60_000) return
         val key = "%.3f,%.3f".format(Locale.US, l.latitude, l.longitude)
         cache[key]?.let { (i, h) -> info = i; hazards = h; qLat = l.latitude; qLon = l.longitude; qT = now; return }
@@ -173,7 +161,7 @@ object RoadAssist {
     fun ahead(): List<Pair<Hazard, Int>> {
         val h = heading ?: return emptyList()
         return hazards.mapNotNull { z ->
-            val d = Nav.dist(lat, lon, z.lat, z.lon) * 1000
+            val d = Loc.dist(lat, lon, z.lat, z.lon) * 1000
             val br = bearingTo(lat, lon, z.lat, z.lon)
             val diff = abs(((br - h + 540) % 360) - 180)
             if (diff <= 65 && d <= (if (z.kind == "camera") 350 else 260)) z to d.toInt() else null

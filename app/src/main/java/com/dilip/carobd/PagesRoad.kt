@@ -147,10 +147,8 @@ class RoadPage(a: MainActivity) : Page(a) {
             else -> listOf(i.ref, i.road).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { i.highway.replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
         }
         subTv.text = if (i == null) "" else i.highway.replace('_', ' ') + " · " + if (i.limit == null) "no limit data" else if (i.estimated) "limit ${Units.sStr(i.limit!!.toDouble())} (estimated)" else "limit ${Units.sStr(i.limit!!.toDouble())}"
-        val sg = RoadAssist.suggested(i?.limit)
         aiTv.text = when {
             i == null -> "Drive with GPS on – I will find the road, its limit and hazards."
-            sg != null -> "${Weather.desc(Weather.last?.code ?: 0)}: drive about ${Units.sStr(sg.first.toDouble())} (${sg.second}) even though the limit is ${i.limit}."
             sign.over -> "You are ${Units.sStr(spd - (i.limit ?: 0))} over the limit – ease off."
             i.limit != null -> "Within the limit. Heading ${RoadAssist.compass(r.heading)}."
             else -> "No limit data for this road – use the road signs."

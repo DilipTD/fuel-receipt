@@ -125,61 +125,6 @@ class HomePage(a: MainActivity) : Page(a) {
             signView = sg
         }
 
-        // weather
-        box.addView(ui.section("Weather", Ic.SUN))
-        val wBox = LinearLayout(a).apply {
-            orientation = LinearLayout.VERTICAL
-            background = ui.rounded(Ui.CARD, 20); setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
-        }
-        box.addView(wBox, ui.lp(2))
-        wBox.addView(ui.tv("Loading weather…", 13f, Ui.DIM))
-        val here = Weather.here(a)
-        if (here == null) {
-            wBox.removeAllViews()
-            wBox.addView(ui.tv("Location not available yet. Allow location or start a drive to see the weather for your area.", 13f, Ui.DIM))
-        } else Weather.load(a, here.first, here.second) { w ->
-            if (my != gen) return@load
-            wBox.removeAllViews()
-            if (w == null) { wBox.addView(ui.tv("Weather needs an internet connection.", 13f, Ui.DIM)); return@load }
-            val place = ui.tv("", 12.5f, Ui.DIM)
-            Geo.name(a, here.first, here.second) { if (my == gen) place.text = it }
-            wBox.addView(LinearLayout(a).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                addView(ui.iconView(Weather.icon(w.code), Weather.color(w.code), 44), LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { rightMargin = ui.dp(12) })
-                addView(ui.vbox().apply {
-                    addView(ui.tv("%.0f°C".format(w.temp), 32f, Ui.WHITE, true))
-                    addView(ui.tv(Weather.desc(w.code) + " · feels %.0f°".format(w.feels), 13f, Ui.DIM))
-                }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
-                addView(ui.vbox().apply {
-                    gravity = Gravity.END
-                    addView(ui.tv("H %.0f°  L %.0f°".format(w.hi, w.lo), 13f, Ui.WHITE, true))
-                    addView(ui.tv("Rain ${w.rainMax}%", 12f, Ui.ACC))
-                })
-            })
-            wBox.addView(place, ui.lp(2))
-            wBox.addView(ui.row(
-                ui.chip("%.0f%%".format(w.hum.toDouble()), Ui.CYAN, Ic.DROP),
-                ui.chip("%.0f km/h".format(w.wind), Ui.VIOLET, Ic.WIND),
-                ui.chip("%.1f mm".format(w.precip), Ui.ACC, Ic.RAIN)
-            ), ui.lp(8))
-            if (w.hours.isNotEmpty()) wBox.addView(ui.grid(*w.hours.map { hr ->
-                LinearLayout(a).apply {
-                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                    addView(ui.tv(hr.label, 11f, Ui.DIM).apply { gravity = Gravity.CENTER })
-                    addView(ui.iconView(Weather.icon(hr.code), Weather.color(hr.code), 20), LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)).apply { topMargin = ui.dp(4); bottomMargin = ui.dp(4) })
-                    addView(ui.tv("%.0f°".format(hr.temp), 13f, Ui.WHITE, true).apply { gravity = Gravity.CENTER })
-                    addView(ui.tv("${hr.rain}%", 10.5f, Ui.ACC).apply { gravity = Gravity.CENTER })
-                } as View
-            }.toTypedArray()), ui.lp(12))
-            val (tic, ttx) = Weather.tip(w)
-            wBox.addView(LinearLayout(a).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                background = ui.rounded(Ui.alpha(Weather.color(w.code), 35), 12); setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8))
-                addView(ui.iconView(tic, Ui.WHITE, 18), LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { rightMargin = ui.dp(8) })
-                addView(ui.tv(ttx, 12.5f, Ui.WHITE))
-            }, ui.lp(12))
-        }
-
         // overview numbers
         val month = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis
         val trips = Db.trips(v.id, month, 400)
@@ -245,18 +190,6 @@ class HomePage(a: MainActivity) : Page(a) {
             }
         }
 
-        // suggested drive
-        box.addView(ui.section("Suggested drive", Ic.NAV))
-        val sugBox = ui.vbox()
-        box.addView(sugBox, ui.lp(2))
-        sugBox.addView(ui.tv("Finding ideas…", 12.5f, Ui.DIM))
-        Nav.suggestions(a, here, Weather.last) { list ->
-            if (my != gen) return@suggestions
-            sugBox.removeAllViews()
-            NavPage.fillSuggestions(this, sugBox, list.take(2), here)
-            sugBox.addView(ui.btn("More places · Navigate", Ui.ACC) { a.show("Nav") }, ui.lp(8))
-        }
-
         // quick actions
         box.addView(ui.section("Quick actions", Ic.GRID))
         box.addView(ui.grid(
@@ -270,124 +203,6 @@ class HomePage(a: MainActivity) : Page(a) {
             ui.menuTile(Ic.SHIELD, "Car health", Ui.GOOD) { a.show("Health") }
         ), ui.lp(8))
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(22))
-    }
-}
-
-/* ============================ Navigate ============================ */
-
-@SuppressLint("SetTextI18n")
-class NavPage(a: MainActivity) : Page(a) {
-    private lateinit var box: LinearLayout
-    private var gen = 0
-
-    override fun build(): View { box = ui.col(); return ui.scroll(box) }
-    override fun onShow() { buildContent() }
-
-    companion object {
-        /** Renders suggestion cards; place names of history-based entries are resolved by reverse geocoding. */
-        fun fillSuggestions(p: Page, into: LinearLayout, list: List<Nav.Sug>, here: Pair<Double, Double>?) {
-            val ui = p.ui; val a = p.a
-            if (list.isEmpty()) { into.addView(ui.iconCard(Ic.NAV, Ui.ACC, "No suggestions yet", "Drive a few trips and places you visit often will appear here")); return }
-            for (s in list) {
-                val card = ui.iconCard(s.ic, s.color, s.title, s.body) {
-                    if (s.lat != null && s.lon != null) Nav.drive(a, s.lat, s.lon) else Nav.driveTo(a, s.query ?: s.title)
-                }
-                val titleTv = ((card.getChildAt(1) as LinearLayout).getChildAt(0)) as TextView
-                if (s.lat != null && s.lon != null) Geo.name(a, s.lat, s.lon) { titleTv.text = it }
-                if (s.lat != null && here != null) {
-                    val d = Nav.dist(here.first, here.second, s.lat, s.lon!!)
-                    (card.getChildAt(1) as LinearLayout).addView(ui.tv("%.1f km away".format(d), 11.5f, s.color))
-                }
-                into.addView(card, ui.lp(8))
-            }
-        }
-    }
-
-    private fun place(key: String, ic: Ic, label: String, col: Int, here: Pair<Double, Double>?): View {
-        val ll = Nav.place(key)
-        return ui.menuTile(ic, if (ll == null) "Set $label" else label, col) {
-            val p = Nav.place(key)
-            if (p != null) Nav.drive(a, p.first, p.second)
-            else if (here != null) { Nav.setPlace(key, here); ui.toast("$label saved at your current position"); buildContent() }
-            else ui.toast("Waiting for GPS – try again outside")
-        }.apply {
-            setOnLongClickListener {
-                android.app.AlertDialog.Builder(a).setTitle("$label location")
-                    .setPositiveButton("Set to here") { _, _ -> if (here != null) { Nav.setPlace(key, here); buildContent() } else ui.toast("No GPS fix") }
-                    .setNeutralButton("Clear") { _, _ -> Nav.setPlace(key, null); buildContent() }
-                    .setNegativeButton("Cancel", null).show(); true
-            }
-        }
-    }
-
-    private fun buildContent() {
-        val my = ++gen
-        box.removeAllViews()
-        val here = Weather.here(a)
-
-        // search
-        val q = ui.edit("Where to?", "").apply {
-            isSingleLine = true; imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
-        }
-        val go = { s: String -> if (s.isNotBlank()) Nav.driveTo(a, s.trim()) }
-        q.setOnEditorActionListener { _, _, _ -> go(q.text.toString()); true }
-        box.addView(LinearLayout(a).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            addView(q, LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { rightMargin = ui.dp(8) })
-            addView(ImageView(a).apply {
-                setImageDrawable(ui.icon(Ic.NAV, Ui.WHITE, 22)); scaleType = ImageView.ScaleType.CENTER
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.ACC) }
-                setOnClickListener { go(q.text.toString()) }
-            }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
-        }, ui.lp(2))
-
-        // map of current position
-        if (here != null) {
-            val map = TileMapView(a)
-            map.setPlace(here.first, here.second, 15)
-            val fl = FrameLayout(a)
-            fl.addView(map, FrameLayout.LayoutParams(Ui.MATCH, ui.dp(170)))
-            val where = ui.tv("…", 12.5f, Ui.WHITE, true).apply {
-                background = ui.rounded(Color.parseColor("#CC10161F"), 14); setPadding(ui.dp(12), ui.dp(6), ui.dp(12), ui.dp(6))
-            }
-            Geo.name(a, here.first, here.second) { if (my == gen) where.text = "You are at  $it" }
-            fl.addView(where, FrameLayout.LayoutParams(Ui.WRAP, Ui.WRAP, Gravity.BOTTOM or Gravity.START).apply { leftMargin = ui.dp(10); bottomMargin = ui.dp(14) })
-            fl.setOnClickListener { Nav.drive(a, here.first, here.second) }
-            box.addView(fl, ui.lp(10))
-        }
-
-        // saved places
-        box.addView(ui.section("Saved places", Ic.PIN))
-        val pk = if (Prefs.parkLat != 0.0 || Prefs.parkLon != 0.0) Prefs.parkLat to Prefs.parkLon else null
-        box.addView(ui.grid(
-            place("home", Ic.HOME, "Home", Ui.GOOD, here),
-            place("work", Ic.DATABASE, "Work", Ui.ACC, here),
-            ui.menuTile(Ic.CAR, "My car", Ui.ORANGE) { if (pk != null) Nav.drive(a, pk.first, pk.second) else ui.toast("No parked position saved yet") }
-        ), ui.lp(2))
-        box.addView(ui.tv("Tap to navigate · long-press Home/Work to change", 11.5f, Ui.DIM), ui.lp(6))
-
-        // suggested
-        box.addView(ui.section("Suggested drives", Ic.NAV))
-        val sugBox = ui.vbox(); box.addView(sugBox, ui.lp(2))
-        sugBox.addView(ui.tv("Finding ideas from your driving history…", 12.5f, Ui.DIM))
-        Nav.suggestions(a, here, Weather.last) { list ->
-            if (my != gen) return@suggestions
-            sugBox.removeAllViews()
-            fillSuggestions(this, sugBox, list, here)
-        }
-
-        // nearby
-        box.addView(ui.section("Nearby", Ic.SEARCH))
-        val cats = listOf(
-            Triple("Petrol pump", Ic.FUEL, Ui.ORANGE), Triple("EV charging", Ic.PLUG, Ui.GOOD), Triple("Parking", Ic.PIN, Ui.CYAN),
-            Triple("Restaurants", Ic.USER, Ui.PINK), Triple("Service centre", Ic.WRENCH, Ui.ACC), Triple("Car wash", Ic.DROP, Ui.VIOLET),
-            Triple("Hospital", Ic.SHIELD, Ui.BAD), Triple("ATM", Ic.DATABASE, Ui.WARN), Triple("Tyre shop", Ic.GEAR, Ui.CYAN)
-        )
-        cats.chunked(3).forEach { r ->
-            box.addView(ui.grid(*r.map { (l, ic, col) ->
-                ui.menuTile(ic, l, col) { Nav.driveTo(a, if (l == "EV charging") "EV charging station" else l.lowercase()) } as View
-            }.toTypedArray()), ui.lp(8))
-        }
     }
 }
 

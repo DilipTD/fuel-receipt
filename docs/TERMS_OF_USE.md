@@ -38,7 +38,7 @@ To the extent permitted by law, the developer is not liable for any indirect or 
 
 ## Third-party services
 
-Maps, weather and road data come from third parties (OpenStreetMap contributors, Open-Meteo, Overpass API, Google Maps). Their own terms apply.
+Maps and road data come from third parties (OpenStreetMap contributors, Overpass API). Their own terms apply.
 
 ## Changes and termination
 

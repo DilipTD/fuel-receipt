@@ -332,9 +332,7 @@ object SmartAi {
             if (codes.size > 3) alerts += Alert(2, Ic.WARN, "Codes", "${codes.size - 3} more fault codes", "Open Diagnose for the full AI analysis.", "Diag")
         } catch (_: Exception) {
         }
-        Weather.last?.let { w ->
-            if (w.code in 45..99 || w.temp >= 38) { val (ic, t) = Weather.tip(w); alerts += Alert(1, ic, "", "Weather: ${Weather.desc(w.code)}", t, "Nav") }
-        }
+
         val sorted = alerts.distinctBy { it.title }.sortedByDescending { it.sev }
         val zones = HashMap<String, Int>()
         for (a in sorted) if (a.zone.isNotEmpty()) zones[a.zone] = maxOf(zones[a.zone] ?: 0, a.sev)

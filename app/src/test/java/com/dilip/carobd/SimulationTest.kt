@@ -206,7 +206,7 @@ class SimulationTest : SimBase() {
             Report.bad("Did not connect to the emulator (status: ${ObdManager.status})")
             Report.info("Log: " + synchronized(emu.log) { emu.log.takeLast(25).joinToString(" ¦ ") })
         } else Report.ok("Connected: ELM ${ObdManager.elmVersion}, protocol '${ObdManager.protocol}', ${ObdManager.supported.size} PIDs, VIN '${ObdManager.vin}'")
-        val keys = listOf("Home", "Dash", "Live", "HUD", "Car", "Health", "Battery", "Perf", "Trips", "Diag", "Alerts", "Analysis", "Road", "Nav")
+        val keys = listOf("Home", "Dash", "Live", "HUD", "Car", "Health", "Battery", "Perf", "Trips", "Diag", "Alerts", "Analysis", "Road")
         var ki = 0
         val start = System.currentTimeMillis()
         var maxSpd = 0.0; var sawTrip = false; var runV = 0.0

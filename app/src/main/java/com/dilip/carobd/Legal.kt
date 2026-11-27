@@ -31,9 +31,9 @@ object Legal {
     /** Prominent disclosure shown before any permission is requested. */
     fun consent(a: MainActivity, onDone: () -> Unit) {
         val msg = "Dr. Vittu OBDII Pro connects to your OBD adapter and records your drives.\n\n" +
-            "• Location: your precise location is used for trip routes, speed, road speed-limit announcements, weather and fuel-station positions – including in the background while the road assistant or trip recording is running (a notification is always shown).\n" +
+            "• Location: your precise location is used for trip routes, speed, road speed-limit announcements and fuel-station positions – including in the background while the road assistant or trip recording is running (a notification is always shown).\n" +
             "• Bluetooth / Wi-Fi: to find and talk to your OBD adapter.\n" +
-            "• Internet: map tiles, weather and road data are fetched from OpenStreetMap, Open-Meteo and Overpass using your coordinates.\n\n" +
+            "• Internet: map tiles and road data are fetched from OpenStreetMap and Overpass using your coordinates.\n\n" +
             "All your data stays on your phone. The developer collects nothing, shows no ads and sells no data. Backups only go to a place you choose.\n\n" +
             "Do not use the app while driving. Diagnostics are a guide only."
         AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert).setTitle("Your privacy").setMessage(msg).setCancelable(false)
@@ -69,7 +69,7 @@ class LegalPage(a: MainActivity) : Page(a) {
         c.addView(ui.iconCard(Ic.DOC, Ui.ACC, "Terms of use", "Licence, safety notice, disclaimers", Ui.CARD) { Legal.show(a, "Terms of Use", LegalText.terms) }, ui.lp(6))
         c.addView(ui.iconCard(Ic.DATABASE, Ui.VIOLET, "Data safety summary", "What data the app handles and shares", Ui.CARD) { Legal.show(a, "Data safety", LegalText.dataSafety) }, ui.lp(6))
         c.addView(ui.iconCard(Ic.PIN, Ui.ORANGE, "Permissions explained", "Why each permission is needed", Ui.CARD) { Legal.show(a, "Permissions", LegalText.permissions) }, ui.lp(6))
-        c.addView(ui.iconCard(Ic.INFO, Ui.CYAN, "Open data & credits", "OpenStreetMap, Open-Meteo, trademarks", Ui.CARD) { Legal.show(a, "Credits", LegalText.credits) }, ui.lp(6))
+        c.addView(ui.iconCard(Ic.INFO, Ui.CYAN, "Open data & credits", "OpenStreetMap, trademarks", Ui.CARD) { Legal.show(a, "Credits", LegalText.credits) }, ui.lp(6))
         c.addView(ui.section("Your data", Ic.DATABASE))
         c.addView(ui.iconCard(Ic.UPLOAD, Ui.VIOLET, "Export / backup my data", "Save everything to a file or your own cloud", Ui.CARD) { a.show("Backup") }, ui.lp(6))
         val on = Prefs.roadAssist || Prefs.backgroundWatch

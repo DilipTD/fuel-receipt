@@ -14,7 +14,7 @@ Last updated: 26 November 2026.
 
 • Vehicle documents you choose to add: photos or PDFs of papers such as the registration certificate, insurance policy, PUC certificate or licence, with their numbers and expiry dates. They are kept only in the app's private storage on your phone and included in backups you make.
 
-• Precise location (GPS): used for trip routes, speed, the road assistant (speed limit, direction, hazards), weather, parking position and the petrol-station location of a fill-up.
+• Precise location (GPS): used for trip routes, speed, the road assistant (speed limit, direction, hazards), parking position and the petrol-station location of a fill-up.
 
 • Fuel and receipt data you enter: litres, price, station name, notes and an optional receipt photo.
 
@@ -48,13 +48,9 @@ Some features need the internet. Only the minimum needed is sent, and none of it
 
 • OpenStreetMap tile servers – map tiles for the coordinates you view (your IP address and the tile position are visible to them).
 
-• Open-Meteo – approximate latitude/longitude to get current weather.
-
 • Overpass API (OpenStreetMap) – coordinates near you to find the road speed limit, hazards and the nearest petrol station name.
 
 • Your own MQTT broker / Home Assistant – only if you turn on Home Assistant in Settings. The app then sends live car readings (speed, RPM, temperatures, fuel, battery, odometer, fault-code count) and the car's GPS location to the broker address you enter. The developer never receives it; the broker's owner (usually you) does. The password is kept only on the phone and is left out of backups.
-
-• Google Maps or another maps app – only when you tap Navigate; the destination is passed to that app, which has its own privacy policy.
 
 These services have their own privacy policies. Their data is open data and may be inaccurate.
 
@@ -66,7 +62,7 @@ These services have their own privacy policies. Their data is open data and may 
 
 ## Sharing
 
-We do not sell or share your data. Data leaves the app only when you choose to: sharing a report or trip, saving a backup, opening navigation, or when the services listed above are contacted. Information may be disclosed if required by law.
+We do not sell or share your data. Data leaves the app only when you choose to: sharing a report or trip, saving a backup, or when the services listed above are contacted. Information may be disclosed if required by law.
 
 ## Retention and deletion
 

@@ -62,7 +62,7 @@ object Receipts {
                     val nm = listOf(t.optString("name"), t.optString("brand"), t.optString("operator")).firstOrNull { it.isNotEmpty() } ?: continue
                     val la = e.optDouble("lat", e.optJSONObject("center")?.optDouble("lat") ?: Double.NaN)
                     val lo = e.optDouble("lon", e.optJSONObject("center")?.optDouble("lon") ?: Double.NaN)
-                    val d = if (la.isNaN() || lo.isNaN()) 999.0 else Nav.dist(lat, lon, la, lo)
+                    val d = if (la.isNaN() || lo.isNaN()) 999.0 else Loc.dist(lat, lon, la, lo)
                     if (d < best) { best = d; res = nm }
                 }
             } catch (_: Exception) {}

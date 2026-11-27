@@ -250,7 +250,7 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         cal.timeInMillis = existing?.t ?: System.currentTimeMillis()
         tripMeter = false
         station = existing?.station ?: ""; sLat = existing?.lat; sLon = existing?.lon; receipt = existing?.receipt ?: ""
-        if (existing == null) Weather.here(a, false)?.let { sLat = it.first; sLon = it.second }
+        if (existing == null) Loc.here(a, false)?.let { sLat = it.first; sLon = it.second }
 
         box.addView(ui.row(
             ui.btn("Cancel", Ui.CARD) { if (receipt != existing?.receipt) Receipts.delete(a, receipt); a.show("Fuel") },
@@ -360,7 +360,7 @@ class FuelAddPage(a: MainActivity) : Page(a) {
     }
 
     private fun captureLocation(manual: Boolean) {
-        val h = Weather.here(a, false)
+        val h = Loc.here(a, false)
         if (h == null) { ui.toast(if (Gps.hasPermission(a)) "No GPS fix yet – wait a few seconds outdoors" else "Allow location permission first"); return }
         sLat = h.first; sLon = h.second; renderPlace(); if (manual || stationEt.text.isEmpty()) lookupName()
     }
@@ -379,7 +379,6 @@ class FuelAddPage(a: MainActivity) : Page(a) {
         val addr = ui.tv("%.5f, %.5f".format(Locale.US, la, lo), 12.5f, Ui.WHITE)
         Geo.name(a, la, lo) { addr.text = it }
         placeBox.addView(addr, ui.lp(8))
-        placeBox.addView(ui.btn("Navigate to this station", Ui.CARD) { Nav.drive(a, la, lo) }, ui.lp(6))
     }
 
     /* ---------- receipt photo ---------- */
