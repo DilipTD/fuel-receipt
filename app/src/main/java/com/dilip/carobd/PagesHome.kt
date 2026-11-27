@@ -201,6 +201,11 @@ class HomePage(a: MainActivity) : Page(a) {
             ui.menuTile(Ic.PULSE, "Diagnose", Ui.PINK) { a.show("Diag") },
             ui.menuTile(Ic.PIN, "Parking", Ui.VIOLET) { openParking() },
             ui.menuTile(Ic.SHIELD, "Car health", Ui.GOOD) { a.show("Health") }
+        ), ui.lp(2))
+        box.addView(ui.grid(
+            ui.menuTile(Ic.WARN, "Report hazard", Ui.WARN) { HazardQuick.show(a) },
+            ui.menuTile(Ic.SCAN, "ADAS", Ui.CYAN) { a.show("Signs") },
+            ui.menuTile(Ic.ROUTE, "Road assistant", Ui.GOOD) { a.show("Road") }
         ), ui.lp(8))
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(22))
     }

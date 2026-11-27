@@ -231,15 +231,7 @@ class RoadPage(a: MainActivity) : Page(a) {
         }.show()
     }
 
-    private fun reportHazard() {
-        val kinds = listOf("bump", "pothole", "curve", "camera", "school", "rail")
-        val items = kinds.map { RoadAssist.labelFor(it) }.toMutableList()
-        items.add("Remove my hazards within 80 m")
-        AlertDialog.Builder(a).setTitle("Report at your position").setItems(items.toTypedArray()) { _, k ->
-            if (k < kinds.size) ui.toast(if (RoadAssist.reportHazard(kinds[k])) "Saved – I will warn you here next time" else "No GPS position yet")
-            else ui.toast("Removed ${RoadAssist.removeMyHazardsHere()} hazard(s)")
-        }.show()
-    }
+    private fun reportHazard() = HazardQuick.show(a)
 
     private fun toggleDriveLog() {
         if (!DriveLog.recording) {

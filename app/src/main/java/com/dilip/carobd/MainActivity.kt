@@ -201,9 +201,13 @@ class MainActivity : Activity() {
         }
         val firstRun = Prefs.lastAddr.isEmpty() && Prefs.lastType != 2
         Prefs.initSetup()
-        show(if (!Prefs.setupDone && ObdManager.state != ObdManager.State.CONNECTED) "Welcome" else if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
-        intent?.getStringExtra("open")?.let { show(it) }
-        if (Legal.needsConsent(this)) Legal.consent(this) { requestPermsOnce() } else requestPermsOnce()
+        // after a restore from the setup screen, only the permissions step is left (skipped when everything is already allowed)
+        if (Prefs.setupDone && Prefs.setupAfterRestore && (pages["Welcome"] as WelcomePage).let { w -> w.permList().all { it.optional || w.granted(it) } }) Prefs.setupAfterRestore = false
+        val inSetup = (!Prefs.setupDone || Prefs.setupAfterRestore) && ObdManager.state != ObdManager.State.CONNECTED
+        show(if (inSetup) "Welcome" else if (firstRun && ObdManager.state != ObdManager.State.CONNECTED) "Connect" else "Home")
+        intent?.getStringExtra("open")?.let { if (it == "HazardQuick") handler.postDelayed({ HazardQuick.show(this) }, 400) else show(it) }
+        // no pop-ups during setup: privacy is agreed and permissions are given on the Welcome steps
+        if (!inSetup) { if (Legal.needsConsent(this)) Legal.consent(this) { requestPermsOnce() } else requestPermsOnce() }
         Maint.schedule(this)
         Mqtt.ensureStarted(applicationContext)
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
@@ -216,7 +220,7 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        intent?.getStringExtra("open")?.let { show(it) }
+        intent?.getStringExtra("open")?.let { if (it == "HazardQuick") HazardQuick.show(this) else show(it) }
     }
 
     private fun buildSplash(): View {
@@ -316,6 +320,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
         (pages["Perms"] as? PermissionsPage)?.onShow()
+        (pages["Welcome"] as? WelcomePage)?.onPermsResult()
         if (Prefs.backgroundWatch || Prefs.roadAssist) ObdService.start(this)
         if (Prefs.roadAssist) try { Gps.start(this) } catch (_: Exception) {}
     }

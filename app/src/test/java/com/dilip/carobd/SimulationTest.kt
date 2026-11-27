@@ -1409,3 +1409,84 @@ class SignStressTest : SimBase() {
 
     private fun max(a: Int, b: Int) = if (a > b) a else b
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class SetupWizardTest : SimBase() {
+    private fun texts(): String = allViews(act.pages["Welcome"]!!.view).filterIsInstance<android.widget.TextView>().joinToString(" | ") { it.text.toString() }
+
+    @Test
+    fun wizard() {
+        val app = RuntimeEnvironment.getApplication()
+        app.getSharedPreferences("car_obd", 0).edit().clear().commit()
+        Prefs.init(app); Prefs.initSetup()
+        Prefs.autoConnect = false; Prefs.roadAssist = false
+        Report.head("Setup wizard and quick hazard")
+        launch()
+        // fresh install: no pop-ups, no automatic permission request
+        val dlg = ShadowDialog.getShownDialogs().count { it.isShowing }
+        if (dlg == 0) Report.ok("Fresh install opens the setup with no pop-up") else Report.bad("$dlg pop-up(s) on a fresh install")
+        val asked = shadowOf(act).lastRequestedPermission
+        if (asked == null) Report.ok("No permission is asked until you tap Allow") else Report.bad("Permissions asked automatically: ${asked.requestedPermissions.joinToString()}")
+        if (act.current == "Welcome") Report.ok("Fresh install starts at Welcome") else Report.bad("Fresh install opened ${act.current}")
+        val w = act.pages["Welcome"] as WelcomePage
+        if (w.step == 0 && texts().contains("Step 1 of 4")) Report.ok("Step 1 of 4: privacy and new/restore choice") else Report.bad("Not on step 1: ${w.step}")
+        // walk the four steps by tapping the buttons
+        fun tap(label: String): Boolean {
+            val b = allViews(w.view).firstOrNull { it is android.widget.TextView && it.text.toString().startsWith(label) && it.hasOnClickListeners() } ?: return false
+            b.performClick(); idle(200); return true
+        }
+        if (tap("I agree – set up as new") && w.step == 1 && Prefs.consentVersion == LegalText.VERSION) Report.ok("Agreeing moves to step 2 (vehicle) and records consent") else Report.bad("Agree did not advance (step ${w.step})")
+        val name = allViews(w.view).filterIsInstance<android.widget.EditText>().firstOrNull()
+        name?.setText("Wizard car")
+        if (tap("Next") && w.step == 2) Report.ok("Vehicle saved, step 3 (permissions)") else Report.bad("Vehicle step did not advance")
+        if (ObdManager.vehicle.name == "Wizard car") Report.ok("Vehicle name from the wizard is saved") else Report.bad("Vehicle name not saved: ${ObdManager.vehicle.name}")
+        val t3 = texts()
+        if (t3.contains("Location (precise)") && t3.contains("Camera (optional)") && t3.contains("Allow")) Report.ok("Each permission has its own Allow button and reason") else Report.bad("Permission rows missing: ${t3.take(200)}")
+        tap("Allow")
+        val req = shadowOf(act).lastRequestedPermission
+        if (req != null) Report.ok("Tapping Allow asks Android for just that permission (${req.requestedPermissions.size} item(s))") else Report.bad("Allow did not ask")
+        shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.POST_NOTIFICATIONS)
+        w.onPermsResult(); idle(100)
+        if (texts().contains("✓ Allowed")) Report.ok("Granted permissions turn green on the page") else Report.bad("Granted state not shown")
+        if (tap("Next") && w.step == 3) Report.ok("Step 4: road assistant and offline map") else Report.bad("Permissions step did not advance (step ${w.step})")
+        if (Prefs.roadAssist) Report.ok("Road assistant switched on automatically because location is allowed") else Report.bad("Road assistant not on after location allowed")
+        if (tap("Finish setup") && Prefs.setupDone && act.current != "Welcome") Report.ok("Finish ends setup and opens ${act.current}") else Report.bad("Finish did not end setup")
+        // restart after setup: still no pop-ups
+        relaunch()
+        if (ShadowDialog.getShownDialogs().none { it.isShowing }) Report.ok("Next start: no pop-ups") else Report.bad("Pop-up on the next start")
+        // restore path: only the permissions step
+        Prefs.setupDone = true; Prefs.setupAfterRestore = true
+        shadowOf(app).denyPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        relaunch()
+        val w2 = act.pages["Welcome"] as WelcomePage
+        if (act.current == "Welcome" && w2.step == 2 && texts().contains("Backup restored") && !texts().contains("Step 1 of 4")) Report.ok("After a restore only the permissions step is shown") else Report.bad("Restore path showed ${act.current} step ${w2.step}")
+        shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        Prefs.setupAfterRestore = true
+        relaunch()
+        if (act.current != "Welcome" && !Prefs.setupAfterRestore) Report.ok("After a restore with everything already allowed, setup is skipped completely") else Report.bad("Restore with permissions still showed setup")
+        val bk = app.getSharedPreferences("car_obd", 0)
+        // quick hazard
+        RoadAssist.lat = 12.95; RoadAssist.lon = 77.6; RoadAssist.lastFix = System.currentTimeMillis()
+        Prefs.roadUserHaz = "[]"
+        val msg = HazardQuick.save("pothole")
+        if (msg.contains("saved") && Prefs.roadUserHaz.contains("pothole")) Report.ok("One-tap hazard saved at the GPS position: $msg") else Report.bad("Hazard not saved: $msg")
+        RoadAssist.lastFix = 0L; RoadAssist.lat = 0.0; RoadAssist.lon = 0.0
+        if (HazardQuick.save("bump").contains("No GPS")) Report.ok("Without GPS it says so instead of saving a wrong place") else Report.bad("Saved without GPS")
+        try { HazardQuick.show(act); idle(100); val d = ShadowDialog.getLatestDialog(); if (d != null && d.isShowing) Report.ok("Hazard picker opens with ${HazardQuick.kinds.size} big buttons") else Report.bad("Hazard picker not shown"); dismissDialogs() } catch (t: Throwable) { Report.bad("Hazard picker crashed", t) }
+        Prefs.roadAssist = true
+        val n = ObdService.build(app, "t", "x")
+        if ((n.actions?.size ?: 0) >= 3) Report.ok("Drive notification has quick hazard buttons (${n.actions.joinToString { it.title }})") else Report.bad("Notification actions missing")
+        for (pg in listOf("Vision", "Car", "Home")) {
+            showPage(pg)
+            val has = allViews(act.pages[pg]!!.view).any { it is android.widget.TextView && it.text.toString().contains("Hazard", true) && it.hasOnClickListeners() } ||
+                allViews(act.pages[pg]!!.view).any { it.hasOnClickListeners() && label(it).contains("hazard", true) }
+            if (has) Report.ok("$pg has a hazard button") else Report.bad("$pg has no hazard button")
+            act.pages[pg]!!.onHide()
+        }
+        Prefs.roadAssist = false; Prefs.roadUserHaz = "[]"
+        Report.flush("Setup wizard")
+    }
+}

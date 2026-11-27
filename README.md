@@ -1,4 +1,4 @@
-# Dr. Vittu OBDII Pro v4.30.0 – universal ELM327 app (any OBD-II / EOBD car)
+# Dr. Vittu OBDII Pro v4.31.0 – universal ELM327 app (any OBD-II / EOBD car)
 
 **Software developed by Dilip Kumar TD**
 

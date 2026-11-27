@@ -237,6 +237,7 @@ class VisionPage(a: MainActivity) : Page(a) {
         startB0 = small("Stop") {}
         val startB = startB0!!
         startB.setOnClickListener { if (running) { stop(); startB.text = "Start" } else { start(); startB.text = "Stop" } }
+        bar.addView(ui.btn("⚠ Hazard", Ui.WARN) { HazardQuick.show(a) })
         bar.addView(startB); bar.addView(small("Light") { torch = !torch; applyParams() }); bar.addView(small("Setup") { panelOn = !panelOn; panelBox.visibility = if (panelOn) View.VISIBLE else View.GONE })
         bar.addView(small("Exit") { a.show("Signs") })
         holder.addView(bar, FrameLayout.LayoutParams(Ui.WRAP, Ui.WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, ui.dp(8), ui.dp(8)) })

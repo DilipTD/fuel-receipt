@@ -15,7 +15,8 @@ import java.util.zip.ZipOutputStream
 /** Full backup: database (vehicles, trips, routes, fuel, service, codes, alerts) + all settings/parameters, in one .carobd file. */
 object Backup {
     private val prefFiles = listOf("car_obd", "nav_places")
-    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere", "mqttPass", "welcomed", "permsPrompted", "setupDone")
+    private val skipKeys = setOf("cloudUri", "cloudName", "lastBackupT", "lastBackupWhere", "mqttPass", "welcomed", "permsPrompted", "setupDone", "setupStep", "setupAfterRestore", "restoreFromSetup", "roadAssistChosen", "consentV")
+    private fun skip(k: String) = k in skipKeys || k.startsWith("permAsked_")
 
     fun fileName() = "carobd_backup_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) + ".carobd"
 
@@ -40,7 +41,7 @@ object Backup {
             for (n in prefFiles) {
                 val o = JSONObject()
                 for ((k, v) in ctx.getSharedPreferences(n, Context.MODE_PRIVATE).all) {
-                    if (n == "car_obd" && k in skipKeys) continue
+                    if (n == "car_obd" && skip(k)) continue
                     val e = JSONObject()
                     when (v) {
                         is Boolean -> e.put("t", "b").put("v", v); is Int -> e.put("t", "i").put("v", v); is Long -> e.put("t", "l").put("v", v)
@@ -106,7 +107,7 @@ object Backup {
             for (name in prefFiles) {
                 val o = all.optJSONObject(name) ?: continue
                 val sp = ctx.getSharedPreferences(name, Context.MODE_PRIVATE)
-                val keep = if (name == "car_obd") skipKeys.associateWith { sp.all[it] } else emptyMap()
+                val keep = if (name == "car_obd") sp.all.filterKeys { skip(it) } else emptyMap()
                 val ed = sp.edit().clear()
                 for (k in o.keys()) {
                     try {
@@ -118,7 +119,7 @@ object Backup {
                         }
                     } catch (_: Exception) { /* one odd value from an older version must not stop the restore */ }
                 }
-                for ((k, v) in keep) when (v) { is String -> ed.putString(k, v); is Long -> ed.putLong(k, v); is Boolean -> ed.putBoolean(k, v) }
+                for ((k, v) in keep) when (v) { is String -> ed.putString(k, v); is Long -> ed.putLong(k, v); is Boolean -> ed.putBoolean(k, v); is Int -> ed.putInt(k, v) }
                 ed.commit()
             }
         }
@@ -178,6 +179,16 @@ class BackupPage(a: MainActivity) : Page(a) {
 
     fun restoreFrom(uri: Uri) {
         if (ObdManager.state != ObdManager.State.DISCONNECTED) { ui.toast("Disconnect from the car first, then restore."); return }
+        if (Prefs.restoreFromSetup) {
+            // chosen on the first setup screen of a fresh install: nothing to lose, no extra question
+            Prefs.restoreFromSetup = false
+            work("Restoring your backup…") {
+                val err = a.contentResolver.openInputStream(uri)?.use { Backup.restore(a.applicationContext, it) } ?: "Cannot open the file"
+                if (err == null) { Prefs.setupAfterRestore = true; Prefs.consentVersion = LegalText.VERSION; a.runOnUiThread { a.recreate() } }
+                err
+            }
+            return
+        }
         android.app.AlertDialog.Builder(a).setTitle("Replace ALL current data with this backup?")
             .setMessage("Trips, fuel log, service records, vehicles and settings on this phone will be replaced.")
             .setPositiveButton("Restore") { _, _ ->

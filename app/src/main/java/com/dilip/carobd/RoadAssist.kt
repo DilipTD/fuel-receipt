@@ -172,7 +172,7 @@ object RoadAssist {
 
     fun labelFor(kind: String) = when (kind) {
         "bump" -> "Speed breaker"; "camera" -> "Speed camera"; "pothole" -> "Pothole"; "curve" -> "Sharp curve"
-        "school" -> "School zone"; "hospital" -> "Hospital zone"; "rail" -> "Level crossing"; "toll" -> "Toll plaza"; else -> "Hazard"
+        "school" -> "School zone"; "hospital" -> "Hospital zone"; "rail" -> "Level crossing"; "toll" -> "Toll plaza"; "accident" -> "Accident"; "flood" -> "Waterlogging"; else -> "Hazard"
     }
 
     fun reportHazard(kind: String): Boolean {

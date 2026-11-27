@@ -356,6 +356,7 @@ class ObdService : Service() {
     companion object {
         @Volatile var running = false
             private set
+        const val ACTION_HAZARD = "com.dilip.carobd.HAZARD"
         @Volatile private var inst: ObdService? = null
 
         /** Keep the CPU awake only when the mode needs it: Performance always, Balanced while connected, Eco only with the engine on. */
@@ -369,6 +370,17 @@ class ObdService : Service() {
             val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             @Suppress("DEPRECATION")
             val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(ctx, "obd") else Notification.Builder(ctx)
+            fun hz(kind: String, label: String, req: Int): Notification.Action {
+                val i = Intent(ctx, ObdService::class.java).setAction(ACTION_HAZARD).putExtra("kind", kind)
+                val p = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(ctx, req, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                    else PendingIntent.getService(ctx, req, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                @Suppress("DEPRECATION") return Notification.Action.Builder(null, label, p).build()
+            }
+            val more = PendingIntent.getActivity(ctx, 13, Intent(ctx, MainActivity::class.java).putExtra("open", "HazardQuick"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            if (Prefs.roadAssist) {
+                b.addAction(hz("bump", "Speed breaker", 11)); b.addAction(hz("pothole", "Pothole", 12))
+                @Suppress("DEPRECATION") b.addAction(Notification.Action.Builder(null, "Other hazard…", more).build())
+            }
             return b.setContentTitle(title)
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_stat)
@@ -445,6 +457,7 @@ class ObdService : Service() {
             }
         }
         if (Prefs.roadAssist) Gps.start(this)
+        if (intent?.action == ACTION_HAZARD) intent.getStringExtra("kind")?.let { k -> try { HazardQuick.save(k) } catch (_: Throwable) {} }
         Mqtt.ensureStarted(applicationContext)
         inst = this
         applyWake()

@@ -134,6 +134,20 @@ object Prefs {
     fun vehicleClass(id: Long): String = sp.getString("vclass_$id", "Car") ?: "Car"
     fun setVehicleClass(id: Long, c: String) = sp.edit().putString("vclass_$id", c).apply()
     /** Setup guide shown once. Existing users (who already accepted the privacy text or connected) do not see it. */
+    var setupStep: Int
+        get() = sp.getInt("setupStep", 0)
+        set(v) = sp.edit().putInt("setupStep", v).apply()
+    var setupAfterRestore: Boolean
+        get() = sp.getBoolean("setupAfterRestore", false)
+        set(v) = sp.edit().putBoolean("setupAfterRestore", v).apply()
+    var restoreFromSetup: Boolean
+        get() = sp.getBoolean("restoreFromSetup", false)
+        set(v) = sp.edit().putBoolean("restoreFromSetup", v).apply()
+    var roadAssistChosen: Boolean
+        get() = sp.getBoolean("roadAssistChosen", false)
+        set(v) = sp.edit().putBoolean("roadAssistChosen", v).apply()
+    fun permAsked(k: String) = sp.getBoolean("permAsked_$k", false)
+    fun setPermAsked(k: String) = sp.edit().putBoolean("permAsked_$k", true).apply()
     var setupDone: Boolean
         get() = sp.getBoolean("setupDone", true)
         set(v) = sp.edit().putBoolean("setupDone", v).apply()
