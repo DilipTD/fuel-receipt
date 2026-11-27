@@ -111,6 +111,7 @@ object SignEngine {
 
     fun reset() {
         dets = emptyList(); pendingThumb = null; pendingFp = null; pendingHits = 0; limHist.clear(); knownHist.clear()
+        lastLimit = 0; lastLimitAt = 0; lastKnown = ""; lastKnownAt = 0; applied = ""
     }
 
     fun hasPending() = pendingThumb != null && System.currentTimeMillis() - pendingAt < 6000

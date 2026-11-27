@@ -218,11 +218,11 @@ object SignVision {
                 val sc = same.toDouble() / g.size
                 if (sc > bestS) { bestS = sc; bestD = d }
             }
-            if (bestD < 0 || bestS < 0.74) return fail("digit ${bestD} score=${"%.2f".format(bestS)} boxes=${boxes.size} thr=$thr")
+            if (bestD < 0 || bestS < 0.70) return fail("digit ${bestD} score=${"%.2f".format(bestS)} boxes=${boxes.size} thr=$thr")
             value = value * 10 + bestD; score += bestS
         }
         score /= boxes.size
-        if (value !in LIMITS || score < 0.78) return fail("value=$value score=${"%.2f".format(score)}")
+        if (value !in LIMITS || score < 0.76) return fail("value=$value score=${"%.2f".format(score)}")
         return LimitRead(value, score)
     }
 
