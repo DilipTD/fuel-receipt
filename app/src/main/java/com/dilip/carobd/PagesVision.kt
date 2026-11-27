@@ -193,8 +193,11 @@ class VisionPage(a: MainActivity) : Page(a) {
     @Volatile private var busy = false
     @Volatile private var lastFrame = 0L
     private var rot = 0
+    private var openedFor = -1
+    private var imgW = 0; private var imgH = 0
     private var torch = false
     private var panelOn = false
+    private var startB0: android.widget.Button? = null
     private lateinit var panelBox: LinearLayout
 
     override fun build(): View {
@@ -205,6 +208,12 @@ class VisionPage(a: MainActivity) : Page(a) {
         stage.addView(tv, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         stage.addView(overlay, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         holder.addView(stage, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH, Gravity.CENTER))
+        // the page turns the screen to landscape; if the camera opened before that finished, reopen it the right way round
+        holder.addOnLayoutChangeListener { _, l, t, rr, b, ol, ot, orr, ob ->
+            if (rr - l == orr - ol && b - t == ob - ot) return@addOnLayoutChangeListener
+            if (running && cam != null && displayDeg() != openedFor) holder.post { if (running) openCamera() }
+            else if (imgW > 0) fit(imgW, imgH)
+        }
         tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) { surface = st; if (running) openCamera() }
             override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
@@ -217,7 +226,8 @@ class VisionPage(a: MainActivity) : Page(a) {
         // small controls, bottom right
         val bar = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun small(t: String, onClick: () -> Unit) = ui.btn(t, Ui.CARD) { onClick() }
-        val startB = small("Stop") {}
+        startB0 = small("Stop") {}
+        val startB = startB0!!
         startB.setOnClickListener { if (running) { stop(); startB.text = "Start" } else { start(); startB.text = "Stop" } }
         bar.addView(startB); bar.addView(small("Light") { torch = !torch; applyParams() }); bar.addView(small("Setup") { panelOn = !panelOn; panelBox.visibility = if (panelOn) View.VISIBLE else View.GONE })
         bar.addView(small("Exit") { a.show("Signs") })
@@ -258,6 +268,7 @@ class VisionPage(a: MainActivity) : Page(a) {
         }
         msgTv.text = ""
         running = true
+        startB0?.text = "Stop"
         SignEngine.reset(); Adas.reset()
         a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (surface != null) openCamera()
@@ -265,6 +276,7 @@ class VisionPage(a: MainActivity) : Page(a) {
 
     private fun stop() {
         running = false
+        startB0?.text = "Start"
         closeCamera()
         try { a.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Throwable) {}
     }
@@ -286,12 +298,13 @@ class VisionPage(a: MainActivity) : Page(a) {
             if (p.supportedFocusModes?.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO) == true) p.focusMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO
             else if (p.supportedFocusModes?.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE) == true) p.focusMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE
             c.parameters = p
-            val deg = when (a.windowManager.defaultDisplay.rotation) { Surface.ROTATION_90 -> 90; Surface.ROTATION_180 -> 180; Surface.ROTATION_270 -> 270; else -> 0 }
+            val deg = displayDeg(); openedFor = deg
             rot = (info.orientation - deg + 360) % 360
             c.setDisplayOrientation(rot)
             val fovH = try { if (rot % 180 == 0) p.horizontalViewAngle else p.verticalViewAngle } catch (_: Throwable) { 60f }
             Adas.hfovDeg = fovH.toDouble().coerceIn(30.0, 120.0)
             val iw = if (rot % 180 == 0) size.width else size.height; val ih = if (rot % 180 == 0) size.height else size.width
+            imgW = iw; imgH = ih
             fit(iw, ih)
             c.setPreviewTexture(st)
             c.addCallbackBuffer(ByteArray(size.width * size.height * 3 / 2))
@@ -316,6 +329,8 @@ class VisionPage(a: MainActivity) : Page(a) {
             running = false; cam = null
         }
     }
+
+    private fun displayDeg() = when (a.windowManager.defaultDisplay.rotation) { Surface.ROTATION_90 -> 90; Surface.ROTATION_180 -> 180; Surface.ROTATION_270 -> 270; else -> 0 }
 
     private fun applyParams() {
         val c = cam ?: return

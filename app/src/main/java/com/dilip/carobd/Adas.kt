@@ -205,6 +205,7 @@ object Adas {
     private fun say(key: String, text: String, ms: Long) { if (Prefs.signSpeak) Alerts.announce(key, text, ms) }
 
     fun process(px: IntArray, w: Int, h: Int, now: Long = System.currentTimeMillis()) {
+        if (w < 64 || h < 48 || px.size < w * h) return
         fw = w; fh = h; frames++
         val hood = Prefs.adasHood / 100f
         val spd = RoadAssist.speedKmh

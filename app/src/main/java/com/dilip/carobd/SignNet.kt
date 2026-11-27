@@ -20,7 +20,7 @@ object SignNet {
     const val N = 44
     private const val S = 32
 
-    // kinds: L speed limit, W warning, R rule (stop, give way, no entry, no overtaking …), E end of restriction, I information only
+    // kinds: L speed limit, W warning, R rule (stop, give way, no entry, no overtaking …), E end of restriction, I information only, D direction (blue mandatory sign)
     val KB: List<SignInfo> = listOf(
         SignInfo(0, "Speed limit 20", 'L', 20), SignInfo(1, "Speed limit 30", 'L', 30), SignInfo(2, "Speed limit 50", 'L', 50),
         SignInfo(3, "Speed limit 60", 'L', 60), SignInfo(4, "Speed limit 70", 'L', 70), SignInfo(5, "Speed limit 80", 'L', 80),
@@ -37,9 +37,9 @@ object SignNet {
         SignInfo(27, "Pedestrians", 'W', 0, "Pedestrians ahead"), SignInfo(28, "Children", 'W', 0, "Children ahead, drive carefully"),
         SignInfo(29, "Cyclists", 'W', 0, "Cyclists ahead"), SignInfo(30, "Ice or snow", 'W', 0, "Ice or snow risk ahead"),
         SignInfo(31, "Animals crossing", 'W', 0, "Animals may cross"), SignInfo(32, "End of all limits", 'E'),
-        SignInfo(33, "Turn right ahead", 'I'), SignInfo(34, "Turn left ahead", 'I'), SignInfo(35, "Ahead only", 'I'),
-        SignInfo(36, "Straight or right", 'I'), SignInfo(37, "Straight or left", 'I'), SignInfo(38, "Keep right", 'I'),
-        SignInfo(39, "Keep left", 'I'), SignInfo(40, "Roundabout", 'I'), SignInfo(41, "End of no overtaking", 'I'),
+        SignInfo(33, "Turn right ahead", 'D', 0, "Turn right ahead"), SignInfo(34, "Turn left ahead", 'D', 0, "Turn left ahead"), SignInfo(35, "Ahead only", 'D', 0, "Go straight ahead only"),
+        SignInfo(36, "Straight or right", 'D', 0, "Straight or right only"), SignInfo(37, "Straight or left", 'D', 0, "Straight or left only"), SignInfo(38, "Keep right", 'D', 0, "Keep right"),
+        SignInfo(39, "Keep left", 'D', 0, "Keep left"), SignInfo(40, "Roundabout", 'D', 0, "Roundabout ahead"), SignInfo(41, "End of no overtaking", 'I'),
         SignInfo(42, "End of no overtaking for trucks", 'I')
     )
 
@@ -146,6 +146,7 @@ object SignNet {
      * Deliberately loose: the network (which also knows "not a sign") decides what is really a sign.
      */
     fun propose(px: IntArray, w: Int, h: Int, maxN: Int = 8): List<SignCand> {
+        if (w < 32 || h < 32 || px.size < w * h) return emptyList()
         val m = BooleanArray(w * h)
         for (i in px.indices) {
             val c = px[i]; val r = c shr 16 and 0xFF; val g = c shr 8 and 0xFF; val b = c and 0xFF
@@ -183,16 +184,19 @@ object SignNet {
         return out.sortedByDescending { it.w * it.h }.take(maxN)
     }
 
-    /** Best sign for a candidate, trying three crop sizes: class id and probability, or null when it looks like background or the network is unsure. */
+    /** Best sign for a candidate, trying several crop sizes (stops early when sure): class and probability, or null. */
     fun classify(px: IntArray, w: Int, h: Int, c: SignCand, minProb: Float = 0.85f): Pair<SignInfo, Float>? {
-        if (!ready) return null
+        if (!ready || w < 8 || h < 8) return null
         var bestI = -1; var bestP = 0f
-        for (mg in doubleArrayOf(0.9, 1.0, 1.1)) {
+        for (mg in doubleArrayOf(1.0, 0.9, 1.1, 0.8, 1.2)) {
             val p = forward(crop(px, w, h, c, mg))
             var best = 0; for (i in 1 until N) if (p[i] > p[best]) best = i
             if (best < 43 && p[best] > bestP) { bestP = p[best]; bestI = best }
+            if (bestP >= 0.97f) break
         }
         if (bestI < 0 || bestP < minProb) return null
+        // a wrong speed limit is worse than none: the network needs to be very sure (the digit reader comes first anyway)
+        if (KB[bestI].kind == 'L' && bestP < 0.97f) return null
         return KB[bestI] to bestP
     }
 }

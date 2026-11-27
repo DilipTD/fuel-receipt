@@ -1242,3 +1242,170 @@ class AdasTest : SimBase() {
         Report.flush("Driver assist")
     }
 }
+
+@RunWith(org.robolectric.RobolectricTestRunner::class)
+@Config(sdk = [34])
+@LooperMode(LooperMode.Mode.PAUSED)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+class SignStressTest : SimBase() {
+    private lateinit var imgs: Array<IntArray>
+    private lateinit var ys: IntArray
+
+    private fun loadVectors() {
+        val b = java.nio.ByteBuffer.wrap(javaClass.classLoader!!.getResourceAsStream("signnet_vectors.bin")!!.readBytes()).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val n = b.int
+        val raw = ByteArray(n * 3072); b.get(raw)
+        val y = ByteArray(n); b.get(y)
+        imgs = Array(n) { i -> IntArray(1024) { p -> val o = i * 3072 + p * 3; android.graphics.Color.rgb(raw[o].toInt() and 0xFF, raw[o + 1].toInt() and 0xFF, raw[o + 2].toInt() and 0xFF) } }
+        ys = IntArray(n) { y[it].toInt() and 0xFF }
+    }
+
+    private fun signBitmap(i: Int, size: Int, blur: Boolean): android.graphics.Bitmap {
+        val small = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888)
+        small.setPixels(imgs[i], 0, 32, 0, 0, 32, 32)
+        return if (blur) android.graphics.Bitmap.createScaledBitmap(android.graphics.Bitmap.createScaledBitmap(small, 16, 16, true), size, size, true)
+        else android.graphics.Bitmap.createScaledBitmap(small, size, size, true)
+    }
+
+    /** A road-like 320x240 picture with signs drawn in; returns pixels. */
+    private fun scene(signs: List<Triple<Int, Int, Pair<Float, Float>>>, bright: Float = 1f, rotDeg: Float = 0f, noise: Int = 0, blur: Boolean = false, seed: Int = 1): IntArray {
+        val bm = android.graphics.Bitmap.createBitmap(320, 240, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bm)
+        c.drawColor(android.graphics.Color.rgb(150, 175, 205))
+        val p = android.graphics.Paint()
+        p.color = android.graphics.Color.rgb(95, 100, 92); c.drawRect(0f, 120f, 320f, 240f, p)
+        p.color = android.graphics.Color.rgb(70, 110, 60); c.drawRect(0f, 100f, 320f, 125f, p)
+        for ((i, size, pos) in signs) {
+            c.save(); c.rotate(rotDeg, pos.first + size / 2f, pos.second + size / 2f)
+            c.drawBitmap(signBitmap(i, size, blur), pos.first, pos.second, null); c.restore()
+        }
+        val px = IntArray(320 * 240); bm.getPixels(px, 0, 320, 0, 0, 320, 240)
+        val r = java.util.Random(seed.toLong())
+        if (bright != 1f || noise > 0) for (k in px.indices) {
+            val q = px[k]
+            fun ch(v: Int) = ((v * bright) + if (noise > 0) r.nextInt(noise * 2 + 1) - noise else 0).toInt().coerceIn(0, 255)
+            px[k] = android.graphics.Color.rgb(ch(q shr 16 and 0xFF), ch(q shr 8 and 0xFF), ch(q and 0xFF))
+        }
+        return px
+    }
+
+    private fun seen(px: IntArray, cls: Int): Boolean {
+        SignEngine.reset()
+        for (k in 0 until 6) SignEngine.process(px, 320, 240)
+        return SignEngine.recent.any { it.id == cls }
+    }
+
+    @Test
+    fun stress() {
+        prep(); launch()
+        Report.head("Sign camera stress test")
+        val ctx = org.robolectric.RuntimeEnvironment.getApplication()
+        if (!SignNet.load(ctx)) { Report.bad("Model did not load"); Report.flush("Sign camera stress test"); return }
+        loadVectors()
+        Prefs.signBuiltin = true; Prefs.signSpeak = false
+        SignLib.load(true); SignLib.entries.clear(); SignLib.save()
+
+        // 1. crash fuzzing: odd sizes and random pictures through every stage
+        var crashes = 0
+        val rnd = java.util.Random(42)
+        val sizes = listOf(1 to 1, 8 to 6, 15 to 15, 31 to 31, 32 to 32, 64 to 48, 100 to 33, 320 to 240, 240 to 320, 480 to 360)
+        for (k in 0 until 200) {
+            val (w, h) = sizes[k % sizes.size]
+            val px = IntArray(w * h)
+            when (k % 4) {
+                0 -> for (i in px.indices) px[i] = rnd.nextInt() or (0xFF shl 24)
+                1 -> px.fill(android.graphics.Color.BLACK)
+                2 -> px.fill(android.graphics.Color.WHITE)
+                else -> for (i in px.indices) px[i] = if ((i / max(1, w / 7) + i / max(1, w * h / 9)) % 3 == 0) android.graphics.Color.RED else android.graphics.Color.rgb(20, 60, 200)
+            }
+            try { SignEngine.process(px, w, h); Adas.process(px, w, h); SignVision.detect(px, w, h); SignNet.propose(px, w, h) } catch (t: Throwable) { crashes++; if (crashes <= 2) Report.bad("Crash on ${w}x$h picture type ${k % 4}", t) }
+        }
+        if (crashes == 0) Report.ok("200 odd and random pictures (1x1 up to 480x360, noise, black, white, colour blocks): no crash")
+
+        // 2. NV21 camera conversion, all rotations
+        try {
+            val w = 320; val h = 240; val nv = ByteArray(w * h * 3 / 2) { (it % 251).toByte() }
+            for (rot in listOf(0, 90, 180, 270)) {
+                val (o, ow, oh) = SignVision.fromNv21(nv, w, h, rot)
+                if (o.size != ow * oh || (rot % 180 == 90 && ow > oh)) throw IllegalStateException("rot $rot gave ${ow}x$oh")
+                SignEngine.process(o, ow, oh); Adas.process(o, ow, oh)
+            }
+            Report.ok("Camera frames convert correctly at 0, 90, 180 and 270 degrees and run through the engine")
+        } catch (t: Throwable) { Report.bad("Camera frame conversion failed", t) }
+
+        // 3. recognition under hard conditions
+        val test = listOf(14, 17, 13, 25, 28, 18, 33, 34, 35, 38, 39, 40, 12, 1, 9)
+        fun idx(c: Int) = ys.indices.first { ys[it] == c }
+        val conds = linkedMapOf<String, (Int) -> IntArray>(
+            "normal 72px" to { i -> scene(listOf(Triple(i, 72, 150f to 40f))) },
+            "small 40px" to { i -> scene(listOf(Triple(i, 40, 200f to 50f))) },
+            "large 110px" to { i -> scene(listOf(Triple(i, 110, 120f to 20f))) },
+            "dark (x0.6)" to { i -> scene(listOf(Triple(i, 72, 150f to 40f)), bright = 0.6f) },
+            "bright (x1.3)" to { i -> scene(listOf(Triple(i, 72, 150f to 40f)), bright = 1.3f) },
+            "tilted 8 deg" to { i -> scene(listOf(Triple(i, 72, 150f to 40f)), rotDeg = 8f) },
+            "camera noise" to { i -> scene(listOf(Triple(i, 72, 150f to 40f)), noise = 18) },
+            "motion blur" to { i -> scene(listOf(Triple(i, 72, 150f to 40f)), blur = true) },
+            "at the edge" to { i -> scene(listOf(Triple(i, 64, 252f to 4f))) }
+        )
+        var total = 0; var hit = 0
+        val line = StringBuilder()
+        for ((name, mk) in conds) {
+            var h = 0
+            for (c in test) { if (seen(mk(idx(c)), c)) h++ }
+            total += test.size; hit += h
+            line.append("$name $h/${test.size}; ")
+        }
+        Report.info("Recognition by condition: $line")
+        val rate = hit * 100.0 / total
+        if (rate >= 50) Report.ok("Standard signs recognised in %.0f%% of %d hard synthetic pictures".format(rate, total)) else Report.bad("Recognition only %.0f%% under hard conditions".format(rate))
+
+        // 4. two signs in one picture
+        val two = scene(listOf(Triple(idx(14), 64, 40f to 40f), Triple(idx(38), 64, 210f to 40f)))
+        SignEngine.reset(); for (k in 0 until 6) SignEngine.process(two, 320, 240)
+        val ids = SignEngine.recent.map { it.id }.toSet()
+        if (14 in ids && 38 in ids) Report.ok("Two signs in one picture both recognised (stop and keep right)") else if (ids.isNotEmpty()) Report.info("Two signs: found ${SignEngine.recent.map { it.name }}") else Report.bad("Neither of two signs found")
+
+        // 5. false alarms on sign-free busy scenes (red cars, blue boards, yellow taxis, brake lights)
+        var falseHits = 0
+        val fr = java.util.Random(7)
+        for (k in 0 until 40) {
+            val bm = android.graphics.Bitmap.createBitmap(320, 240, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(bm); c.drawColor(android.graphics.Color.rgb(140, 170, 200))
+            val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            p.color = android.graphics.Color.rgb(90, 92, 90); c.drawRect(0f, 120f, 320f, 240f, p)
+            for (j in 0 until 6) {
+                p.color = listOf(android.graphics.Color.rgb(200, 30, 35), android.graphics.Color.rgb(30, 70, 190), android.graphics.Color.rgb(240, 200, 20), android.graphics.Color.rgb(230, 230, 230), android.graphics.Color.rgb(40, 40, 40))[fr.nextInt(5)]
+                val x = fr.nextInt(300).toFloat(); val y = 60f + fr.nextInt(160); val ww = 15f + fr.nextInt(80); val hh = 10f + fr.nextInt(50)
+                if (fr.nextBoolean()) c.drawRect(x, y, x + ww, y + hh, p) else c.drawRoundRect(x, y, x + ww, y + hh, 12f, 12f, p)
+            }
+            val px = IntArray(320 * 240); bm.getPixels(px, 0, 320, 0, 0, 320, 240)
+            SignEngine.reset(); for (q in 0 until 6) SignEngine.process(px, 320, 240)
+            if (SignEngine.recent.isNotEmpty()) { falseHits++; if (falseHits <= 3) Report.info("False sign in busy scene $k: ${SignEngine.recent.map { it.name }}") }
+        }
+        if (falseHits <= 2) Report.ok("Busy sign-free scenes (cars, boards, taxis): $falseHits false signs in 40") else Report.bad("Too many false signs: $falseHits of 40 busy scenes")
+
+        // 6. one sign held in view is announced once, not every frame
+        val stop = scene(listOf(Triple(idx(14), 72, 150f to 40f)))
+        SignEngine.reset(); for (k in 0 until 25) SignEngine.process(stop, 320, 240)
+        val n = SignEngine.recent.count { it.id == 14 }
+        if (n == 1) Report.ok("Sign held in view for 25 pictures is announced once") else Report.bad("Stop sign announced $n times in 25 pictures")
+
+        // 7. speed per picture (sign engine + driver assist together)
+        val busy = scene(listOf(Triple(idx(14), 64, 40f to 40f), Triple(idx(25), 64, 210f to 40f), Triple(idx(38), 48, 130f to 60f)))
+        SignEngine.reset(); Adas.reset()
+        val t0 = System.nanoTime()
+        for (k in 0 until 20) { SignEngine.process(busy, 320, 240); Adas.process(busy, 320, 240) }
+        val ms = (System.nanoTime() - t0) / 20e6
+        Report.info("Processing time on the test machine: %.0f ms per picture with 3 signs (a phone is usually 2–4 times slower)".format(ms))
+        if (ms < 600) Report.ok("Fast enough for live use (%.0f ms per picture here)".format(ms)) else Report.bad("Too slow: %.0f ms per picture".format(ms))
+
+        // 8. direction signs carry a spoken text and become map warnings
+        val dirs = (33..40).map { SignNet.KB[it] }
+        if (dirs.all { it.kind == 'D' && it.say.isNotEmpty() }) Report.ok("All 8 direction signs have spoken warnings (turn left/right, keep left/right, roundabout…)") else Report.bad("Direction signs missing spoken text")
+
+        SignEngine.reset(); Adas.reset()
+        Report.flush("Sign camera stress test")
+    }
+
+    private fun max(a: Int, b: Int) = if (a > b) a else b
+}

@@ -63,6 +63,7 @@ object SignVision {
 
     /** Finds sign-like regions (largest first, at most 4). */
     fun detect(px: IntArray, w: Int, h: Int): List<SignCand> {
+        if (w < 16 || h < 16 || px.size < w * h) return emptyList()
         val mask = ByteArray(w * h)
         for (i in px.indices) {
             val c = px[i]; val r = c shr 16 and 0xFF; val g = c shr 8 and 0xFF; val b = c and 0xFF

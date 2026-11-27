@@ -187,7 +187,7 @@ object SignEngine {
         val heavy = try { Prefs.vehicleClass(ObdManager.vehicle.id) != "Car" } catch (_: Throwable) { false }
         when (s.kind) {
             'L' -> onLimit(s.value, now)
-            'W', 'R' -> {
+            'W', 'R', 'D' -> {
                 if (heavyOnly && !heavy) { RoadAssist.addLog("Sign: ${s.name}"); return }
                 if (Prefs.signSpeak) Alerts.announce("signtxt-${s.say}", s.say, 60_000)
                 RoadAssist.addLog("Sign: ${s.name}")
