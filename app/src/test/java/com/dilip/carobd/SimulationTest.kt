@@ -1569,7 +1569,7 @@ class PerceptionTest : SimBase() {
         Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
         // service reset knowledge linked to the VIN
         Report.head("Service reset by VIN and make")
-        val tests = listOf("WVWZZZ1KZ6W000001" to "Volkswagen", "WBAFR9C50BC123456" to "BMW", "WDDGF8AB1CA123456" to "Mercedes-Benz", "JTDKN3DU5A0123456" to "Toyota", "KMHD35LH6EU123456" to "Hyundai", "MAT627018NLA12345" to "Tata", "MA3FJEB1S00123456" to "Suzuki", "TMBJJ7NE1H0123456" to "Skoda")
+        val tests = listOf("WVWZZZ1KZ6W000001" to "Volkswagen", "WBAFR9C50BC123456" to "BMW", "WDDGF8AB1CA123456" to "Mercedes-Benz", "JTDKN3DU5A0123456" to "Toyota", "KMHD35LH6EU123456" to "Hyundai", "MA1TA2GH4J2A12345" to "Mahindra", "MA3FJEB1S00123456" to "Suzuki", "TMBJJ7NE1H0123456" to "Skoda")
         val miss = tests.filter { ServiceBrands.makeOf(it.first) != it.second }
         if (miss.isEmpty()) Report.ok("VIN gives the make for ${tests.size} brands (German, Japanese, Korean, Indian…)") else Report.bad("VIN make wrong: $miss")
         if (ServiceBrands.makeOf("", "Honda") == "Honda" && ServiceBrands.makeOf("XXX00000000000000") == "") Report.ok("Falls back to the typed make, or empty") else Report.bad("Make fallback wrong")

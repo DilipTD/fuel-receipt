@@ -30,7 +30,7 @@ object ServiceBrands {
         "SAL" to "Land Rover", "SAJ" to "Jaguar", "SAR" to "Rover", "SCC" to "Lotus", "SCF" to "Aston Martin", "SBM" to "McLaren", "SCB" to "Bentley",
         "YV1" to "Volvo", "YV4" to "Volvo", "YS3" to "Saab",
         // India
-        "MAT" to "Tata", "MA1" to "Mahindra", "MA6" to "Chevrolet", "MBL" to "Hero", "MC2" to "Eicher", "MCA" to "MG", "MEE" to "Renault", "MDH" to "Nissan", "MD2" to "Bajaj",
+        "MA1" to "Mahindra", "MA6" to "Chevrolet", "MBL" to "Hero", "MC2" to "Eicher", "MCA" to "MG", "MEE" to "Renault", "MDH" to "Nissan", "MD2" to "Bajaj",
         // China
         "LSV" to "SAIC", "LGB" to "Dongfeng", "LFV" to "Volkswagen", "LVS" to "Ford", "LHG" to "Honda", "LDC" to "Peugeot", "LB3" to "Geely", "L6T" to "Geely", "LJD" to "Kia", "LBV" to "BMW", "LMG" to "GAC", "LNB" to "BAIC", "LC0" to "BYD", "LGX" to "BYD",
     )
@@ -54,7 +54,7 @@ object ServiceBrands {
         "chevrolet", "gmc", "cadillac", "buick", "holden" -> "gm"
         "nissan", "infiniti", "datsun" -> "nissan"
         "suzuki", "maruti", "maruti suzuki" -> "suzuki"
-        "mahindra", "tata" -> "indian"
+        "mahindra" -> "indian"
         "renault", "dacia", "peugeot", "citroen", "ds", "opel", "vauxhall", "fiat", "alfa romeo", "jeep", "chrysler", "dodge" -> "euro"
         "volvo", "polestar" -> "volvo"
         "land rover", "jaguar", "mg", "rover" -> "uk"
