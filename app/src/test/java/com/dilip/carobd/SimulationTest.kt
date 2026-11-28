@@ -1548,6 +1548,12 @@ class PerceptionTest : SimBase() {
         var fp2 = false
         for (i in 0 until 8) { val px = frame(w, h); rect(px, w, 0, 0, w, h, if (i % 2 == 0) 0x404040 else 0xB0B0B0); Perception.process(px, w, h, 1000L + i * 250); if (Perception.pedNear) fp2 = true }
         if (!fp2) Report.ok("Whole picture changing (car moving): no false pedestrian") else Report.bad("False pedestrian when whole scene changed")
+        // ELM327 speed source for the road assistant
+        Prefs.roadSpeedSrc = "gps"
+        if (RoadAssist.obdSpeed() == null) Report.ok("GPS-only choice ignores the adapter speed") else Report.bad("GPS only still used OBD")
+        Prefs.roadSpeedSrc = "obd"
+        if (RoadAssist.obdSpeed() == null && RoadAssist.speedSourceText().contains("not connected")) Report.ok("ELM327 choice falls back to GPS when not connected") else Report.bad("ELM327 fallback wrong")
+        Prefs.roadSpeedSrc = "auto"
         // hazard picker draws every symbol
         prep(); launch()
         try { HazardQuick.show(act); Report.ok("Hazard picker with symbols opens"); val bmp = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)

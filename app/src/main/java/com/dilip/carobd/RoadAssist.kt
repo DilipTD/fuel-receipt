@@ -170,9 +170,24 @@ object RoadAssist {
         (0 until a.length()).map { val o = a.getJSONObject(it); Hazard(o.getString("k"), o.getDouble("a"), o.getDouble("o"), o.optString("b", labelFor(o.getString("k"))), true) }
     } catch (_: Exception) { emptyList() }
 
+    /** Speed from the linked ELM327 adapter when the user chose it and the car is connected. */
+    fun obdSpeed(): Double? {
+        if (Prefs.roadSpeedSrc == "gps") return null
+        if (ObdManager.state != ObdManager.State.CONNECTED) return null
+        return ObdManager.values[0x0D]?.takeIf { it in 0.0..300.0 }
+    }
+
+    /** Text for the Road page: which source the speed comes from right now. */
+    fun speedSourceText(): String = when {
+        obdSpeed() != null -> "ELM327 adapter (OBD speed)"
+        Prefs.roadSpeedSrc == "obd" -> "GPS (ELM327 not connected yet)"
+        else -> "GPS"
+    }
+
     fun labelFor(kind: String) = when (kind) {
         "bump" -> "Speed breaker"; "camera" -> "Speed camera"; "pothole" -> "Pothole"; "curve" -> "Sharp curve"
-        "school" -> "School zone"; "hospital" -> "Hospital zone"; "rail" -> "Level crossing"; "toll" -> "Toll plaza"; "accident" -> "Accident"; "flood" -> "Waterlogging"; else -> "Hazard"
+        "school" -> "School zone"; "hospital" -> "Hospital zone"; "rail" -> "Level crossing"; "toll" -> "Toll plaza"; "accident" -> "Accident"; "flood" -> "Waterlogging"
+        "work" -> "Road work"; "animal" -> "Animals"; "police" -> "Police check"; "fog" -> "Fog"; "narrow" -> "Narrow road"; else -> "Hazard"
     }
 
     fun reportHazard(kind: String): Boolean {
@@ -510,6 +525,7 @@ object RoadAssist {
         prevFix = lastFix
         lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
         speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
+        obdSpeed()?.let { speedKmh = it }
         if (l.hasBearing() && speedKmh > 4) heading = l.bearing
         synchronized(tiles) { loadTiles() }
         maybeFetch()

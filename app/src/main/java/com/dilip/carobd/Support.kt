@@ -169,6 +169,10 @@ object Prefs {
     var adasPed: Boolean
         get() = sp.getBoolean("adasPed", true)
         set(v) = sp.edit().putBoolean("adasPed", v).apply()
+    /** "auto" = ELM327 speed when connected, else GPS; "gps"; "obd" = ELM327 only (falls back to GPS if not connected). */
+    var roadSpeedSrc: String
+        get() = sp.getString("roadSpeedSrc", "auto") ?: "auto"
+        set(v) = sp.edit().putString("roadSpeedSrc", v).apply()
     var adasFcw: Boolean
         get() = sp.getBoolean("adasFcw", true)
         set(v) = sp.edit().putBoolean("adasFcw", v).apply()

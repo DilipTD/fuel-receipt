@@ -9,10 +9,11 @@ import android.widget.TextView
 
 /** One-tap hazard reporting at the current GPS position, reachable from Drive vision, Drive mode, Home, Road and the notification. */
 object HazardQuick {
-    val kinds = listOf("bump", "pothole", "curve", "camera", "school", "rail", "accident", "flood")
+    val kinds = listOf("bump", "pothole", "curve", "camera", "school", "rail", "accident", "flood", "work", "animal", "police", "fog", "narrow", "hospital", "toll")
     private val colors = mapOf("bump" to Color.rgb(255, 179, 0), "pothole" to Color.rgb(255, 138, 61), "curve" to Color.rgb(0, 212, 232),
         "camera" to Color.rgb(229, 72, 77), "school" to Color.rgb(31, 164, 99), "rail" to Color.rgb(142, 107, 255),
-        "accident" to Color.rgb(229, 72, 77), "flood" to Color.rgb(47, 128, 237))
+        "accident" to Color.rgb(229, 72, 77), "flood" to Color.rgb(47, 128, 237), "work" to Color.rgb(255, 179, 0), "animal" to Color.rgb(176, 124, 76),
+        "police" to Color.rgb(80, 130, 255), "fog" to Color.rgb(154, 167, 181), "narrow" to Color.rgb(255, 138, 61), "hospital" to Color.rgb(229, 72, 77), "toll" to Color.rgb(142, 107, 255))
 
     /** Saves and confirms by voice so the driver does not need to look. */
     fun save(kind: String): String {
@@ -48,6 +49,16 @@ object HazardQuick {
                 p.strokeWidth = r * 0.07f; c.drawLine(cx - 7 * u, cy + 7.5f * u, cx + 7 * u, cy + 7.5f * u, p) }
             "accident" -> { fill(); val pa = android.graphics.Path(); val pts = floatArrayOf(0f, -8f, 2f, -3f, 7f, -5f, 4f, -1f, 8f, 2f, 3f, 2.5f, 3f, 7f, 0f, 3.5f, -3f, 7f, -3f, 2.5f, -8f, 2f, -4f, -1f, -7f, -5f, -2f, -3f)
                 pa.moveTo(cx + pts[0] * u, cy + pts[1] * u); var i = 2; while (i < pts.size) { pa.lineTo(cx + pts[i] * u, cy + pts[i + 1] * u); i += 2 }; pa.close(); c.drawPath(pa, p) }
+            "work" -> { fill(); val pa = android.graphics.Path(); pa.moveTo(cx - 6 * u, cy + 6 * u); pa.lineTo(cx - 2 * u, cy - 6 * u); pa.lineTo(cx + 2 * u, cy - 6 * u); pa.lineTo(cx + 6 * u, cy + 6 * u); pa.close(); c.drawPath(pa, p)
+                p.color = col; c.drawRect(cx - 4.2f * u, cy - 2 * u, cx + 4.2f * u, cy - 0.2f * u, p); c.drawRect(cx - 5.2f * u, cy + 2.4f * u, cx + 5.2f * u, cy + 4.2f * u, p) }
+            "animal" -> { fill(); c.drawOval(android.graphics.RectF(cx - 6 * u, cy - 2 * u, cx + 4 * u, cy + 3 * u), p); c.drawCircle(cx + 5 * u, cy - 3.5f * u, 2 * u, p)
+                line(); c.drawLine(cx - 4 * u, cy + 2 * u, cx - 4 * u, cy + 7 * u, p); c.drawLine(cx + 2 * u, cy + 2 * u, cx + 2 * u, cy + 7 * u, p); c.drawLine(cx + 5 * u, cy - 5 * u, cx + 4 * u, cy - 8 * u, p) }
+            "police" -> { fill(); val pa = android.graphics.Path(); pa.moveTo(cx, cy - 7 * u); pa.lineTo(cx + 6 * u, cy - 4 * u); pa.lineTo(cx + 5 * u, cy + 3 * u); pa.lineTo(cx, cy + 7.5f * u); pa.lineTo(cx - 5 * u, cy + 3 * u); pa.lineTo(cx - 6 * u, cy - 4 * u); pa.close(); c.drawPath(pa, p)
+                p.color = col; c.drawCircle(cx, cy - 0.5f * u, 2 * u, p) }
+            "fog" -> { line(); for (k in 0..2) { val y = cy + (k * 4f - 4f) * u; c.drawLine(cx - 6 * u + (k % 2) * 2 * u, y, cx + 6 * u - ((k + 1) % 2) * 2 * u, y, p) } }
+            "narrow" -> { line(); c.drawLine(cx - 6 * u, cy - 6.5f * u, cx - 2 * u, cy, p); c.drawLine(cx - 2 * u, cy, cx - 6 * u, cy + 6.5f * u, p); c.drawLine(cx + 6 * u, cy - 6.5f * u, cx + 2 * u, cy, p); c.drawLine(cx + 2 * u, cy, cx + 6 * u, cy + 6.5f * u, p) }
+            "hospital" -> { fill(); c.drawRect(cx - 1.8f * u, cy - 6 * u, cx + 1.8f * u, cy + 6 * u, p); c.drawRect(cx - 6 * u, cy - 1.8f * u, cx + 6 * u, cy + 1.8f * u, p) }
+            "toll" -> { line(); c.drawRect(cx - 6 * u, cy - 1 * u, cx + 6 * u, cy + 6 * u, p); c.drawLine(cx - 7 * u, cy - 4 * u, cx + 4 * u, cy - 4 * u, p); fill(); c.drawCircle(cx + 5.5f * u, cy - 4 * u, 1 * u, p) }
             else -> { line(); for (k in 0..1) { val y = cy + (k * 4.5f - 1.5f) * u; val pa = android.graphics.Path(); pa.moveTo(cx - 7 * u, y)
                 pa.cubicTo(cx - 4 * u, y - 3 * u, cx - 2 * u, y - 3 * u, cx, y); pa.cubicTo(cx + 2 * u, y + 3 * u, cx + 4 * u, y + 3 * u, cx + 7 * u, y); c.drawPath(pa, p) }
                 fill(); c.drawCircle(cx, cy - 5.5f * u, 1.2f * u, p) }
@@ -63,25 +74,34 @@ object HazardQuick {
             p.style = android.graphics.Paint.Style.FILL; p.color = Ui.CARD; c.drawRoundRect(0f, 0f, w, h, 16 * resources.displayMetrics.density, 16 * resources.displayMetrics.density, p)
             p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 1.5f * resources.displayMetrics.density; p.color = Color.argb(140, Color.red(col), Color.green(col), Color.blue(col))
             c.drawRoundRect(1f, 1f, w - 1, h - 1, 16 * resources.displayMetrics.density, 16 * resources.displayMetrics.density, p)
-            drawSymbol(c, kind, w / 2, h * 0.40f, Math.min(w * 0.36f, h * 0.30f), col)
+            drawSymbol(c, kind, w / 2, h * 0.42f, Math.min(w * 0.36f, h * 0.31f), col)
             p.style = android.graphics.Paint.Style.FILL; p.color = Color.WHITE; p.textAlign = android.graphics.Paint.Align.CENTER; p.isFakeBoldText = true
-            p.textSize = 11.5f * resources.displayMetrics.density; c.drawText(label, w / 2, h - 9 * resources.displayMetrics.density, p)
+            p.textSize = 10f * resources.displayMetrics.density; var lb = label; while (p.measureText(lb) > w - 6 * resources.displayMetrics.density && lb.length > 4) lb = lb.dropLast(1); c.drawText(lb, w / 2, h - 7 * resources.displayMetrics.density, p)
         }
     }
 
-    /** Big symbol picker: one tap reports and closes. */
+    /** Compact symbol picker (scrolls, fits landscape): one tap reports and closes. */
     fun show(a: MainActivity) {
         val ui = a.ui
-        val grid = GridLayout(a).apply { columnCount = 4; setPadding(ui.dp(8), ui.dp(6), ui.dp(8), ui.dp(4)) }
+        val dm = a.resources.displayMetrics
+        val availDp = (dm.widthPixels / dm.density) - 70f
+        val tile = if (dm.heightPixels < dm.widthPixels) 62 else 72          // landscape: smaller
+        val cols = (availDp / (tile + 8)).toInt().coerceIn(3, 6)
+        val grid = GridLayout(a).apply { columnCount = cols; setPadding(ui.dp(6), ui.dp(4), ui.dp(6), ui.dp(4)) }
         var dlg: AlertDialog? = null
         for (k in kinds) {
             val t = Tile(a, k, colors[k] ?: Ui.ACC).apply { setOnClickListener { ui.toast(save(k)); dlg?.dismiss() } }
-            grid.addView(t, GridLayout.LayoutParams().apply { width = ui.dp(80); height = ui.dp(92); setMargins(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4)) })
+            grid.addView(t, GridLayout.LayoutParams().apply { width = ui.dp(tile); height = ui.dp(tile + 12); setMargins(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3)) })
         }
-        val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; addView(grid)
-            addView(ui.tv("Saved at your position. You will be warned here next time. Report only when it is safe, or let a passenger do it.", 11.5f, Ui.DIM).apply { setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4)) }) }
+        val sv = android.widget.ScrollView(a).apply { addView(grid) }
+        val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL
+            addView(sv, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+            addView(ui.tv("Saved at your position and warned next time. Report only when safe.", 11f, Ui.DIM).apply { setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(2)) }) }
         dlg = AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert).setTitle("Report hazard here").setView(box)
             .setNeutralButton("Remove mine nearby") { _, _ -> ui.toast("Removed ${RoadAssist.removeMyHazardsHere()} hazard(s) within 80 m") }
-            .setNegativeButton("Close", null).show()
+            .setNegativeButton("Close", null).create()
+        dlg.show()
+        val maxH = (dm.heightPixels * 0.78f).toInt()
+        dlg.window?.setLayout(Math.min(dm.widthPixels - ui.dp(24), ui.dp(cols * (tile + 6) + 40)), maxH)
     }
 }

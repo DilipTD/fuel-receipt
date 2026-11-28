@@ -181,6 +181,18 @@ class RoadPage(a: MainActivity) : Page(a) {
             } }
         }
         box.addView(sw("Road assistant (works in background)", Prefs.roadAssist) { Prefs.roadAssist = it }, ui.lp(4))
+        val srcNames = listOf("auto" to "Automatic – ELM327 when connected, else GPS", "gps" to "GPS only", "obd" to "ELM327 adapter (OBD speed)")
+        val srcCard = ui.iconCard(Ic.PLUG, Ui.CYAN, "Speed source", "Using now: ${RoadAssist.speedSourceText()}")
+        box.addView(srcCard, ui.lp(4))
+        box.addView(ui.btn("Speed source: " + srcNames.first { it.first == Prefs.roadSpeedSrc }.second, Ui.CARD) {}.also { b ->
+            b.setOnClickListener {
+                android.app.AlertDialog.Builder(a).setTitle("Road assistant speed from")
+                    .setSingleChoiceItems(srcNames.map { it.second }.toTypedArray(), srcNames.indexOfFirst { it.first == Prefs.roadSpeedSrc }) { d, i ->
+                        Prefs.roadSpeedSrc = srcNames[i].first; b.text = "Speed source: " + srcNames[i].second; d.dismiss()
+                        if (i != 1 && ObdManager.state != ObdManager.State.CONNECTED) ui.toast("Connect your ELM327 on the Connect page to use its speed")
+                    }.setNegativeButton("Close", null).show()
+            }
+        }, ui.lp(4))
         box.addView(sw("Voice announcements", Prefs.roadAnnounce) { Prefs.roadAnnounce = it }, ui.lp(4))
         box.addView(sw("Speed breaker, camera & school alerts", Prefs.roadHazards) { Prefs.roadHazards = it }, ui.lp(4))
         box.addView(sw("Warn on estimated limits too", Prefs.roadEstWarn) { Prefs.roadEstWarn = it }, ui.lp(4))

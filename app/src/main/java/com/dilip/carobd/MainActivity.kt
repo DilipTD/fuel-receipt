@@ -28,6 +28,9 @@ class MainActivity : Activity() {
     lateinit var ui: Ui
     private lateinit var header: LinearLayout
     private lateinit var titleTv: TextView
+    private lateinit var titleIc: android.widget.ImageView
+    private lateinit var titleChip: LinearLayout
+    private lateinit var titleBar: View
     private lateinit var subTv: TextView
     private lateinit var stDot: View
     private var dotAnim: android.animation.ObjectAnimator? = null
@@ -43,6 +46,18 @@ class MainActivity : Activity() {
         "Settings" to "Settings", "Alerts" to "Alert centre", "Perf" to "Performance", "Battery" to "Battery",
         "About" to "About", "Docs" to "Documents", "Legal" to "Privacy & legal", "Perms" to "Permissions", "Health" to "Car health", "Car" to "Drive mode", "FuelAdd" to "Fill-up", "TripDetail" to "Trip details", "HUD" to "HUD", "Reports" to "Reports", "Faq" to "Help & FAQ", "Calc" to "Calculator", "Reset" to "Service reset"
     )
+    /** Icon and accent colour that make each page title recognisable. */
+    private fun titleStyle(name: String): Pair<Ic, Int> = when (name) {
+        "Connect" -> Ic.PLUG to Ui.CYAN; "Home" -> Ic.HOME to Ui.CYAN; "Road" -> Ic.NAV to Color.parseColor("#2FB67A")
+        "Signs" -> Ic.SCAN to Ui.VIOLET; "Vision" -> Ic.SCAN to Ui.VIOLET; "Welcome" -> Ic.CHECK to Ui.CYAN
+        "Backup" -> Ic.CLOUD to Ui.VIOLET; "TripReplay" -> Ic.ROUTE to Ui.CYAN; "Dash" -> Ic.GAUGE to Ui.CYAN
+        "More" -> Ic.CAR to Ui.CYAN; "Garage" -> Ic.CAR to Color.parseColor("#FF8A3D"); "Fuel", "FuelAdd" -> Ic.FUEL to Color.parseColor("#FFB300")
+        "Maint" -> Ic.WRENCH to Color.parseColor("#FF8A3D"); "Analysis" -> Ic.CHART to Ui.VIOLET; "Settings" -> Ic.GEAR to Color.parseColor("#9AA7B5")
+        "Alerts" -> Ic.BELL to Color.parseColor("#E5484D"); "Perf" -> Ic.TIMER to Color.parseColor("#FF8A3D"); "Battery" -> Ic.BATTERY to Color.parseColor("#2FB67A")
+        "About" -> Ic.INFO to Ui.CYAN; "Docs" -> Ic.DOC to Ui.VIOLET; "Legal" -> Ic.SHIELD to Ui.VIOLET; "Perms" -> Ic.SHIELD to Color.parseColor("#2FB67A")
+        "Health" -> Ic.PULSE to Color.parseColor("#2FB67A"); "Car" -> Ic.CAR to Ui.CYAN; "TripDetail" -> Ic.ROUTE to Ui.CYAN; "HUD" -> Ic.GAUGE to Ui.CYAN
+        else -> Ic.GRID to Ui.CYAN
+    }
     private lateinit var content: FrameLayout
     private lateinit var rootRef: View
     private var inFull = false
@@ -88,7 +103,7 @@ class MainActivity : Activity() {
             setOnClickListener { onBackPressed() }
             visibility = View.GONE
         }
-        titleTv = ui.tv("", 19f, Ui.WHITE, true)
+        titleTv = ui.tv("", 20f, Ui.WHITE, true).apply { letterSpacing = 0.02f }
         subTv = ui.tv("", 11.5f, Ui.DIM).apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END }
         stDot = View(this)
         stTv = ui.tv("", 11.5f, Ui.WHITE, true)
@@ -104,9 +119,18 @@ class MainActivity : Activity() {
             setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(8))
             addView(backBtn, LinearLayout.LayoutParams(ui.dp(38), ui.dp(38)).apply { rightMargin = ui.dp(10) })
             addView(logo, LinearLayout.LayoutParams(ui.dp(38), ui.dp(38)).apply { rightMargin = ui.dp(10) })
+            titleIc = ui.iconView(Ic.GRID, Ui.WHITE, 17)
+            titleChip = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER; addView(titleIc) }
+            titleBar = View(this@MainActivity)
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(titleTv); addView(subTv)
+                addView(LinearLayout(this@MainActivity).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(titleChip, LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)).apply { rightMargin = ui.dp(8) })
+                    addView(titleTv)
+                })
+                addView(titleBar, LinearLayout.LayoutParams(ui.dp(56), ui.dp(3)).apply { topMargin = ui.dp(3); bottomMargin = ui.dp(2) })
+                addView(subTv)
             }, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             addView(stBox)
         }
@@ -366,6 +390,12 @@ class MainActivity : Activity() {
             }
         }
         titleTv.text = Lang.t(titles[name] ?: name)
+        run {
+            val (ic, col) = titleStyle(name)
+            titleIc.setImageDrawable(IconDrawable(ic, col, ui.dp(17)))
+            titleChip.background = ui.rounded(Color.argb(46, Color.red(col), Color.green(col), Color.blue(col)), 9)
+            titleBar.background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(col, Color.argb(0, Color.red(col), Color.green(col), Color.blue(col)))).apply { cornerRadius = ui.dp(2).toFloat() }
+        }
         Theme.counter(this, rootRef)
         val hasBack = pages[name]?.parent != null
         backBtn.visibility = if (hasBack) View.VISIBLE else View.GONE
