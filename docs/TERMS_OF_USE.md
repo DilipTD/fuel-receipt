@@ -2,7 +2,7 @@
 
 ## Acceptance
 
-By installing or using Dr. Vittu OBDII Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 27 November 2026.
+By installing or using Dr. Vittu OBDII Pro you agree to these terms. If you do not agree, do not use the app. Last updated: 28 November 2026.
 
 ## Licence
 

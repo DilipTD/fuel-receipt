@@ -173,6 +173,15 @@ object Prefs {
     var roadMode: String
         get() = sp.getString("roadMode", "always") ?: "always"
         set(v) = sp.edit().putString("roadMode", v).apply()
+    var adasDep: Int      // lane departure sensitivity: offset in % of lane width that triggers the warning (20 = sensitive, 40 = relaxed)
+        get() = sp.getInt("adasDep", 30)
+        set(v) = sp.edit().putInt("adasDep", v.coerceIn(15, 45)).apply()
+    var adasHorizon: Int  // where lane-line search starts, % of picture height (horizon line)
+        get() = sp.getInt("adasHorizon", 52)
+        set(v) = sp.edit().putInt("adasHorizon", v.coerceIn(35, 70)).apply()
+    var adasCarW: Int     // assumed width of the car ahead in cm (distance estimate)
+        get() = sp.getInt("adasCarW", 180)
+        set(v) = sp.edit().putInt("adasCarW", v.coerceIn(140, 300)).apply()
     var adasFcw: Boolean
         get() = sp.getBoolean("adasFcw", true)
         set(v) = sp.edit().putBoolean("adasFcw", v).apply()

@@ -6,7 +6,7 @@ Dr. Vittu OBDII Pro ("the app") is developed by Dilip Kumar TD ("the developer",
 
 The short version: your data stays on your phone. The app has no user accounts, no advertising, no analytics and no tracking SDKs. The developer does not receive, collect or sell your personal data.
 
-Last updated: 27 November 2026.
+Last updated: 28 November 2026.
 
 ## Information the app handles
 

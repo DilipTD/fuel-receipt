@@ -50,6 +50,7 @@ class CarDashPage(a: MainActivity) : Page(a) {
             gravity = Gravity.CENTER_VERTICAL
             addView(clock, LinearLayout.LayoutParams(ui.dp(90), Ui.WRAP))
             addView(coach, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+            addView(ui.btn("🎤", Ui.CYAN) { VoiceCmd.listen(a) }, LinearLayout.LayoutParams(ui.dp(60), Ui.WRAP).apply { rightMargin = ui.dp(6) })
             addView(ui.btn("⚠ Hazard", Ui.WARN) { HazardQuick.show(a) }, LinearLayout.LayoutParams(ui.dp(110), Ui.WRAP).apply { rightMargin = ui.dp(6) })
             addView(close, LinearLayout.LayoutParams(ui.dp(90), Ui.WRAP))
         })

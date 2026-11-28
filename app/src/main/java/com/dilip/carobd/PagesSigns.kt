@@ -141,6 +141,13 @@ class SignPage(a: MainActivity) : Page(a) {
         overlay.onTap = { dt -> a.runOnUiThread { when (dt.state) { 2 -> if (SignEngine.hasPending()) teachDialog(null) else ui.toast("Hold steady on the sign for a moment, then tap again"); 4 -> if (SignEngine.canTeach()) AlertDialog.Builder(a).setTitle("Standard sign: ${dt.label}").setMessage("Recognised by the built-in model. If this is wrong, or your country uses this sign differently, teach it as your own sign; your own signs are checked first from then on.").setPositiveButton("Teach my own") { _, _ -> teachDialog(null) }.setNegativeButton("Close", null).show() else ui.toast("Standard sign: ${dt.label}"); 1, 3 -> SignLib.entries.firstOrNull { it.name == dt.label || (dt.state == 3) && it.action == "ignore" }?.let { teachDialog(it) }; else -> ui.toast("Speed limit ${dt.label} read from the sign") } } }
         c.addView(ui.btn("Drive vision – full screen, lanes, distance, signs", Ui.GOOD) { a.show("Vision") }, ui.lp(6))
         c.addView(ui.btn("⚠ Report a hazard here", Ui.WARN) { HazardQuick.show(a) }, ui.lp(6))
+        c.addView(ui.row(
+            ui.btn("🎤 Voice command", Ui.CYAN) { VoiceCmd.listen(a) },
+            ui.btn("Speed report", Ui.CARD) { val m = VoiceCmd.speedReport(); ui.toast(m); try { Alerts.announce("speed-report", m, 0) } catch (_: Throwable) {} }
+        ), ui.lp(6))
+        c.addView(ui.tv("Say: “report pothole”, “speed breaker”, “accident”, “police check”… or “speed report”. Uses the phone's speech recogniser (offline if your phone has the language downloaded).", 11.5f, Ui.DIM), ui.lp(2))
+        c.addView(ui.section("Teach & tune", Ic.SLIDERS))
+        c.addView(AdasTune.build(a), ui.lp(4))
         c.addView(statusTv, ui.lp(6))
         resultBox = ui.vbox()
         c.addView(resultBox, ui.lp(6))

@@ -1492,6 +1492,7 @@ class SetupWizardTest : SimBase() {
         if (msg.contains("saved") && Prefs.roadUserHaz.contains("pothole")) Report.ok("One-tap hazard saved at the GPS position: $msg") else Report.bad("Hazard not saved: $msg")
         RoadAssist.lastFix = 0L; RoadAssist.lat = 0.0; RoadAssist.lon = 0.0
         if (HazardQuick.save("bump").contains("No GPS")) Report.ok("Without GPS it says so instead of saving a wrong place") else Report.bad("Saved without GPS")
+        try { val tv = AdasTune.build(act); if (tv.childCount >= 8) Report.ok("ADAS teaching panel builds (${tv.childCount} controls)") else Report.bad("ADAS teaching panel too small") } catch (e: Throwable) { Report.bad("ADAS teaching panel crashed", e) }
         try { HazardQuick.show(act); idle(100); val d = ShadowDialog.getLatestDialog(); if (d != null && d.isShowing) Report.ok("Hazard picker opens with ${HazardQuick.kinds.size} big buttons") else Report.bad("Hazard picker not shown"); dismissDialogs() } catch (t: Throwable) { Report.bad("Hazard picker crashed", t) }
         Prefs.roadAssist = true
         val n = ObdService.build(app, "t", "x")
@@ -1555,6 +1556,17 @@ class PerceptionTest : SimBase() {
         Prefs.roadMode = "elm"
         if (!RoadAssist.active() && RoadAssist.modeText().contains("ELM327")) Report.ok("ELM327-only mode: waits while the adapter is not connected (${RoadAssist.modeText()})") else Report.bad("ELM327-only mode still active")
         Prefs.roadMode = "always"
+        // voice commands (text part) and ADAS teaching
+        Report.head("Voice commands and ADAS teaching")
+        fun hz(x: String) = VoiceCmd.handle(x).let { it.contains("saved") || it.contains("No GPS") }
+        if (hz("report pothole") && hz("there is a speed breaker") && hz("report police check") && hz("accident ahead")) Report.ok("Spoken hazards understood (pothole, speed breaker, police, accident)") else Report.bad("Spoken hazard not understood")
+        if (VoiceCmd.handle("speed report").startsWith("Speed") && VoiceCmd.handle("how fast am I going").startsWith("Speed")) Report.ok("Spoken speed report answered: ${VoiceCmd.handle("speed report")}") else Report.bad("Speed report phrase not understood")
+        if (VoiceCmd.handle("blah blah").contains("did not understand") && VoiceCmd.handle("").contains("did not hear")) Report.ok("Unknown or empty phrase handled") else Report.bad("Unknown phrase handled badly")
+        Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
+        Adas.recalibrate(); if (Adas.teachDistance(20.0) == null) Report.ok("Teach distance refuses when no vehicle is tracked") else Report.bad("Teach distance without a vehicle")
+        Prefs.adasDep = 99; Prefs.adasHorizon = 1; Prefs.adasCarW = 9999
+        if (Prefs.adasDep == 45 && Prefs.adasHorizon == 35 && Prefs.adasCarW == 300) Report.ok("Tuning values are kept in safe limits") else Report.bad("Tuning limits wrong")
+        Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
         // hazard picker draws every symbol
         prep(); launch()
         try { HazardQuick.show(act); Report.ok("Hazard picker with symbols opens"); val bmp = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)

@@ -277,6 +277,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        VoiceCmd.stop()
         super.onPause()
         ObdManager.appVisible = false
         try { pages[current]?.onHide() } catch (_: Throwable) {}
@@ -342,6 +343,7 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == VoiceCmd.REQ) return
         (pages["Connect"] as? ConnectPage)?.refreshDevices()
         (pages["Perms"] as? PermissionsPage)?.onShow()
         (pages["Welcome"] as? WelcomePage)?.onPermsResult()

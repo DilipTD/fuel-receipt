@@ -35,6 +35,19 @@ object Adas {
     private var depCount = 0
     private var lastDep = 0
 
+    /** Teach: treat the present lane position as the centre (drive straight in the middle of the lane, then call). */
+    fun recalibrate() { baseReady = false; depCount = 0 }
+
+    /** Teach: you tell the real distance to the car ahead; the assumed car width is adjusted so the estimate matches. Returns the new width in cm, or null. */
+    fun teachDistance(realM: Double): Int? {
+        val v = veh ?: return null
+        if (fw <= 0 || realM < 2.0 || realM > 100.0) return null
+        val f = (fw / 2.0) / tan(Math.toRadians(hfovDeg / 2.0))
+        val cm = (realM * v.w / f * 100).toInt().coerceIn(140, 300)
+        Prefs.adasCarW = cm
+        return cm
+    }
+
     fun reset() {
         lane = null; veh = null; offset = 0.0; departing = 0; closing = 0.0; ttc = 99.0; headway = 99.0; level = 0
         Perception.reset(); base = 0.0; baseReady = false; hist.clear(); vMiss = 0; lastVeh = null; depCount = 0; lastDep = 0; frames = 0
@@ -87,7 +100,7 @@ object Adas {
     }
 
     fun detectLane(px: IntArray, w: Int, h: Int, hood: Float): Lane? {
-        val y0 = (h * 0.52f).toInt(); val y1 = (h * (hood - 0.04f)).toInt().coerceAtLeast(y0 + 20)
+        val y0 = (h * Prefs.adasHorizon / 100f).toInt(); val y1 = (h * (hood - 0.04f)).toInt().coerceAtLeast(y0 + 20)
         val cx = w / 2
         val pts = ArrayList<Pair<Float, Float>>()
         var y = y1
@@ -199,7 +212,7 @@ object Adas {
     /** Pinhole estimate: a car is about 1.8 m wide. Trucks are wider, so their distance reads too far. */
     private fun distFor(widthPx: Int): Double {
         val f = (fw / 2.0) / tan(Math.toRadians(hfovDeg / 2.0))
-        return (f * 1.8 / widthPx.coerceAtLeast(1)).coerceIn(2.0, 150.0)
+        return (f * (Prefs.adasCarW / 100.0) / widthPx.coerceAtLeast(1)).coerceIn(2.0, 150.0)
     }
 
     private fun say(key: String, text: String, ms: Long) { if (Prefs.signSpeak) Alerts.announce(key, text, ms) }
@@ -217,7 +230,8 @@ object Adas {
             val off = ((centre - w / 2f) / wd).toDouble()
             if (!baseReady) { base = off; baseReady = true } else if (abs(off - base) < 0.12) base += (off - base) * 0.03
             offset = off - base
-            val dep = if (offset > 0.30) -1 else if (offset < -0.30) 1 else 0   // camera centre drifts right of lane centre => car moves left
+            val thr = Prefs.adasDep / 100.0
+            val dep = if (offset > thr) -1 else if (offset < -thr) 1 else 0   // camera centre drifts right of lane centre => car moves left
             if (dep == 0) depCount = 0 else if (dep == lastDep) depCount++ else depCount = 1
             lastDep = dep
             departing = if (dep != 0 && depCount >= 3) dep else 0

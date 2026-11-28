@@ -219,7 +219,8 @@ class VisionPage(a: MainActivity) : Page(a) {
     private var torch = false
     private var panelOn = false
     private var startB0: android.widget.Button? = null
-    private lateinit var panelBox: LinearLayout
+    private lateinit var panelBox: android.widget.ScrollView
+    private lateinit var panelIn: LinearLayout
 
     override fun build(): View {
         holder = FrameLayout(a).apply { setBackgroundColor(Color.BLACK) }
@@ -252,25 +253,29 @@ class VisionPage(a: MainActivity) : Page(a) {
         startB0 = small("Stop") {}
         val startB = startB0!!
         startB.setOnClickListener { if (running) { stop(); startB.text = "Start" } else { start(); startB.text = "Stop" } }
+        bar.addView(ui.btn("🎤", Ui.CYAN) { VoiceCmd.listen(a) })
+        bar.addView(ui.btn("Speed", Ui.CARD) { val m = VoiceCmd.speedReport(); ui.toast(m); try { Alerts.announce("speed-report", m, 0) } catch (_: Throwable) {} })
         bar.addView(ui.btn("⚠ Hazard", Ui.WARN) { HazardQuick.show(a) })
         bar.addView(startB); bar.addView(small("Light") { torch = !torch; applyParams() }); bar.addView(small("Setup") { panelOn = !panelOn; panelBox.visibility = if (panelOn) View.VISIBLE else View.GONE })
         bar.addView(small("Exit") { a.show("Signs") })
         holder.addView(bar, FrameLayout.LayoutParams(Ui.WRAP, Ui.WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, ui.dp(8), ui.dp(8)) })
 
-        panelBox = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.argb(210, 10, 15, 20)); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)); visibility = View.GONE }
-        panelBox.addView(ui.check("Lane departure warning", Prefs.adasLane).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLane = v } })
-        panelBox.addView(ui.check("Traffic light (red · amber · green) and “go” prompt", Prefs.adasLight).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLight = v } })
-        panelBox.addView(ui.check("Pedestrian warning (moving people, beta)", Prefs.adasPed).apply { setOnCheckedChangeListener { _, v -> Prefs.adasPed = v } })
-        panelBox.addView(ui.check("Collision and following-distance warning", Prefs.adasFcw).apply { setOnCheckedChangeListener { _, v -> Prefs.adasFcw = v } })
-        panelBox.addView(ui.check("Speak warnings", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } })
-        panelBox.addView(ui.tv("Where the car bonnet starts in the picture (rows below are ignored)", 12f, Ui.DIM))
-        panelBox.addView(SeekBar(a).apply { max = 38; progress = Prefs.adasHood - 60; setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+        panelIn = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) }
+        panelBox = android.widget.ScrollView(a).apply { setBackgroundColor(Color.argb(225, 10, 15, 20)); visibility = View.GONE; addView(panelIn) }
+        panelIn.addView(ui.check("Lane departure warning", Prefs.adasLane).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLane = v } })
+        panelIn.addView(ui.check("Traffic light (red · amber · green) and “go” prompt", Prefs.adasLight).apply { setOnCheckedChangeListener { _, v -> Prefs.adasLight = v } })
+        panelIn.addView(ui.check("Pedestrian warning (moving people, beta)", Prefs.adasPed).apply { setOnCheckedChangeListener { _, v -> Prefs.adasPed = v } })
+        panelIn.addView(ui.check("Collision and following-distance warning", Prefs.adasFcw).apply { setOnCheckedChangeListener { _, v -> Prefs.adasFcw = v } })
+        panelIn.addView(ui.check("Speak warnings", Prefs.signSpeak).apply { setOnCheckedChangeListener { _, v -> Prefs.signSpeak = v } })
+        panelIn.addView(ui.tv("Where the car bonnet starts in the picture (rows below are ignored)", 12f, Ui.DIM))
+        panelIn.addView(SeekBar(a).apply { max = 38; progress = Prefs.adasHood - 60; setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, v: Int, u: Boolean) { Prefs.adasHood = 60 + v }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         }) })
-        panelBox.addView(ui.tv("Driver aid, not a safety system. Warnings only: it never brakes or steers. Lane and distance are estimated from one phone camera and can be wrong, especially in rain, glare, darkness, faded lines or for trucks. Pedestrian detection is not included. Always watch the road.", 11.5f, Ui.WARN))
-        holder.addView(panelBox, FrameLayout.LayoutParams(ui.dp(360), Ui.WRAP, Gravity.CENTER_VERTICAL or Gravity.END).apply { setMargins(0, 0, ui.dp(8), 0) })
+        panelIn.addView(ui.tv("Driver aid, not a safety system. Warnings only: it never brakes or steers. Lane and distance are estimated from one phone camera and can be wrong, especially in rain, glare, darkness, faded lines or for trucks. Pedestrian detection is not included. Always watch the road.", 11.5f, Ui.WARN))
+        panelIn.addView(AdasTune.build(a))
+        holder.addView(panelBox, FrameLayout.LayoutParams(ui.dp(370), Ui.MATCH, Gravity.END).apply { setMargins(0, ui.dp(70), ui.dp(8), ui.dp(60)) })
         return holder
     }
 

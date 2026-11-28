@@ -204,7 +204,8 @@ class HomePage(a: MainActivity) : Page(a) {
         ), ui.lp(2))
         box.addView(ui.grid(
             ui.menuTile(Ic.WARN, "Report hazard", Ui.WARN) { HazardQuick.show(a) },
-            ui.menuTile(Ic.SCAN, "ADAS", Ui.CYAN) { a.show("Signs") },
+            ui.menuTile(Ic.VOICE, "Voice report", Ui.CYAN) { VoiceCmd.listen(a) },
+            ui.menuTile(Ic.SCAN, "ADAS", Ui.VIOLET) { a.show("Signs") },
             ui.menuTile(Ic.ROUTE, "Road assistant", Ui.GOOD) { a.show("Road") }
         ), ui.lp(8))
         box.addView(ui.tv("${AppInfo.NAME} v${AppInfo.VERSION}\nSoftware developed by ${AppInfo.DEVELOPER}", 12f, Ui.DIM).apply { gravity = Gravity.CENTER }, ui.lp(22))
