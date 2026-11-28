@@ -170,18 +170,14 @@ object RoadAssist {
         (0 until a.length()).map { val o = a.getJSONObject(it); Hazard(o.getString("k"), o.getDouble("a"), o.getDouble("o"), o.optString("b", labelFor(o.getString("k"))), true) }
     } catch (_: Exception) { emptyList() }
 
-    /** Speed from the linked ELM327 adapter when the user chose it and the car is connected. */
-    fun obdSpeed(): Double? {
-        if (Prefs.roadSpeedSrc == "gps") return null
-        if (ObdManager.state != ObdManager.State.CONNECTED) return null
-        return ObdManager.values[0x0D]?.takeIf { it in 0.0..300.0 }
-    }
+    /** Road assistant runs always (works alone on GPS + offline map) or only while the ELM327 adapter is connected. */
+    fun active(): Boolean = Prefs.roadAssist && (Prefs.roadMode == "always" || ObdManager.state == ObdManager.State.CONNECTED)
 
-    /** Text for the Road page: which source the speed comes from right now. */
-    fun speedSourceText(): String = when {
-        obdSpeed() != null -> "ELM327 adapter (OBD speed)"
-        Prefs.roadSpeedSrc == "obd" -> "GPS (ELM327 not connected yet)"
-        else -> "GPS"
+    fun modeText(): String = when {
+        !Prefs.roadAssist -> "Off"
+        Prefs.roadMode == "always" -> "Always on – works without the adapter"
+        ObdManager.state == ObdManager.State.CONNECTED -> "On – ELM327 connected"
+        else -> "Waiting – starts when the ELM327 connects"
     }
 
     fun labelFor(kind: String) = when (kind) {
@@ -519,13 +515,12 @@ object RoadAssist {
     /* ---------------- live tracking ---------------- */
 
     fun onLocation(l: Location) {
-        if (!Prefs.roadAssist) return
+        if (!active()) return
         // a poor fix (cell/Wi-Fi guess, tunnel, urban canyon) must not move us onto another road
         if (l.hasAccuracy() && l.accuracy > 60f && info != null && lastFix != 0L && System.currentTimeMillis() - lastFix < 8000) return
         prevFix = lastFix
         lat = l.latitude; lon = l.longitude; lastFix = System.currentTimeMillis()
         speedKmh = if (l.hasSpeed()) l.speed * 3.6 else 0.0
-        obdSpeed()?.let { speedKmh = it }
         if (l.hasBearing() && speedKmh > 4) heading = l.bearing
         synchronized(tiles) { loadTiles() }
         maybeFetch()

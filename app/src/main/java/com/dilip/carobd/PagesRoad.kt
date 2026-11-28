@@ -181,15 +181,13 @@ class RoadPage(a: MainActivity) : Page(a) {
             } }
         }
         box.addView(sw("Road assistant (works in background)", Prefs.roadAssist) { Prefs.roadAssist = it }, ui.lp(4))
-        val srcNames = listOf("auto" to "Automatic – ELM327 when connected, else GPS", "gps" to "GPS only", "obd" to "ELM327 adapter (OBD speed)")
-        val srcCard = ui.iconCard(Ic.PLUG, Ui.CYAN, "Speed source", "Using now: ${RoadAssist.speedSourceText()}")
-        box.addView(srcCard, ui.lp(4))
-        box.addView(ui.btn("Speed source: " + srcNames.first { it.first == Prefs.roadSpeedSrc }.second, Ui.CARD) {}.also { b ->
-            b.setOnClickListener {
-                android.app.AlertDialog.Builder(a).setTitle("Road assistant speed from")
-                    .setSingleChoiceItems(srcNames.map { it.second }.toTypedArray(), srcNames.indexOfFirst { it.first == Prefs.roadSpeedSrc }) { d, i ->
-                        Prefs.roadSpeedSrc = srcNames[i].first; b.text = "Speed source: " + srcNames[i].second; d.dismiss()
-                        if (i != 1 && ObdManager.state != ObdManager.State.CONNECTED) ui.toast("Connect your ELM327 on the Connect page to use its speed")
+        val modeNames = listOf("always" to "Always on – works without the ELM327 adapter", "elm" to "Only when the ELM327 adapter is connected")
+        box.addView(ui.iconCard(Ic.PLUG, Ui.CYAN, "Road assistant mode", "Now: ${RoadAssist.modeText()}"), ui.lp(4))
+        box.addView(ui.btn("Mode: " + modeNames.first { it.first == Prefs.roadMode }.second, Ui.CARD) {}.also { bt ->
+            bt.setOnClickListener {
+                android.app.AlertDialog.Builder(a).setTitle("Run the road assistant")
+                    .setSingleChoiceItems(modeNames.map { it.second }.toTypedArray(), modeNames.indexOfFirst { it.first == Prefs.roadMode }) { d, i ->
+                        Prefs.roadMode = modeNames[i].first; bt.text = "Mode: " + modeNames[i].second; d.dismiss(); onShow()
                     }.setNegativeButton("Close", null).show()
             }
         }, ui.lp(4))

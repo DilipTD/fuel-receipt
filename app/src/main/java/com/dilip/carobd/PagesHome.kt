@@ -31,7 +31,7 @@ class HomePage(a: MainActivity) : Page(a) {
         val m = ObdManager
         val ri = RoadAssist.info
         signView?.let { it.limit = ri?.limit; it.estimated = ri?.estimated == true; it.over = ri?.limit != null && RoadAssist.speedKmh > ri.limit + Prefs.speedMargin }
-        if (ri == null && Prefs.roadAssist) roadTv?.text = "Road AI · " + Gps.statusText(a)
+        if (ri == null && Prefs.roadAssist) roadTv?.text = "Road AI · " + (if (!RoadAssist.active()) RoadAssist.modeText() else Gps.statusText(a))
         roadSub?.text = if (ri == null) "" else "${RoadAssist.compass(RoadAssist.heading)} · " + Units.sStr(RoadAssist.speedKmh) + (ri.limit?.let { " · limit " + Units.sStr(it.toDouble()) } ?: "")
         carView?.let { it.engineOn = m.engineOn && m.state == ObdManager.State.CONNECTED; it.speedKmh = m.values[0x0D] ?: 0.0 }
         statusTv?.text = when (m.state) {
