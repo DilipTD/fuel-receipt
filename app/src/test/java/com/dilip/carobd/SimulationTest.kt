@@ -1567,6 +1567,20 @@ class PerceptionTest : SimBase() {
         Prefs.adasDep = 99; Prefs.adasHorizon = 1; Prefs.adasCarW = 9999
         if (Prefs.adasDep == 45 && Prefs.adasHorizon == 35 && Prefs.adasCarW == 300) Report.ok("Tuning values are kept in safe limits") else Report.bad("Tuning limits wrong")
         Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
+        // service reset knowledge linked to the VIN
+        Report.head("Service reset by VIN and make")
+        val tests = listOf("WVWZZZ1KZ6W000001" to "Volkswagen", "WBAFR9C50BC123456" to "BMW", "WDDGF8AB1CA123456" to "Mercedes-Benz", "JTDKN3DU5A0123456" to "Toyota", "KMHD35LH6EU123456" to "Hyundai", "MAT627018NLA12345" to "Tata", "MA3FJEB1S00123456" to "Suzuki", "TMBJJ7NE1H0123456" to "Skoda")
+        val miss = tests.filter { ServiceBrands.makeOf(it.first) != it.second }
+        if (miss.isEmpty()) Report.ok("VIN gives the make for ${tests.size} brands (German, Japanese, Korean, Indian…)") else Report.bad("VIN make wrong: $miss")
+        if (ServiceBrands.makeOf("", "Honda") == "Honda" && ServiceBrands.makeOf("XXX00000000000000") == "") Report.ok("Falls back to the typed make, or empty") else Report.bad("Make fallback wrong")
+        val gen = "general text"
+        val vw = ServiceBrands.steps("Volkswagen", "Engine oil service", gen); val bm = ServiceBrands.steps("BMW", "Engine oil service", gen); val unk = ServiceBrands.steps("", "Engine oil service", gen)
+        if (vw != bm && vw.contains("Volkswagen") && unk == gen) Report.ok("Each make gets its own reset steps; unknown make gets the general text") else Report.bad("Brand steps wrong")
+        val v1 = Vehicle(1).apply { vin = "WVWZZZ1KZ6W000001" }; val v2 = Vehicle(2).apply { vin = "WVWZZZ1KZ6W000002" }; val v3 = Vehicle(3).apply { vin = "WBAFR9C50BC123456" }
+        ServiceReset.save(listOf(ResetProfile("Engine oil service", "7E0", "31010203", false, ServiceReset.vScope(v1)), ResetProfile("Engine oil service", "7E1", "31010204", true, ServiceReset.mScope(v1))))
+        val p1 = ServiceReset.forVehicle(v1, "Engine oil service"); val p2 = ServiceReset.forVehicle(v2, "Engine oil service"); val p3 = ServiceReset.forVehicle(v3, "Engine oil service")
+        if (p1?.header == "7E0" && p2?.header == "7E1" && p3 == null) Report.ok("Commands follow the vehicle: own first, then same make, other makes none") else Report.bad("Per-vehicle lookup wrong: ${p1?.header} ${p2?.header} ${p3?.header}")
+        ServiceReset.save(emptyList())
         // hazard picker draws every symbol
         prep(); launch()
         try { HazardQuick.show(act); Report.ok("Hazard picker with symbols opens"); val bmp = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)

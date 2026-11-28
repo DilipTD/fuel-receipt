@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** One saved ECU reset command (what to send, to which ECU). */
-class ResetProfile(val type: String, var header: String, var hex: String, var session: Boolean)
+class ResetProfile(val type: String, var header: String, var hex: String, var session: Boolean, var scope: String = "*")
 
 object ServiceReset {
     class Kind(val name: String, val ic: Ic, val color: Int, val maintKey: String, val manual: String)
@@ -32,13 +32,14 @@ object ServiceReset {
             "Set pressures, then use the TPMS reset button or the cluster menu; some cars relearn after driving above 25 km/h for several minutes.")
     )
 
+    /** All saved commands. Scope "v:<id>" = one garage vehicle (linked to its VIN), "m:<MAKE>" = every car of that make, "*" = older global entries. */
     fun load(): MutableList<ResetProfile> {
         val out = mutableListOf<ResetProfile>()
         try {
             val a = JSONArray(Prefs.resetProfiles)
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
-                out.add(ResetProfile(o.getString("t"), o.getString("h"), o.getString("x"), o.optBoolean("s")))
+                out.add(ResetProfile(o.getString("t"), o.getString("h"), o.getString("x"), o.optBoolean("s"), o.optString("w", "*")))
             }
         } catch (_: Exception) {
         }
@@ -47,8 +48,17 @@ object ServiceReset {
 
     fun save(l: List<ResetProfile>) {
         val a = JSONArray()
-        l.forEach { a.put(JSONObject().put("t", it.type).put("h", it.header).put("x", it.hex).put("s", it.session)) }
+        l.forEach { a.put(JSONObject().put("t", it.type).put("h", it.header).put("x", it.hex).put("s", it.session).put("w", it.scope)) }
         Prefs.resetProfiles = a.toString()
+    }
+
+    fun vScope(v: Vehicle) = "v:" + v.id
+    fun mScope(v: Vehicle): String { val m = ServiceBrands.makeOf(v.vin.ifBlank { ObdManager.vin }, v.make).uppercase(); return if (m.isEmpty()) "" else "m:$m" }
+
+    /** The command that applies to this vehicle for a reset type: its own first, then its make, then an older global one. */
+    fun forVehicle(v: Vehicle, type: String): ResetProfile? {
+        val l = load().filter { it.type == type }
+        return l.firstOrNull { it.scope == vScope(v) } ?: mScope(v).takeIf { it.isNotEmpty() }?.let { m -> l.firstOrNull { it.scope == m } } ?: l.firstOrNull { it.scope == "*" }
     }
 
     fun cleanHex(s: String) = s.replace(" ", "").uppercase()
@@ -113,10 +123,18 @@ class ServiceResetPage(a: MainActivity) : Page(a) {
         box.addView(ui.iconCard(Ic.WARN, Ui.WARN, "Use with care",
             "Resets write to the car's ECUs. Do them with ignition ON, engine OFF, car stationary. Wrong commands can set faults or lock a module – only use commands from your service manual or a trusted source."))
         out = ui.tv("Result appears here.", 13f, Ui.DIM)
-        val profiles = ServiceReset.load()
+        val v = ObdManager.vehicle
+        val vin = v.vin.ifBlank { ObdManager.vin }
+        val make = ServiceBrands.makeOf(vin, v.make)
+        // link the VIN: fill an empty make and an empty VIN from what the car reported
+        if (v.vin.isBlank() && ObdManager.vin.length == 17) { v.vin = ObdManager.vin; try { Db.saveVehicle(v) } catch (_: Exception) {} }
+        if (v.make.isBlank() && make.isNotBlank()) { v.make = make; try { Db.saveVehicle(v) } catch (_: Exception) {} }
+        box.addView(ui.iconCard(Ic.CAR, Ui.CYAN, v.name + (if (make.isNotBlank()) " · $make" else ""),
+            (if (vin.length == 17) "VIN $vin – make read from the VIN" else "No VIN yet – connect the car or add the VIN in the garage") + "\nSaved reset commands are linked to this vehicle" + (if (make.isNotBlank()) " (and can be shared with all $make cars)." else ".")), ui.lp(6))
         for (k in ServiceReset.kinds) {
-            val has = profiles.any { it.type == k.name }
-            box.addView(ui.iconCard(k.ic, k.color, k.name, if (has) "ECU command saved · tap for options" else "Tap for options") { options(k) }, ui.lp(8))
+            val p = ServiceReset.forVehicle(v, k.name)
+            val where = when { p == null -> ""; p.scope == ServiceReset.vScope(v) -> " · this vehicle"; p.scope.startsWith("m:") -> " · all $make cars"; else -> "" }
+            box.addView(ui.iconCard(k.ic, k.color, k.name, if (p != null) "ECU command saved$where · tap for options" else "Steps for ${make.ifBlank { "your car" }} · tap for options") { options(k) }, ui.lp(8))
         }
         box.addView(ui.section("Last result", Ic.TERMINAL))
         box.addView(out, ui.lp(6))
@@ -124,16 +142,16 @@ class ServiceResetPage(a: MainActivity) : Page(a) {
     }
 
     private fun options(k: ServiceReset.Kind) {
-        val prof = ServiceReset.load().firstOrNull { it.type == k.name }
+        val prof = ServiceReset.forVehicle(ObdManager.vehicle, k.name)
         val items = mutableListOf("Mark done in app", "How to reset in the car")
         if (prof != null) { items.add("Send ECU reset command"); items.add("Edit ECU command"); items.add("Remove ECU command") }
         else items.add("Set ECU command")
         AlertDialog.Builder(a).setTitle(k.name).setItems(items.toTypedArray()) { _, i ->
             when (items[i]) {
                 "Mark done in app" -> markApp(k)
-                "How to reset in the car" -> AlertDialog.Builder(a).setTitle(k.name).setMessage(k.manual).setPositiveButton("OK", null).show()
+                "How to reset in the car" -> AlertDialog.Builder(a).setTitle(k.name).setMessage(ServiceBrands.steps(ServiceBrands.makeOf(ObdManager.vehicle.vin.ifBlank { ObdManager.vin }, ObdManager.vehicle.make), k.name, k.manual)).setPositiveButton("OK", null).show()
                 "Send ECU reset command" -> confirmSend(k, prof!!)
-                "Remove ECU command" -> { ServiceReset.save(ServiceReset.load().filter { it.type != k.name }); draw() }
+                "Remove ECU command" -> { ServiceReset.save(ServiceReset.load().filter { it !== prof }); draw() }
                 else -> edit(k, prof)
             }
         }.show()
@@ -152,12 +170,16 @@ class ServiceResetPage(a: MainActivity) : Page(a) {
         val hdr = ui.edit("ECU address e.g. 7E0", old?.header ?: "7E0")
         val hex = ui.edit("Request hex e.g. 31010203", old?.hex ?: "")
         val ses = CheckBox(a).apply { text = "Open extended session (10 03) first"; isChecked = old?.session ?: false; setTextColor(Ui.WHITE) }
-        formDialog("ECU command – ${k.name}", listOf("ECU address (CAN header)" to hdr, "Request bytes (hex)" to hex, "" to ses)) {
+        val veh = ObdManager.vehicle
+        val mk = ServiceBrands.makeOf(veh.vin.ifBlank { ObdManager.vin }, veh.make)
+        val allMake = CheckBox(a).apply { text = if (mk.isNotBlank()) "Use for all $mk cars in the garage" else "Use for other cars of the same make"; isChecked = old?.scope?.startsWith("m:") == true; setTextColor(Ui.WHITE); visibility = if (mk.isNotBlank()) View.VISIBLE else View.GONE }
+        formDialog("ECU command – ${k.name}", listOf("ECU address (CAN header)" to hdr, "Request bytes (hex)" to hex, "" to ses, "" to allMake)) {
             val x = ServiceReset.cleanHex(hex.text.toString())
             val h = hdr.text.toString().trim().uppercase()
             if (!ServiceReset.validHex(x) || h.isEmpty() || !h.all { it in "0123456789ABCDEF" }) { ui.toast("Enter valid hex"); return@formDialog }
-            val l = ServiceReset.load().filter { it.type != k.name }.toMutableList()
-            l.add(ResetProfile(k.name, h, x, ses.isChecked)); ServiceReset.save(l); draw()
+            val scope = if (allMake.isChecked && ServiceReset.mScope(veh).isNotEmpty()) ServiceReset.mScope(veh) else ServiceReset.vScope(veh)
+            val l = ServiceReset.load().filter { !(it.type == k.name && it.scope == scope) }.toMutableList()
+            l.add(ResetProfile(k.name, h, x, ses.isChecked, scope)); ServiceReset.save(l); draw()
         }
     }
 
@@ -172,9 +194,10 @@ class ServiceResetPage(a: MainActivity) : Page(a) {
                 ObdManager.runDiag("Sending reset") { e ->
                     val r = ServiceReset.run(e, p)
                     ObdManager.log("SERVICE RESET result: $r")
+                    if (r.contains("✅") && k.maintKey.isNotEmpty()) a.runOnUiThread { markApp(k) }
                     r
                 }
-                if (k.maintKey.isNotEmpty()) ui.toast("Check the result; then use 'Mark done in app'")
+                if (k.maintKey.isNotEmpty()) ui.toast("If the ECU accepts it, the maintenance reminder is reset automatically")
             }.setNegativeButton("Cancel", null).show()
     }
 }
