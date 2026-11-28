@@ -1563,7 +1563,7 @@ class PerceptionTest : SimBase() {
         if (VoiceCmd.handle("speed report").startsWith("Speed") && VoiceCmd.handle("how fast am I going").startsWith("Speed")) Report.ok("Spoken speed report answered: ${VoiceCmd.handle("speed report")}") else Report.bad("Speed report phrase not understood")
         if (VoiceCmd.handle("blah blah").contains("did not understand") && VoiceCmd.handle("").contains("did not hear")) Report.ok("Unknown or empty phrase handled") else Report.bad("Unknown phrase handled badly")
         Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
-        Adas.recalibrate(); if (Adas.teachDistance(20.0) == null) Report.ok("Teach distance refuses when no vehicle is tracked") else Report.bad("Teach distance without a vehicle")
+        Adas.reset(); if (Adas.teachDistance(20.0) == null) Report.ok("Teach distance refuses when no vehicle is tracked") else Report.bad("Teach distance without a vehicle")
         Prefs.adasDep = 99; Prefs.adasHorizon = 1; Prefs.adasCarW = 9999
         if (Prefs.adasDep == 45 && Prefs.adasHorizon == 35 && Prefs.adasCarW == 300) Report.ok("Tuning values are kept in safe limits") else Report.bad("Tuning limits wrong")
         Prefs.adasDep = 30; Prefs.adasHorizon = 52; Prefs.adasCarW = 180
