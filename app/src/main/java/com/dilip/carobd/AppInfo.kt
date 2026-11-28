@@ -16,7 +16,7 @@ import android.view.View
 object AppInfo {
     const val NAME = "Dr. Vittu OBDII Pro"
     const val VERSION = "4.35.0"
-    const val VERSION_CODE = 58
+    const val VERSION_CODE = 59
     const val BUILD_DATE = "27 Nov 2026"
     const val DEVELOPER = "Dilip Kumar TD"
     /** Support e-mail shown in the privacy policy (fill in before publishing). */
