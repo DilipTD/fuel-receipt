@@ -15,11 +15,11 @@ object ServiceReset {
 
     val kinds = listOf(
         Kind("Engine oil service", Ic.DROP, Ui.ORANGE, "oil",
-            "Typical cluster method: ignition ON (engine off) → press and hold the trip/reset stalk button → switch ignition OFF → hold the button and switch ON until the service light resets. Exact steps differ by model – check the owner's manual."),
+            "Engine stopped, ignition ON. Newer clusters: open the Settings screen with the UP/DOWN and SET buttons → Service reminder → Reset: Yes → SET. Older clusters: hold the SET/reset button about 10 seconds until the service kilometres flash, release, then press it again until the value resets; switch ignition OFF. Only reset right after a real service – resetting between services gives wrong readings. Then tap Mark done in app here."),
         Kind("Brake pad / brake service", Ic.STOP, Ui.BAD, "brake",
             "Usually needs the electronic parking brake in service mode (or a scan tool) after fitting new pads. Never use service mode while driving."),
         Kind("General service interval", Ic.WRENCH, Ui.WARN, "general",
-            "Many cars reset through the instrument cluster menu: Settings → Service → Reset, or with the trip-reset button as for oil."),
+            "Same as oil: Settings screen → Service reminder → Reset: Yes → SET (or hold the SET/reset button about 10 seconds on older clusters). Reset only right after a real service, then tap Mark done in app here."),
         Kind("Battery registration (BMS)", Ic.BATTERY, Ui.GOOD, "battery",
             "Needed after replacing the 12 V battery on cars with a battery sensor. Often a scan-tool function – some cars relearn by themselves after a few drive cycles."),
         Kind("Throttle body adaptation", Ic.GEAR, Ui.ACC, "",
